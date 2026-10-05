@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 
 # ---- fixed paths (modders: edit this to your paths) ---------------------------------------
-# Write these as Windows paths; they are converted automatically when running under WSL.
+# Write these as Windows paths; if you use WSL (not required!) they are converted automatically.
 
 # Path to the uncooked gameplay files.
 # Generate by downloading REDkit and using wcc_lite uncook.
@@ -113,7 +113,7 @@ def main():
     run([wcc, "pack", f"-dir={BUILD_DIR}", f"-outdir={MOD_CONTENT}"], cwd=wcc_dir)
 
     step("Running wcc_lite metadatastore")
-    run([wcc, "metadatastore", f"-path={MOD_CONTENT}"], cwd=wcc_dir)
+    run([wcc, "metadatastore", "-noui", f"-path={MOD_CONTENT}"], cwd=wcc_dir)
 
     if not (mod_content / "metadata.store").is_file() or not any(mod_content.glob("blob*.bundle")):
         fail("wcc_lite did not produce blob*.bundle and metadata.store.")
