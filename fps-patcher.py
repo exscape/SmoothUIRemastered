@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 # Automatically patch UI frame rates (for non-excluded files).
-# Note: you should probably run build-mod.py instead.
+# Note: you should probably run build-mod.py instead of calling this manually;
+# this only does part of the work of building the mod.
 
 import argparse
 import struct
@@ -68,11 +69,15 @@ def patch_body(body, a):
     return old, new_raw / 256.0
 
 def recompress(body, max_len):
+    """Recompress the patched data. Note that the output is zero padded, so we don't need this to
+    be as small as possible, just small enough to fit into the existing container."""
     raw = bytes(body)
     smallest = None
 
     # try zlib first
-    for mem in (9, 8):
+    # 8 compresses slightly better(?!) and often yields the exact size of the original blob,
+    # so let's start there
+    for mem in (8, 9):
         c = zlib.compressobj(9, zlib.DEFLATED, 15, mem)
         out = c.compress(raw) + c.flush()
         smallest = len(out) if smallest is None else min(smallest, len(out))
@@ -80,8 +85,7 @@ def recompress(body, max_len):
             return out
 
     # zlib failed, output too large: try zopfli with increasing effort
-    # This is slower, but is needed for gwent_game at least in my tests so far
-    for iters in (15, 100):
+    for iters in (1, 10, 40):
         out = zopfli_compress(raw, numiterations=iters)
         smallest = min(smallest, len(out))
         if len(out) <= max_len:
