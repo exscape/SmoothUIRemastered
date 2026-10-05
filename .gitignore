@@ -1,0 +1,4 @@
+env*/
+Build/
+*.zip
+scan_redswf.py

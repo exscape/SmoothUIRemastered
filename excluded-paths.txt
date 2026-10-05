@@ -1,0 +1,13 @@
+gui_new/swf/endscreen
+gui_new/swf/fakehud
+gui_new/swf/hud
+gui_new/swf/infopopup
+gui_new/swf/mainmenu
+gui_new/swf/meditation/panel_meditation_clock.redswf
+gui_new/swf/modmenu
+gui_new/swf/overlay
+# gui_new/swf/worldmap
+gui_new/swf/popups
+gui_new/swf/test
+gui_new/swf/uirescale
+gui_new/swf/witcher3
