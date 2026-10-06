@@ -133,15 +133,14 @@ def main(argv=None):
     config = load_config(REPO_ROOT / "config/config.toml")
 
     uncooked_gameplay = to_native(config['uncooked_gameplay'])
-    game_path = to_native(config['game_path'])
+    # game_path = to_native(config['game_path'])
     working_dir = to_native(config['working_dir'])
     wcc_lite = to_native(config['wcc_lite'])
 
-    # TODO: clean up after build happens in work tree
-    game_mods_path = game_path / "mods"
-    output_mod_name = "modSmoothUIRemastered"
-    mod_content_path = game_mods_path / output_mod_name / "content"
     build_dir = working_dir / "build"
+    output_dir = working_dir / "output"
+    output_mod_name = "modSmoothUIRemastered"
+    output_content_path = output_dir / output_mod_name / "content"
 
     # Path to the output .zip for distribution.
     # Place the output file in the repo folder unless specified;
@@ -165,7 +164,7 @@ def main(argv=None):
         step(f"Cleaning {patched_dir}")
         shutil.rmtree(patched_dir, ignore_errors=True)
         build_dir.mkdir(parents=True, exist_ok=True)
-        mod_content_path.mkdir(parents=True, exist_ok=True)
+        output_content_path.mkdir(parents=True, exist_ok=True)
 
     step("Running FPS patcher")
     try:
@@ -185,29 +184,30 @@ def main(argv=None):
     if not patched:
         fail("no patched files were produced, aborting.")
 
-    step("Removing old bundle/metadata from mod folder")
-    for old in [*mod_content_path.glob("blob*.bundle"), mod_content_path / "metadata.store"]:
+    step("Removing old bundle/metadata from output folder")
+    for old in [*output_content_path.glob("blob*.bundle"), output_content_path / "metadata.store"]:
         old.unlink(missing_ok=True)
 
     # wcc_lite is picky about its working directory, and needs Windows-style paths even under WSL
+    # ALL CAPS are used for Windows-style paths, lowercase for Python name (Windows or WSL)
     PATCHED_DIR = to_windows(working_dir / 'patched')
-    MOD_CONTENT = to_windows(mod_content_path)
+    CONTENT_PATH = to_windows(output_content_path)
 
     step("Running wcc_lite pack")
-    run([wcc_lite, "pack", f"-dir={PATCHED_DIR}", f"-outdir={MOD_CONTENT}"], cwd=wcc_lite.parent)
+    run([wcc_lite, "pack", f"-dir={PATCHED_DIR}", f"-outdir={CONTENT_PATH}"], cwd=wcc_lite.parent)
 
     step("Running wcc_lite metadatastore")
-    run([wcc_lite, "metadatastore", "-noui", f"-path={MOD_CONTENT}"], cwd=wcc_lite.parent)
+    run([wcc_lite, "metadatastore", "-noui", f"-path={CONTENT_PATH}"], cwd=wcc_lite.parent)
 
-    if not (mod_content_path / "metadata.store").is_file() or not any(mod_content_path.glob("blob*.bundle")):
+    if not (output_content_path / "metadata.store").is_file() or not any(output_content_path.glob("blob*.bundle")):
         fail("wcc_lite did not produce blob*.bundle and metadata.store.")
 
     step("Creating output .zip")
     zip_out.parent.mkdir(parents=True, exist_ok=True)
     zip_out.unlink(missing_ok=True)
     with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in sorted(game_mods_path.rglob("*")):
+        for f in sorted(output_dir.rglob("*")):
             if f.is_file():
-                z.write(f, Path(output_mod_name) / f.relative_to(game_mods_path))
+                z.write(f, f.relative_to(output_dir))
 
     print(f"Added files to {zip_out} ({zip_out.stat().st_size:,} bytes)")
