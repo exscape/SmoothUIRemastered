@@ -6,48 +6,34 @@
 # Tested on Windows 11: via WSL and via cmd.exe (mostly via WSL)
 
 import argparse
-import platform
-import re
 import shutil
 import subprocess
 import sys
+import tomllib
 import zipfile
 from pathlib import Path
 
 from colorama import Back, Fore, Style
 
 from . import patcher
+from .common import to_native, to_windows
 from .patcher import PatchSettings
-
-# ---- fixed paths (modders: edit this section to use your paths) ---------------------------
-# Write these as Windows paths; if you use WSL (not required!) they are converted automatically.
-
-# Path to the uncooked gameplay files.
-# Generate by downloading REDkit and using wcc_lite uncook.
-UNCOOKED_GAMEPLAY = r"E:\Temp\Witcher3Modding\RemasteredUncooked5.00c\gameplay"
-
-# Path to the game directory where the mod is placed
-MOD_CONTENT = r"D:\Games\The Witcher 3 Remastered\mods\modSmoothUIRemastered\content"
-
-# Where the generated files are stored until the mod is packaged for distribution
-BUILD_DIR = r"E:\Temp\Witcher3Modding\SmoothUIRemaster_Build"
-
-# Path to wcc_lite.exe
-WCC_DIR = r"D:\Games\The Witcher 3 Remastered\The Witcher 3 REDkit\bin\x64_RedKit"
-
-# ---- the rest of the script is intended to work without edits -----------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_EXCLUDE_FILE = REPO_ROOT / "config" / "excluded-paths.txt"
 
-IN_WSL = (platform.system() == "Linux"
-          and "microsoft" in platform.uname().release.lower())
-
-def nativize_path(p):
-    """Ensure path is usable by this Python (converts D:\\... to /mnt/d/... in WSL)."""
-    if IN_WSL and re.match(r"^[A-Za-z]:[\\/]", p):
-        p = subprocess.check_output(["wslpath", "-u", p], text=True).strip()
-    return Path(p)
+def load_config(path):
+    try:
+        with open(path, "rb") as f:
+            config = tomllib.load(f)
+    except FileNotFoundError:
+        fail(f"config file not found: {path}")
+    except tomllib.TOMLDecodeError as e:
+        fail(f"invalid config file {path}: {e}")
+    missing = [k for k in ("uncooked_gameplay", "game_path", "working_dir", "wcc_lite") if k not in config]
+    if missing:
+        fail(f"missing in {path}: {', '.join(missing)}")
+    return config
 
 def step(msg):
     eq = "=" * 10
@@ -118,15 +104,13 @@ def match_exclusion(rel_posix_lower, entries):
 def select_files(src, exclusions):
     """Find the .redswf files under src that are not excluded.
     Returns (relative paths to patch, number excluded)."""
-    selected, excluded, used = [], 0, set()
+    selected, excluded = [], []
     for f in sorted(src.rglob("*.redswf")):
-        rel = f.relative_to(src)
-        hit = match_exclusion(rel.as_posix().lower(), exclusions)
-        if hit:
-            used.add(hit)
-            excluded += 1
+        rel_path = f.relative_to(src)
+        if match_exclusion(rel_path.as_posix().lower(), exclusions):
+            excluded.append(rel_path)
         else:
-            selected.append(rel)
+            selected.append(rel_path)
     return selected, excluded
 
 def print_file_result(rel, status, old_fps, new_fps, note):
@@ -146,17 +130,23 @@ def main(argv=None):
     except ValueError as e:
         fail(str(e))
 
-    mod_content = nativize_path(MOD_CONTENT)
-    uncooked_gameplay = nativize_path(UNCOOKED_GAMEPLAY)
-    build_dir = nativize_path(BUILD_DIR)
-    wcc_dir = nativize_path(WCC_DIR)
-    mod_dir = mod_content.parent
-    mod_name = mod_dir.name
+    config = load_config(REPO_ROOT / "config/config.toml")
+
+    uncooked_gameplay = to_native(config['uncooked_gameplay'])
+    game_path = to_native(config['game_path'])
+    working_dir = to_native(config['working_dir'])
+    wcc_lite = to_native(config['wcc_lite'])
+
+    # TODO: clean up after build happens in work tree
+    game_mods_path = game_path / "mods"
+    output_mod_name = "modSmoothUIRemastered"
+    mod_content_path = game_mods_path / output_mod_name / "content"
+    build_dir = working_dir / "build"
 
     # Path to the output .zip for distribution.
     # Place the output file in the repo folder unless specified;
     # add .zip if a name without is specified
-    zip_arg = args.zip or f"{mod_name}.zip"
+    zip_arg = args.zip or f"{output_mod_name}.zip"
     if "/" not in zip_arg and "\\" not in zip_arg:
         zip_out = REPO_ROOT / zip_arg
     else:
@@ -167,15 +157,15 @@ def main(argv=None):
     if not uncooked_gameplay.is_dir():
         fail(f"not a directory: {uncooked_gameplay}")
     exclusions = load_exclusions(args.exclude_file)
-    to_patch, excluded_count = select_files(uncooked_gameplay, exclusions)
+    to_patch, excluded = select_files(uncooked_gameplay, exclusions)
 
-    patched_dir = build_dir / "gameplay"
+    patched_dir = working_dir / "patched/gameplay"
     if not args.dry_run:
         # Clean out stale output
         step(f"Cleaning {patched_dir}")
         shutil.rmtree(patched_dir, ignore_errors=True)
         build_dir.mkdir(parents=True, exist_ok=True)
-        mod_content.mkdir(parents=True, exist_ok=True)
+        mod_content_path.mkdir(parents=True, exist_ok=True)
 
     step("Running FPS patcher")
     try:
@@ -186,7 +176,7 @@ def main(argv=None):
         fail(str(e))
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, "
-          f"{excluded_count} excluded, {len(failed)} skipped.")
+          f"{len(excluded)} excluded, {len(failed)} skipped.")
 
     if args.dry_run:
         step("DRY RUN: exiting")
@@ -196,26 +186,28 @@ def main(argv=None):
         fail("no patched files were produced, aborting.")
 
     step("Removing old bundle/metadata from mod folder")
-    for old in [*mod_content.glob("blob*.bundle"), mod_content / "metadata.store"]:
+    for old in [*mod_content_path.glob("blob*.bundle"), mod_content_path / "metadata.store"]:
         old.unlink(missing_ok=True)
 
     # wcc_lite is picky about its working directory, and needs Windows-style paths even under WSL
-    wcc = wcc_dir / "wcc_lite.exe"
+    PATCHED_DIR = to_windows(working_dir / 'patched')
+    MOD_CONTENT = to_windows(mod_content_path)
+
     step("Running wcc_lite pack")
-    run([wcc, "pack", f"-dir={BUILD_DIR}", f"-outdir={MOD_CONTENT}"], cwd=wcc_dir)
+    run([wcc_lite, "pack", f"-dir={PATCHED_DIR}", f"-outdir={MOD_CONTENT}"], cwd=wcc_lite.parent)
 
     step("Running wcc_lite metadatastore")
-    run([wcc, "metadatastore", "-noui", f"-path={MOD_CONTENT}"], cwd=wcc_dir)
+    run([wcc_lite, "metadatastore", "-noui", f"-path={MOD_CONTENT}"], cwd=wcc_lite.parent)
 
-    if not (mod_content / "metadata.store").is_file() or not any(mod_content.glob("blob*.bundle")):
+    if not (mod_content_path / "metadata.store").is_file() or not any(mod_content_path.glob("blob*.bundle")):
         fail("wcc_lite did not produce blob*.bundle and metadata.store.")
 
     step("Creating output .zip")
     zip_out.parent.mkdir(parents=True, exist_ok=True)
     zip_out.unlink(missing_ok=True)
     with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in sorted(mod_dir.rglob("*")):
+        for f in sorted(game_mods_path.rglob("*")):
             if f.is_file():
-                z.write(f, Path(mod_name) / f.relative_to(mod_dir))
+                z.write(f, Path(output_mod_name) / f.relative_to(game_mods_path))
 
     print(f"Added files to {zip_out} ({zip_out.stat().st_size:,} bytes)")

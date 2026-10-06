@@ -1,0 +1,14 @@
+
+# NOTE: Use single quotes, NOT double quotes, to specify paths below!
+
+# Uncooked gameplay files (generate with wcc_lite uncook, see modding tutorials online)
+uncooked_gameplay = 'E:\Temp\Witcher3Modding\RemasteredUncooked5.00c\gameplay'
+
+# Game directory to use when installing mod builds
+game_path = 'D:\Games\The Witcher 3 Remastered'
+
+# Working/temporary directory for generated files; files located here may be deleted by the script at any moment
+working_dir = 'E:\Temp\Witcher3Modding\work'
+
+# Path to wcc_lite.exe (from the REDkit)
+wcc_lite = 'D:\Games\The Witcher 3 Remastered\The Witcher 3 REDkit\bin\x64_RedKit\wcc_lite.exe'
