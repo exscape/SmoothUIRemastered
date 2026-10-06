@@ -15,14 +15,14 @@ def _wslpath(flag, path):
 
 def to_native(path):
     """Config-style (Windows) path -> Path usable by this Python.
-    Converts D:\\... to /mnt/d/... in WSL; anything else passes through unchanged."""
+    Converts D:\\... to /mnt/d/... in WSL; anything else passes through unchanged"""
     path = str(path)
     if IN_WSL and WIN_DRIVE_RE.match(path):
         path = _wslpath("-u", path)
     return Path(path)
 
 def to_windows(path):
-    """Native Path (or str) -> Windows-style string, e.g. for passing to wcc_lite."""
+    """Native Path (or str) -> Windows-style string, e.g. for passing to wcc_lite"""
     path = str(path)
     if IN_WSL and not WIN_DRIVE_RE.match(path):
         return _wslpath("-w", path)

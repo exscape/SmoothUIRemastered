@@ -1,4 +1,6 @@
 
+[paths]
+
 # NOTE: Use single quotes, NOT double quotes, to specify paths below!
 
 # Uncooked gameplay files (generate with wcc_lite uncook, see modding tutorials online)

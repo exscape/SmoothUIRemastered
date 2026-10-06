@@ -7,52 +7,27 @@
 
 import argparse
 import shutil
-import subprocess
-import sys
-import tomllib
-import zipfile
-from pathlib import Path
-
-from colorama import Back, Fore, Style
 
 from . import patcher
-from .common import to_native, to_windows
+from .build_common import (
+    config_paths,
+    fail,
+    install_mod,
+    load_config,
+    load_exclusions,
+    print_file_result,
+    print_step_header,
+    resolve_zip_path,
+    run_command,
+    select_files,
+    zip_tree,
+)
+from .common import to_windows
 from .patcher import PatchSettings
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_EXCLUDE_FILE = REPO_ROOT / "config" / "excluded-paths.txt"
+OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 
-def load_config(path):
-    try:
-        with open(path, "rb") as f:
-            config = tomllib.load(f)
-    except FileNotFoundError:
-        fail(f"config file not found: {path}")
-    except tomllib.TOMLDecodeError as e:
-        fail(f"invalid config file {path}: {e}")
-    missing = [k for k in ("uncooked_gameplay", "game_path", "working_dir", "wcc_lite") if k not in config]
-    if missing:
-        fail(f"missing in {path}: {', '.join(missing)}")
-    return config
-
-def step(msg):
-    eq = "=" * 10
-    print(f"{Back.BLACK}{Fore.YELLOW}{eq} {msg} {eq}{Style.RESET_ALL}", flush=True)
-
-def fail(msg):
-    print(f"ERROR: {msg}", file=sys.stderr, flush=True)
-    sys.exit(1)
-
-def run(cmd, cwd=None):
-    print("$", " ".join(str(c) for c in cmd), flush=True)
-    try:
-        subprocess.run([str(c) for c in cmd], cwd=cwd, check=True)
-    except FileNotFoundError:
-        fail(f"executable not found: {cmd[0]}")
-    except subprocess.CalledProcessError as e:
-        fail(f"command failed with exit code {e.returncode}: {cmd[0]}")
-
-def parse_args(argv=None):
+def parse_args():
     ap = argparse.ArgumentParser(
         description="Patch vanilla UI frame rates, then create a release-ready mod .zip")
 
@@ -64,67 +39,16 @@ def parse_args(argv=None):
                     help="clamp the target rate to this (default 120)")
     ap.add_argument("--skip-at-or-above", type=float, default=60,
                     help="leave files already at/above this rate alone (default 60)")
-    ap.add_argument("--exclude-file", type=Path, default=None,
-                    help="list of dirs/files to skip "
-                         f"(default: {DEFAULT_EXCLUDE_FILE.relative_to(REPO_ROOT)}, if present)")
     ap.add_argument("--dry-run", action="store_true",
                     help="show what would be patched, without writing or packing anything")
     ap.add_argument("--zip", default=None,
                     help="output .zip name or path (default: <mod name>.zip in the repo folder)")
     ap.add_argument("--install", action="store_true",
                     help="install the mod into the game folder on success")
-    return ap.parse_args(argv)
+    return ap.parse_args()
 
-def load_exclusions(path):
-    """Read the exclusion list: one dir or file (relative to the input dir) per line."""
-    if path is None:
-        path = DEFAULT_EXCLUDE_FILE
-        if not path.is_file():
-            return []
-    elif not path.is_file():
-        fail(f"exclude file not found: {path}")
-
-    entries = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        e = line.replace("\\", "/").lower()
-        e = e.strip("/")
-        if e:
-            entries.append(e)
-    print(f"Loaded {len(entries)} exclusion entries from {path}")
-    return entries
-
-def match_exclusion(rel_posix_lower, entries):
-    """Return the matching entry (file path or directory prefix), or None."""
-    for e in entries:
-        if rel_posix_lower == e or rel_posix_lower.startswith(e + "/"):
-            return e
-    return None
-
-def select_files(src, exclusions):
-    """Find the .redswf files under src that are not excluded.
-    Returns (relative paths to patch, number excluded)."""
-    selected, excluded = [], []
-    for f in sorted(src.rglob("*.redswf")):
-        rel_path = f.relative_to(src)
-        if match_exclusion(rel_path.as_posix().lower(), exclusions):
-            excluded.append(rel_path)
-        else:
-            selected.append(rel_path)
-    return selected, excluded
-
-def print_file_result(rel, status, old_fps, new_fps, note):
-    if status == "patched":
-        print(f"{rel}: {old_fps:g} -> {new_fps:g} fps ({note})", flush=True)
-    elif status == "kept":
-        print(f"KEEP {rel}: {old_fps:g} fps (not changed)", flush=True)
-    else:
-        print(f"SKIP {rel}: {note}", file=sys.stderr, flush=True)
-
-def main(argv=None):
-    args = parse_args(argv)
+def main():
+    args = parse_args()
 
     try:
         settings = PatchSettings(fps=args.fps, multiplier=args.multiplier,
@@ -132,41 +56,33 @@ def main(argv=None):
     except ValueError as e:
         fail(str(e))
 
-    config = load_config(REPO_ROOT / "config/config.toml")
+    paths = config_paths(load_config())
 
-    uncooked_gameplay = to_native(config['uncooked_gameplay'])
-    game_path = to_native(config['game_path'])
-    working_dir = to_native(config['working_dir'])
-    wcc_lite = to_native(config['wcc_lite'])
+    uncooked_gameplay = paths['uncooked_gameplay']
+    game_path = paths['game_path']
+    working_dir = paths['working_dir']
+    wcc_lite = paths['wcc_lite']
 
     output_dir = working_dir / "output"
     output_mod_name = "modSmoothUIRemastered"
     output_content_path = output_dir / output_mod_name / "content"
 
     # Path to the output .zip for distribution.
-    # Place the output file in the repo folder unless specified;
-    # add .zip if a name without is specified
-    zip_arg = args.zip or f"{output_mod_name}.zip"
-    if "/" not in zip_arg and "\\" not in zip_arg:
-        zip_out = REPO_ROOT / zip_arg
-    else:
-        zip_out = Path(zip_arg)
-    if zip_out.suffix.lower() != ".zip":
-        zip_out = zip_out.with_name(zip_out.name + ".zip")
+    zip_out = resolve_zip_path(args.zip, f"{output_mod_name}.zip")
 
     if not uncooked_gameplay.is_dir():
         fail(f"not a directory: {uncooked_gameplay}")
-    exclusions = load_exclusions(args.exclude_file)
+    exclusions = load_exclusions()
     to_patch, excluded = select_files(uncooked_gameplay, exclusions)
 
     patched_dir = working_dir / "patched/gameplay"
     if not args.dry_run:
         # Clean out stale output
-        step(f"Cleaning {patched_dir}")
+        print_step_header(f"Cleaning {patched_dir}")
         shutil.rmtree(patched_dir, ignore_errors=True)
         output_content_path.mkdir(parents=True, exist_ok=True)
 
-    step("Running FPS patcher")
+    print_step_header("Running FPS patcher")
     try:
         patched, kept, failed = patcher.patch_files(
             uncooked_gameplay, patched_dir, to_patch, settings,
@@ -178,13 +94,13 @@ def main(argv=None):
           f"{len(excluded)} excluded, {len(failed)} skipped.")
 
     if args.dry_run:
-        step("DRY RUN: exiting")
+        print_step_header("DRY RUN: exiting")
         return
 
     if not patched:
         fail("no patched files were produced, aborting.")
 
-    step("Removing old bundle/metadata from output folder")
+    print_step_header("Removing old bundle/metadata from output folder")
     for old in [*output_content_path.glob("blob*.bundle"), output_content_path / "metadata.store"]:
         old.unlink(missing_ok=True)
 
@@ -193,30 +109,16 @@ def main(argv=None):
     PATCHED_DIR = to_windows(working_dir / 'patched')
     CONTENT_PATH = to_windows(output_content_path)
 
-    step("Running wcc_lite pack")
-    run([wcc_lite, "pack", f"-dir={PATCHED_DIR}", f"-outdir={CONTENT_PATH}"], cwd=wcc_lite.parent)
+    print_step_header("Running wcc_lite pack")
+    run_command([wcc_lite, "pack", f"-dir={PATCHED_DIR}", f"-outdir={CONTENT_PATH}"], cwd=wcc_lite.parent)
 
-    step("Running wcc_lite metadatastore")
-    run([wcc_lite, "metadatastore", "-noui", f"-path={CONTENT_PATH}"], cwd=wcc_lite.parent)
+    print_step_header("Running wcc_lite metadatastore")
+    run_command([wcc_lite, "metadatastore", "-noui", f"-path={CONTENT_PATH}"], cwd=wcc_lite.parent)
 
     if not (output_content_path / "metadata.store").is_file() or not any(output_content_path.glob("blob*.bundle")):
         fail("wcc_lite did not produce blob*.bundle and metadata.store.")
 
-    step("Creating output .zip")
-    zip_out.parent.mkdir(parents=True, exist_ok=True)
-    zip_out.unlink(missing_ok=True)
-    with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in sorted(output_dir.rglob("*")):
-            if f.is_file():
-                z.write(f, f.relative_to(output_dir))
-
-    print(f"Added files to {zip_out} ({zip_out.stat().st_size:,} bytes)")
+    zip_tree(output_dir, zip_out)
 
     if args.install:
-        step("Installing mod to game folder")
-        if not game_path.is_dir():
-            fail(f"game path not found: {game_path}")
-        dest = game_path / "mods" / output_mod_name
-        shutil.rmtree(dest, ignore_errors=True)
-        shutil.copytree(output_dir / output_mod_name, dest)
-        print(f"Installed mod into {dest}")
+        install_mod(output_dir / output_mod_name, game_path)

@@ -15,7 +15,7 @@ SIGS = (b"GFX", b"FWS", b"CFX", b"CWS")
 
 @dataclass(frozen=True)
 class PatchSettings:
-    """Exactly one of fps / multiplier must be given."""
+    """Exactly one of fps / multiplier must be given"""
     fps: float | None = None            # set this exact frame rate
     multiplier: float | None = None     # multiply the original rate
     max_fps: float = 120                # clamp the target rate to this
@@ -26,7 +26,7 @@ class PatchSettings:
             raise ValueError("specify exactly one of fps or multiplier")
 
 def target_fps(orig, s):
-    """Return the new fps, or None to leave the file untouched."""
+    """Return the new fps, or None to leave the file untouched"""
     if orig >= s.skip_at_or_above:
         return None
     t = s.fps if s.fps is not None else orig * s.multiplier
@@ -35,7 +35,7 @@ def target_fps(orig, s):
 
 def patch_body(body, s):
     """body = decompressed data after the 8-byte header. Patches in place.
-    Returns None if not a valid movie, else (old_fps, new_fps_or_None)."""
+    Returns None if not a valid movie, else (old_fps, new_fps_or_None)"""
     nbits = body[0] >> 3
     if nbits == 0:
         return None
@@ -57,7 +57,7 @@ def patch_body(body, s):
 
 def recompress(body, max_len):
     """Recompress the patched data. Note that the output is zero padded, so we don't need this to
-    be as small as possible; just small enough to fit into the existing container."""
+    be as small as possible; just small enough to fit into the existing container"""
     raw = bytes(body)
     smallest = None
 
@@ -82,7 +82,7 @@ def recompress(body, max_len):
                      f"(smallest {smallest} bytes vs {max_len} allowed)")
 
 def process(data, s):
-    """Returns list of (old, new_or_None, note) per valid payload; patches data in place."""
+    """Returns list of (old, new_or_None, note) per valid payload; patches data in place"""
     found = []
     for sig in SIGS:
         pos = data.find(sig)
@@ -96,6 +96,7 @@ def process(data, s):
                         body = bytearray(d.decompress(bytes(data[pos + 8:])))
                     except zlib.error:
                         body = None
+
                     if body is not None and d.eof:
                         clen = len(data) - (pos + 8) - len(d.unused_data)
                         res = patch_body(body, s)
