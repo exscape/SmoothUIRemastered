@@ -15,7 +15,9 @@ import sys
 import zipfile
 from pathlib import Path
 
-# ---- fixed paths (modders: edit this to your paths) ---------------------------------------
+from colorama import Back, Fore, Style, just_fix_windows_console
+
+# ---- fixed paths (modders: edit this section to use your paths) ---------------------------
 # Write these as Windows paths; if you use WSL (not required!) they are converted automatically.
 
 # Path to the uncooked gameplay files.
@@ -26,7 +28,7 @@ UNCOOKED_GAMEPLAY = r"E:\Temp\Witcher3Modding\RemasteredUncooked5.00c\gameplay"
 MOD_CONTENT = r"D:\Games\The Witcher 3 Remastered\mods\modSmoothUIRemastered\content"
 
 # Where the generated files are stored until the mod is packaged for distribution
-BUILD_DIR = r"E:\Temp\Witcher3Modding\SmoothUIRemasteredBuilder\Build"
+BUILD_DIR = r"E:\Temp\Witcher3Modding\SmoothUIRemaster_Build"
 
 # Path to wcc_lite.exe
 WCC_DIR = r"D:\Games\The Witcher 3 Remastered\The Witcher 3 REDkit\bin\x64_RedKit"
@@ -42,7 +44,8 @@ def nativize_path(p):
     return Path(p)
 
 def step(msg):
-    print(f"===== {msg} =====", flush=True)
+    eq = "=" * 10
+    print(f"{Back.BLACK}{Fore.YELLOW}{eq} {msg} {eq}{Style.RESET_ALL}", flush=True)
 
 def fail(msg):
     print(f"ERROR: {msg}", file=sys.stderr, flush=True)
@@ -129,4 +132,5 @@ def main():
     print(f"Added files to {zip_out} ({zip_out.stat().st_size:,} bytes)")
 
 if __name__ == "__main__":
+    just_fix_windows_console() # Initialize colorama
     main()
