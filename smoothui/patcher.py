@@ -1,52 +1,39 @@
-#!/usr/bin/env python3
+"""Patch UI frame rates in .redswf files, keeping each file's size identical.
 
-# Automatically patch UI frame rates (for non-excluded files).
-# Note: you should probably run build-mod.py instead of calling this manually;
-# this only does part of the work of building the mod.
+This is a library; run build-mod.py to build the mod.
+"""
+from __future__ import annotations
 
-import argparse
 import struct
-import sys
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
 
 from zopfli.zlib import compress as zopfli_compress
 
 SIGS = (b"GFX", b"FWS", b"CFX", b"CWS")
-DEFAULT_EXCLUDE_FILE = Path(__file__).resolve().parent / "excluded-paths.txt"
 
-def load_exclusions(path):
-    entries = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("#"):
-            continue
-        line = line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        e = line.replace("\\", "/").lower()
-        while e.startswith("./"):
-            e = e[2:]
-        e = e.strip("/")
-        if e:
-            entries.append(e)
-    return entries
+@dataclass(frozen=True)
+class PatchSettings:
+    """Exactly one of fps / multiplier must be given."""
+    fps: float | None = None            # set this exact frame rate
+    multiplier: float | None = None     # multiply the original rate
+    max_fps: float = 120                # clamp the target rate to this
+    skip_at_or_above: float = 60        # leave files already at/above this rate alone
 
-def match_exclusion(rel_posix_lower, entries):
-    """Return the matching entry (file path or directory prefix), or None."""
-    for e in entries:
-        if rel_posix_lower == e or rel_posix_lower.startswith(e + "/"):
-            return e
-    return None
+    def __post_init__(self):
+        if (self.fps is None) == (self.multiplier is None):
+            raise ValueError("specify exactly one of fps or multiplier")
 
-def target_rate(orig, a):
+def target_rate(orig, s):
     """Return the new fps, or None to leave the file untouched."""
-    if orig >= a.skip_at_or_above:
+    if orig >= s.skip_at_or_above:
         return None
-    t = a.fps if a.fps is not None else orig * a.multiplier
-    t = min(t, a.max_fps, 255.99)
+    t = s.fps if s.fps is not None else orig * s.multiplier
+    t = min(t, s.max_fps, 255.99)
     return t if t > orig else None
 
-def patch_body(body, a):
+def patch_body(body, s):
     """body = decompressed data after the 8-byte header. Patches in place.
     Returns None if not a valid movie, else (old_fps, new_fps_or_None)."""
     nbits = body[0] >> 3
@@ -59,7 +46,7 @@ def patch_body(body, a):
     if raw == 0 or frames == 0:
         return None
     old = raw / 256.0
-    new = target_rate(old, a)
+    new = target_rate(old, s)
     if new is None:
         return old, None
     new_raw = round(new * 256)
@@ -95,7 +82,7 @@ def recompress(body, max_len):
     raise ValueError(f"recompressed stream doesn't fit "
                      f"(smallest {smallest} bytes vs {max_len} allowed)")
 
-def process(data, a):
+def process(data, s):
     """Returns list of (old, new_or_None, note) per valid payload; patches data in place."""
     found = []
     for sig in SIGS:
@@ -112,7 +99,7 @@ def process(data, a):
                         body = None
                     if body is not None and d.eof:
                         clen = len(data) - (pos + 8) - len(d.unused_data)
-                        res = patch_body(body, a)
+                        res = patch_body(body, s)
                         if res and res[1] is None:
                             found.append((res[0], None, "left alone"))
                         elif res:
@@ -122,7 +109,7 @@ def process(data, a):
                             found.append((*res, f"compressed, {pad} pad bytes"))
                 elif 21 <= length and pos + length <= len(data):
                     body = bytearray(data[pos + 8:pos + length])
-                    res = patch_body(body, a)
+                    res = patch_body(body, s)
                     if res and res[1] is None:
                         found.append((res[0], None, "left alone"))
                     elif res:
@@ -131,76 +118,54 @@ def process(data, a):
             pos = data.find(sig, pos + 3)
     return found
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("input_dir", type=Path)
-    ap.add_argument("output_dir", type=Path)
+def patch_files(src, dst, rels, settings, *, dry_run=False, on_file=None):
+    """Patch the given files (paths relative to src), writing changed ones to dst with the
+    same relative path. Files that are left alone by the rate rules, or that fail, are not written.
 
-    g = ap.add_mutually_exclusive_group(required=True)
-    g.add_argument("--fps", type=float)
-    g.add_argument("--multiplier", type=float)
+    on_file(rel, status, old_fps, new_fps, note) is called as soon as each file's result is
+    known; status is "patched", "kept" or "failed".
 
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--max-fps", type=float, default=120,
-                    help="clamp the target rate to this (default 120)")
-    ap.add_argument("--skip-at-or-above", type=float, default=60,
-                    help="leave files already at/above this rate alone (default 60)")
-    ap.add_argument("--exclude-file", type=Path, default=None,
-                    help=f"list of dirs/files to skip (default: {DEFAULT_EXCLUDE_FILE.name} "
-                         "next to this script, if present)")
-    a = ap.parse_args()
-
-    src, dst = a.input_dir.resolve(), a.output_dir.resolve()
+    Returns (patched, kept, failed): lists of relative paths, except that failed holds
+    (rel, message) tuples. Raises NotADirectoryError / ValueError for invalid directories.
+    """
+    src, dst = Path(src).resolve(), Path(dst).resolve()
     if not src.is_dir():
-        sys.exit(f"Not a directory: {src}")
+        raise NotADirectoryError(f"Not a directory: {src}")
     if dst == src or src in dst.parents:
-        sys.exit("Output dir must not be inside the input dir.")
+        raise ValueError("Output dir must not be inside the input dir.")
 
-    exclusions = []
-    ex_path = a.exclude_file or DEFAULT_EXCLUDE_FILE
-    if ex_path.is_file():
-        exclusions = load_exclusions(ex_path)
-        print(f"Loaded {len(exclusions)} exclusion entries from {ex_path}")
-    elif a.exclude_file:
-        sys.exit(f"Exclude file not found: {ex_path}")
-    used = set()
+    patched, kept, failed = [], [], []
 
-    ok = kept = excluded = bad = 0
-    for f in sorted(src.rglob("*.redswf")):
-        rel = f.relative_to(src)
-        hit = match_exclusion(rel.as_posix().lower(), exclusions)
-        if hit:
-            used.add(hit)
-            # print(f"EXCL {rel} (matches '{hit}')")
-            excluded += 1
-            continue
+    def report(rel, status, old=None, new=None, note=""):
+        if on_file:
+            on_file(rel, status, old, new, note)
 
-        orig = f.read_bytes()
+    for rel in map(Path, rels):
+        orig = (src / rel).read_bytes()
         data = bytearray(orig)
         try:
-            res = process(data, a)
+            found = process(data, settings)
         except ValueError as e:
-            print(f"SKIP {rel}: {e}", file=sys.stderr); bad += 1; continue
-        if len(res) != 1 or len(data) != len(orig):
-            print(f"SKIP {rel}: found {len(res)} payloads (expected 1)", file=sys.stderr)
-            bad += 1; continue
-        old, new, note = res[0]
-        if new is None:
-            print(f"KEEP {rel}: {old:g} fps (not changed)")
-            kept += 1
+            failed.append((rel, str(e)))
+            report(rel, "failed", note=str(e))
             continue
-        print(f"{rel}: {old:g} -> {new:g} fps ({note})")
-        if not a.dry_run:
+        if len(found) != 1 or len(data) != len(orig):
+            msg = f"found {len(found)} payloads (expected 1)"
+            failed.append((rel, msg))
+            report(rel, "failed", note=msg)
+            continue
+
+        old, new, note = found[0]
+        if new is None:
+            kept.append(rel)
+            report(rel, "kept", old, note=note)
+            continue
+
+        if not dry_run:
             out = dst / rel
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(data)
-        ok += 1
+        patched.append(rel)
+        report(rel, "patched", old, new, note)
 
-    for e in exclusions:
-        if e not in used:
-            print(f"WARNING: exclusion '{e}' matched no files", file=sys.stderr)
-    print()
-    print(f"Done: {ok} patched, {kept} left alone, {excluded} excluded, {bad} skipped.")
-
-if __name__ == "__main__":
-    main()
+    return patched, kept, failed

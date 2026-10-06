@@ -6,8 +6,14 @@ gui_new/swf/mainmenu
 gui_new/swf/meditation/panel_meditation_clock.redswf
 gui_new/swf/modmenu
 gui_new/swf/overlay
-# gui_new/swf/worldmap
 gui_new/swf/popups
 gui_new/swf/test
 gui_new/swf/uirescale
 gui_new/swf/witcher3
+
+# Newer additions, verify that these should be excluded
+gui_new/swf/deathscreen
+gui_new/swf/loading
+gui_new/swf/poster
+gui_new/swf/startscreen
+gui_new/swf/startup

@@ -1,4 +1,5 @@
 env*/
 Build/
+__pycache__/
 *.zip
 scan_redswf.py
