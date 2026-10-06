@@ -45,6 +45,8 @@ def parse_args():
                     help="output .zip name or path (default: <mod name>.zip in the repo folder)")
     ap.add_argument("--install", action="store_true",
                     help="install the mod into the game folder on success")
+    ap.add_argument("--keep-work", action="store_true",
+                    help="keep the work directory on success (it is always kept on failure)")
     return ap.parse_args()
 
 def main():
@@ -60,10 +62,10 @@ def main():
 
     uncooked_gameplay = paths['uncooked_gameplay']
     game_path = paths['game_path']
-    working_dir = paths['working_dir']
+    work_dir = paths['working_dir'] / "main"
     wcc_lite = paths['wcc_lite']
 
-    output_dir = working_dir / "output"
+    output_dir = work_dir / "2_mod"
     output_mod_name = "modSmoothUIRemastered"
     output_content_path = output_dir / output_mod_name / "content"
 
@@ -75,7 +77,7 @@ def main():
     exclusions = load_exclusions()
     to_patch, excluded = select_files(uncooked_gameplay, exclusions)
 
-    patched_dir = working_dir / "patched/gameplay"
+    patched_dir = work_dir / "1_patched"
     if not args.dry_run:
         # Clean out stale output
         print_step_header(f"Cleaning {patched_dir}")
@@ -85,7 +87,7 @@ def main():
     print_step_header("Running FPS patcher")
     try:
         patched, kept, failed = patcher.patch_files(
-            uncooked_gameplay, patched_dir, to_patch, settings,
+            uncooked_gameplay, patched_dir / "gameplay", to_patch, settings,
             dry_run=args.dry_run, on_file=print_file_result)
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
@@ -106,7 +108,7 @@ def main():
 
     # wcc_lite is picky about its working directory, and needs Windows-style paths even under WSL
     # ALL CAPS are used for Windows-style paths, lowercase for Python name (Windows or WSL)
-    PATCHED_DIR = to_windows(working_dir / 'patched')
+    PATCHED_DIR = to_windows(patched_dir)
     CONTENT_PATH = to_windows(output_content_path)
 
     print_step_header("Running wcc_lite pack")
@@ -122,3 +124,9 @@ def main():
 
     if args.install:
         install_mod(output_dir / output_mod_name, game_path)
+
+    if args.keep_work:
+        print(f"Keeping work files in {work_dir}")
+    else:
+        print_step_header(f"Removing {work_dir}")
+        shutil.rmtree(work_dir, ignore_errors=True)
