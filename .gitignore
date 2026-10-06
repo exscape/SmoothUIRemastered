@@ -3,3 +3,5 @@ Build/
 __pycache__/
 *.zip
 scan_redswf.py
+test-tools/
+TODO.txt
