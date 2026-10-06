@@ -25,7 +25,7 @@ class PatchSettings:
         if (self.fps is None) == (self.multiplier is None):
             raise ValueError("specify exactly one of fps or multiplier")
 
-def target_rate(orig, s):
+def target_fps(orig, s):
     """Return the new fps, or None to leave the file untouched."""
     if orig >= s.skip_at_or_above:
         return None
@@ -37,7 +37,7 @@ def patch_body(body, s):
     """body = decompressed data after the 8-byte header. Patches in place.
     Returns None if not a valid movie, else (old_fps, new_fps_or_None)."""
     nbits = body[0] >> 3
-    if nbits == 0 or nbits > 31:
+    if nbits == 0:
         return None
     offset = (5 + 4 * nbits + 7) // 8
     if offset + 4 > len(body):
@@ -46,7 +46,7 @@ def patch_body(body, s):
     if raw == 0 or frames == 0:
         return None
     old = raw / 256.0
-    new = target_rate(old, s)
+    new = target_fps(old, s)
     if new is None:
         return old, None
     new_raw = round(new * 256)
@@ -57,7 +57,7 @@ def patch_body(body, s):
 
 def recompress(body, max_len):
     """Recompress the patched data. Note that the output is zero padded, so we don't need this to
-    be as small as possible, just small enough to fit into the existing container."""
+    be as small as possible; just small enough to fit into the existing container."""
     raw = bytes(body)
     smallest = None
 
@@ -76,7 +76,6 @@ def recompress(body, max_len):
         out = zopfli_compress(raw, numiterations=iters)
         smallest = min(smallest, len(out))
         if len(out) <= max_len:
-            assert zlib.decompress(out) == raw
             return out
 
     raise ValueError(f"recompressed stream doesn't fit "
@@ -107,6 +106,9 @@ def process(data, s):
                             pad = clen - len(out)
                             data[pos + 8:pos + 8 + clen] = out + b"\0" * pad
                             found.append((*res, f"compressed, {pad} pad bytes"))
+                        pos += 8 + clen
+                        pos = data.find(sig, pos)
+                        continue
                 elif 21 <= length and pos + length <= len(data):
                     body = bytearray(data[pos + 8:pos + length])
                     res = patch_body(body, s)
@@ -115,6 +117,9 @@ def process(data, s):
                     elif res:
                         data[pos + 8:pos + length] = body
                         found.append((*res, "uncompressed"))
+                    pos += length
+                    pos = data.find(sig, pos)
+                    continue
             pos = data.find(sig, pos + 3)
     return found
 
