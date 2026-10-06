@@ -71,6 +71,8 @@ def parse_args(argv=None):
                     help="show what would be patched, without writing or packing anything")
     ap.add_argument("--zip", default=None,
                     help="output .zip name or path (default: <mod name>.zip in the repo folder)")
+    ap.add_argument("--install", action="store_true",
+                    help="install the mod into the game folder on success")
     return ap.parse_args(argv)
 
 def load_exclusions(path):
@@ -133,11 +135,10 @@ def main(argv=None):
     config = load_config(REPO_ROOT / "config/config.toml")
 
     uncooked_gameplay = to_native(config['uncooked_gameplay'])
-    # game_path = to_native(config['game_path'])
+    game_path = to_native(config['game_path'])
     working_dir = to_native(config['working_dir'])
     wcc_lite = to_native(config['wcc_lite'])
 
-    build_dir = working_dir / "build"
     output_dir = working_dir / "output"
     output_mod_name = "modSmoothUIRemastered"
     output_content_path = output_dir / output_mod_name / "content"
@@ -163,7 +164,6 @@ def main(argv=None):
         # Clean out stale output
         step(f"Cleaning {patched_dir}")
         shutil.rmtree(patched_dir, ignore_errors=True)
-        build_dir.mkdir(parents=True, exist_ok=True)
         output_content_path.mkdir(parents=True, exist_ok=True)
 
     step("Running FPS patcher")
@@ -211,3 +211,12 @@ def main(argv=None):
                 z.write(f, f.relative_to(output_dir))
 
     print(f"Added files to {zip_out} ({zip_out.stat().st_size:,} bytes)")
+
+    if args.install:
+        step("Installing mod to game folder")
+        if not game_path.is_dir():
+            fail(f"game path not found: {game_path}")
+        dest = game_path / "mods" / output_mod_name
+        shutil.rmtree(dest, ignore_errors=True)
+        shutil.copytree(output_dir / output_mod_name, dest)
+        print(f"Installed mod into {dest}")
