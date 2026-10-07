@@ -111,7 +111,7 @@ def unpack(mod_archive, dest_dir):
             fail(f"not a supported archive (.zip, .7z, .rar): {mod_archive}")
     except rarfile.RarCannotExec:
         fail("unpacking .rar files needs an external tool: install UnRAR, unar or bsdtar "
-             "and make sure it is on your PATH. See the `rarfile` package documentation for more information.")
+             "and make sure it is on your PATH. See README.md for more information.")
     except (zipfile.BadZipFile, py7zr.Bad7zFile, rarfile.Error) as e:
         fail(f"could not unpack {mod_archive}: {e}")
     count = sum(1 for f in dest_dir.rglob("*") if f.is_file())
