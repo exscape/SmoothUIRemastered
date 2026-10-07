@@ -22,11 +22,11 @@ from .build_common import (
     install_mod,
     load_config,
     load_exclusions,
+    load_manifest,
     print_file_result,
     print_step_header,
     resolve_zip_path,
     run_command,
-    select_files,
     zip_tree,
 )
 from .common import normalize_version, to_windows
@@ -35,10 +35,6 @@ from .patcher import PatchSettings
 # Used to name the generated mod. The "mod000_" prefix sorts before the main mod and
 # (nearly) any other mod, so the compatibility patch loads first and wins conflicts.
 MAIN_MOD_NAME = "SmoothUIRemastered"
-
-# select_files() returns paths relative to the uncooked gameplay dir, whereas files unbundled
-# from a mod start with the depot path, which includes this folder
-DEPOT_PREFIX = "gameplay"
 
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(
@@ -81,12 +77,6 @@ def check_member_paths(names, dest_dir):
     root = dest_dir.resolve()
     for name in names:
         target = (root / name).resolve()
-
-
-        # TODO: remove
-        if target == root:
-            print(f"check_member_paths: target == root ({target} == {root})")
-
 
         if target != root and root not in target.parents:
             fail(f"unsafe path in archive: {name}")
@@ -139,32 +129,31 @@ def unbundle(root, out_dir, wcc_lite):
     if not any(out_dir.rglob("*.redswf")):
         fail(f"no .redswf files found after unbundling into {out_dir}")
 
-def find_shared_files(their_dir, uncooked_gameplay, exclusions):
+def find_shared_files(their_dir, manifest, exclusions, smooth_version):
     """The .redswf files (paths relative to their_dir, in their spelling) that the other mod
-    ships AND that Smooth UI Remastered patches."""
-    if not uncooked_gameplay.is_dir():
-        fail(f"not a directory: {uncooked_gameplay}")
-    ours, excluded = select_files(uncooked_gameplay, exclusions)
-
+    ships AND that the Smooth UI Remastered release named by manifest patches."""
     def key(rel):
-        return rel.as_posix().lower()
+        """One comparable spelling for both sides: lowercase, slash-separated"""
+        return rel.as_posix().lower() if isinstance(rel, Path) else rel.lower()
 
-    our_keys = {f"{DEPOT_PREFIX}/{key(p)}" for p in ours}
-    excluded_keys = {f"{DEPOT_PREFIX}/{key(p)}" for p in excluded}
+    if manifest is None:
+        fail(f"no manifest exists for Smooth UI Remastered {smooth_version}")
+
+    our_keys = {key(rel) for rel in manifest["files"]}
+    # load_exclusions() entries are already lowercase, slash-separated and stripped
+    excluded_keys = {key(e) for e in exclusions}
     theirs = sorted(f.relative_to(their_dir) for f in their_dir.rglob("*.redswf"))
     shared = [p for p in theirs if key(p) in our_keys]
 
     print(f"The other mod has {len(theirs)} .redswf files, {len(shared)} of which "
-          f"{MAIN_MOD_NAME} also patches")
+          f"Smooth UI Remastered {smooth_version} also patches")
     for p in theirs:
         if key(p) not in our_keys:
             why = "on our exclusion list" if key(p) in excluded_keys else "not in our mod"
             print(f"  not patched: {p} ({why})")
 
     if not shared:
-        sample = "\n".join(f"  {p}" for p in theirs[:3])
-        fail("no .redswf files in common, nothing to patch. Their paths start like:\n"
-             f"{sample}\nOurs should start with '{DEPOT_PREFIX}/'. If this looks correct, this mod does not need a compat patch!")
+        fail("no .redswf files in common! This mod does not need a compat patch.")
     return shared
 
 def main(argv=None):
@@ -180,7 +169,6 @@ def main(argv=None):
         fail(f"input mod archive not found: {args.mod_archive}")
 
     paths = config_paths(load_config())
-    uncooked_gameplay = paths["uncooked_gameplay"]
     game_path = paths["game_path"]
     wcc_lite = paths["wcc_lite"]
 
@@ -212,8 +200,11 @@ def main(argv=None):
     print_step_header("Unbundling the other mod")
     unbundle(find_unbundle_root(unpacked_dir), unbundled_dir, wcc_lite)
 
+    print_step_header(f"Loading manifest for Smooth UI Remastered {smooth_version}")
+    manifest = load_manifest(smooth_version)
+
     print_step_header("Finding files in common")
-    shared = find_shared_files(unbundled_dir, uncooked_gameplay, exclusions)
+    shared = find_shared_files(unbundled_dir, manifest, exclusions, smooth_version)
 
     print_step_header("Running FPS patcher")
     try:

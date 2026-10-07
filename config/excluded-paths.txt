@@ -1,19 +1,19 @@
-gui_new/swf/endscreen
-gui_new/swf/fakehud
-gui_new/swf/hud
-gui_new/swf/infopopup
-gui_new/swf/mainmenu
-gui_new/swf/meditation/panel_meditation_clock.redswf
-gui_new/swf/modmenu
-gui_new/swf/overlay
-gui_new/swf/popups
-gui_new/swf/test
-gui_new/swf/uirescale
-gui_new/swf/witcher3
+gameplay/gui_new/swf/endscreen
+gameplay/gui_new/swf/fakehud
+gameplay/gui_new/swf/hud
+gameplay/gui_new/swf/infopopup
+gameplay/gui_new/swf/mainmenu
+gameplay/gui_new/swf/meditation/panel_meditation_clock.redswf
+gameplay/gui_new/swf/modmenu
+gameplay/gui_new/swf/overlay
+gameplay/gui_new/swf/popups
+gameplay/gui_new/swf/test
+gameplay/gui_new/swf/uirescale
+gameplay/gui_new/swf/witcher3
 
 # Newer additions, verify that these should be excluded
-gui_new/swf/deathscreen
-gui_new/swf/loading
-gui_new/swf/poster
-gui_new/swf/startscreen
-gui_new/swf/startup
+gameplay/gui_new/swf/deathscreen
+gameplay/gui_new/swf/loading
+gameplay/gui_new/swf/poster
+gameplay/gui_new/swf/startscreen
+gameplay/gui_new/swf/startup

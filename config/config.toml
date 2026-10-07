@@ -1,23 +1,29 @@
 
-# Version information of the Smooth UI Remastered mod that is created.
-# NOT relevant for compatibility patch builders!
-# For compat patches, --smooth-version is specified (and required) instead.
-[versions]
-created_mod_version = "v0.2"
-targeted_game_version = "5.00c"
-
 [paths]
 
 # NOTE: Use single quotes, NOT double quotes, to specify paths below!
-
-# Uncooked gameplay files (generate with wcc_lite uncook, see modding tutorials online)
-uncooked_gameplay = 'E:\Temp\Witcher3Modding\RemasteredUncooked5.00c\gameplay'
 
 # Game directory to use when installing mod builds
 game_path = 'D:\Games\The Witcher 3 Remastered'
 
 # Working/temporary directory for generated files; files located here may be deleted by the script at any moment
+# NOTE: wcc_lite is said to dislike paths with spaces, so ensure this does not contain any!
 working_dir = 'E:\Temp\Witcher3Modding\work'
 
 # Path to wcc_lite.exe (from the REDkit)
 wcc_lite = 'D:\Games\The Witcher 3 Remastered\The Witcher 3 REDkit\bin\x64_RedKit\wcc_lite.exe'
+
+
+
+### The configuration below is only relevant for building Smooth UI Remastered itself,
+### not for other mod authors building compatibility patches.
+
+
+
+# Folder that holds the uncooked game files.
+uncooked_files = 'E:\Temp\Witcher3Modding\RemasteredUncooked5.00c'
+
+# Version information of the Smooth UI Remastered mod that is created.
+[versions]
+created_mod_version = "v0.2"
+targeted_game_version = "5.00c"

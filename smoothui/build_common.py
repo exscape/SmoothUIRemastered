@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 EXCLUDE_FILE = REPO_ROOT / "config" / "excluded-paths.txt"
 MANIFEST_DIR = REPO_ROOT / "manifests"
 
-REQUIRED_CONFIG_KEYS = ("uncooked_gameplay", "game_path", "working_dir", "wcc_lite")
+REQUIRED_CONFIG_KEYS = ("uncooked_files", "game_path", "working_dir", "wcc_lite")
 
 def fail(msg):
     print(f"ERROR: {msg}", file=sys.stderr, flush=True)

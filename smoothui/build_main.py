@@ -80,7 +80,7 @@ def main():
         else:
             fail(f"Version {mod_version} already seems to exist! Use --force to overwrite, including the manifest")
 
-    uncooked_gameplay = paths['uncooked_gameplay']
+    uncooked_files = paths['uncooked_files']
     game_path = paths['game_path']
     work_dir = paths['working_dir'] / "main"
     wcc_lite = paths['wcc_lite']
@@ -93,10 +93,10 @@ def main():
     # Path to the output .zip for distribution.
     zip_out = resolve_zip_path(args.zip, f"SmoothUIRemastered_{mod_version}.zip")
 
-    if not uncooked_gameplay.is_dir():
-        fail(f"not a directory: {uncooked_gameplay}")
+    if not uncooked_files.is_dir():
+        fail(f"not a directory: {uncooked_files}")
     exclusions = load_exclusions()
-    to_patch, excluded = select_files(uncooked_gameplay, exclusions)
+    to_patch, excluded = select_files(uncooked_files, exclusions)
 
     if not args.dry_run:
         # Clean out stale output
@@ -107,7 +107,7 @@ def main():
     print_step_header("Running FPS patcher")
     try:
         patched, kept, failed = patcher.patch_files(
-            uncooked_gameplay, patched_dir / "gameplay", to_patch, settings,
+            uncooked_files, patched_dir, to_patch, settings,
             dry_run=args.dry_run, on_file=print_file_result)
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
@@ -150,8 +150,8 @@ def main():
         print_step_header("Writing manifest")
         records = {}
         for relative_path in sorted(patched):
-            src = uncooked_gameplay / relative_path
-            dst = patched_dir / "gameplay" / relative_path
+            src = uncooked_files / relative_path
+            dst = patched_dir / relative_path
             records[relative_path.as_posix()] = {
                 "source_sha256": sha256_file(src),
                 "output_sha256": sha256_file(dst),
