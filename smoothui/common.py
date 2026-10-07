@@ -27,3 +27,10 @@ def to_windows(path):
     if IN_WSL and not WIN_DRIVE_RE.match(path):
         return _wslpath("-w", path)
     return str(Path(path)) if not IN_WSL else path.replace("/", "\\")
+
+def normalize_version(ver):
+    """Normalize version strings: ensure they start with 'v', e.g. 0.1 => v0.1, v0.1 => v0.1"""
+    ver = str(ver).strip()
+    if not ver.startswith("v"):
+        ver = "v" + ver
+    return ver

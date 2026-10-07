@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# build-compat.py -- take an existing mod .zip, apply framerate patches to the .redswf files
+# build-compat.py -- take an existing mod .zip/.rar/.7z, apply framerate patches to the .redswf files
 # that conflict with Smooth UI Remastered, and build a compatibility patch containing only
 # those patched files.
 #
@@ -11,6 +11,9 @@ import argparse
 import shutil
 import zipfile
 from pathlib import Path
+
+import py7zr
+import rarfile
 
 from . import patcher
 from .build_common import (
@@ -26,7 +29,7 @@ from .build_common import (
     select_files,
     zip_tree,
 )
-from .common import to_windows
+from .common import normalize_version, to_windows
 from .patcher import PatchSettings
 
 # Used to name the generated mod. The "mod000_" prefix sorts before the main mod and
@@ -39,21 +42,28 @@ DEPOT_PREFIX = "gameplay"
 
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(
-        description="Build a Smooth UI compatibility patch for an existing mod .zip")
+        description="Build a Smooth UI compatibility patch for an existing mod .zip/.rar/.7z")
 
-    ap.add_argument("mod_zip", type=Path,
-                    help="the other mod's .zip (must contain blob*.bundle)")
-    ap.add_argument("--name", required=True,
-                    help="name of the other mod, used in the generated mod's folder name ")
+    ap.add_argument("mod_archive", type=Path,
+                    help="the other mod's .zip/.rar/.7z (must contain blob*.bundle)")
+    ap.add_argument("--mod-name", required=True,
+                    help="name of the other mod; only used to name the generated patch file")
+    ap.add_argument("--mod-version", required=True,
+                    help="version the other mod; only used to name the generated patch file")
+    ap.add_argument("--smooth-version", required=True,
+                    help="Smooth UI Remastered version that the patch targets; affects the patching process")
 
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--fps", type=float, help="set this exact frame rate")
     g.add_argument("--multiplier", type=float, help="multiply the original rate")
 
-    ap.add_argument("--max-fps", type=float, default=120,
-                    help="clamp the target rate to this (default 120)")
-    ap.add_argument("--skip-at-or-above", type=float, default=60,
-                    help="leave files already at/above this rate alone (default 60)")
+    MAX_FPS=120
+    SKIP_AT=60
+    ap.add_argument("--max-fps", type=float, default=MAX_FPS,
+                    help=f"clamp the target rate to this (default {MAX_FPS})")
+    ap.add_argument("--skip-at-or-above", type=float, default=SKIP_AT,
+                    help=f"leave files already at/above this rate alone (default {SKIP_AT})")
+
     ap.add_argument("--zip", default=None,
                     help="output .zip name or path (default: <generated mod name>.zip "
                          "in the repo folder)")
@@ -64,27 +74,57 @@ def parse_args(argv=None):
     return ap.parse_args(argv)
 
 def mod_folder_name(name):
-    return f"mod000_{MAIN_MOD_NAME}_{name}_Compatibility"
+    return f"mod000_{MAIN_MOD_NAME}_{name}_Compat"
 
-def unzip(mod_zip, dest_dir):
-    """Extract the whole mod .zip into dest_dir"""
+def check_member_paths(names, dest_dir):
+    """Refuse archives containing paths that would extract outside dest_dir"""
+    root = dest_dir.resolve()
+    for name in names:
+        target = (root / name).resolve()
+
+
+        # TODO: remove
+        if target == root:
+            print(f"check_member_paths: target == root ({target} == {root})")
+
+
+        if target != root and root not in target.parents:
+            fail(f"unsafe path in archive: {name}")
+
+def unpack(mod_archive, dest_dir):
+    """Extract the whole mod archive (.zip, .7z or .rar) into dest_dir."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
     try:
-        with zipfile.ZipFile(mod_zip) as z:
-            z.extractall(dest_dir)
-    except zipfile.BadZipFile:
-        fail(f"not a valid .zip file: {mod_zip} (.7z and .rar are not supported)")
+        if zipfile.is_zipfile(mod_archive):
+            with zipfile.ZipFile(mod_archive) as z:
+                check_member_paths(z.namelist(), dest_dir)
+                z.extractall(dest_dir)
+        elif py7zr.is_7zfile(mod_archive):
+            with py7zr.SevenZipFile(mod_archive) as z:
+                check_member_paths(z.getnames(), dest_dir)
+                z.extractall(path=dest_dir)
+        elif rarfile.is_rarfile(mod_archive):
+            with rarfile.RarFile(mod_archive) as z:
+                check_member_paths(z.namelist(), dest_dir)
+                z.extractall(dest_dir)
+        else:
+            fail(f"not a supported archive (.zip, .7z, .rar): {mod_archive}")
+    except rarfile.RarCannotExec:
+        fail("unpacking .rar files needs an external tool: install UnRAR, unar or bsdtar "
+             "and make sure it is on your PATH. See the `rarfile` package documentation for more information.")
+    except (zipfile.BadZipFile, py7zr.Bad7zFile, rarfile.Error) as e:
+        fail(f"could not unpack {mod_archive}: {e}")
     count = sum(1 for f in dest_dir.rglob("*") if f.is_file())
     print(f"Unpacked {count} files into {dest_dir}")
 
-def find_unbundle_root(unzipped_dir):
+def find_unbundle_root(unpacked_dir):
     """The directory to give to wcc_lite unbundle: the modXxx folder if there is one,
-    otherwise the folder that holds the bundle(s).
-    Handles mods that ship as mods/modXxx/content, modXxx/content, or just content."""
-    content_dirs = sorted({b.parent for b in unzipped_dir.rglob("*.bundle")})
+    otherwise the folder that holds the bundle(s)."""
+    content_dirs = sorted({b.parent for b in unpacked_dir.rglob("*.bundle")})
     if not content_dirs:
         fail("no .bundle files found in the .zip (mods shipping loose files are not supported)")
     if len(content_dirs) > 1:
-        listing = "\n".join(f"  {d.relative_to(unzipped_dir)}" for d in content_dirs)
+        listing = "\n".join(f"  {d.relative_to(unpacked_dir)}" for d in content_dirs)
         fail(f"bundles found in several folders, this is not supported:\n{listing}")
     content = content_dirs[0]
     if content.name.lower() == "content" and content.parent.name.lower().startswith("mod"):
@@ -136,38 +176,41 @@ def main(argv=None):
     except ValueError as e:
         fail(str(e))
 
-    if not args.mod_zip.is_file():
-        fail(f"input mod .zip not found: {args.mod_zip}")
+    if not args.mod_archive.is_file():
+        fail(f"input mod archive not found: {args.mod_archive}")
 
     paths = config_paths(load_config())
     uncooked_gameplay = paths["uncooked_gameplay"]
     game_path = paths["game_path"]
     wcc_lite = paths["wcc_lite"]
 
-    mod_name = mod_folder_name(args.name)
-    zip_out = resolve_zip_path(args.zip, f"{mod_name}.zip")
+    mod_name = mod_folder_name(args.mod_name)
+    mod_version = normalize_version(args.mod_version)
+    smooth_version = normalize_version(args.smooth_version)
+
+    zip_out = resolve_zip_path(args.zip, f"SmoothUIRemastered_{smooth_version}_{args.mod_name}_{mod_version}_Compat.zip")
     exclusions = load_exclusions()
 
     work_dir = paths["working_dir"] / "compat"
-    unzipped_dir = work_dir / "1_unzipped"
+    unpacked_dir = work_dir / "1_unpacked"
     unbundled_dir = work_dir / "2_unbundled"
     patched_dir = work_dir / "3_patched"
     mod_root = work_dir / "4_mod"
     mod_dir = mod_root / mod_name
     content_dir = mod_dir / "content"
 
-    print(f"Generated mod name: {mod_name}")
+    print(f"Mod folder: {mod_name}")
+    print(f"Output ZIP: {zip_out.name}")
 
-    # Clean out stale output from earlier runs
     print_step_header(f"Cleaning {work_dir}")
     shutil.rmtree(work_dir, ignore_errors=True)
     content_dir.mkdir(parents=True)
 
-    print_step_header(f"Unzipping {args.mod_zip}")
-    unzip(args.mod_zip, unzipped_dir)
+    print_step_header(f"Unpacking {args.mod_archive}")
+    unpack(args.mod_archive, unpacked_dir)
 
     print_step_header("Unbundling the other mod")
-    unbundle(find_unbundle_root(unzipped_dir), unbundled_dir, wcc_lite)
+    unbundle(find_unbundle_root(unpacked_dir), unbundled_dir, wcc_lite)
 
     print_step_header("Finding files in common")
     shared = find_shared_files(unbundled_dir, uncooked_gameplay, exclusions)

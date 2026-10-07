@@ -123,7 +123,7 @@ def zip_tree(src_dir, zip_out):
         for f in sorted(src_dir.rglob("*")):
             if f.is_file():
                 z.write(f, f.relative_to(src_dir))
-    print(f"Added files to {zip_out} ({zip_out.stat().st_size:,} bytes)")
+    print(f"Created {zip_out} ({zip_out.stat().st_size:,} bytes)")
 
 def install_mod(mod_dir, game_path):
     """Copy <mod_dir> (a directory whose name is the mod's name) into <game_path>/mods"""

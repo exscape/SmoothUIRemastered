@@ -1,2 +1,4 @@
 zopfli
 colorama
+rarfile
+py7zr
