@@ -1,4 +1,11 @@
 
+# Version information of the Smooth UI Remastered mod that is created.
+# NOT relevant for compatibility patch builders!
+# For compat patches, --smooth-version is specified (and required) instead.
+[versions]
+created_mod_version = "v0.2"
+targeted_game_version = "5.00c"
+
 [paths]
 
 # NOTE: Use single quotes, NOT double quotes, to specify paths below!

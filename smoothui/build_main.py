@@ -6,20 +6,25 @@
 # Tested on Windows 11: via WSL and via cmd.exe (mostly via WSL)
 
 import argparse
+import datetime
 import shutil
 
 from . import patcher
 from .build_common import (
+    REPO_ROOT,
     config_paths,
     fail,
     install_mod,
     load_config,
     load_exclusions,
+    manifest_path,
     print_file_result,
     print_step_header,
     resolve_zip_path,
     run_command,
     select_files,
+    sha256_file,
+    write_manifest,
     zip_tree,
 )
 from .common import to_windows
@@ -42,11 +47,15 @@ def parse_args():
     ap.add_argument("--dry-run", action="store_true",
                     help="show what would be patched, without writing or packing anything")
     ap.add_argument("--zip", default=None,
-                    help="output .zip name or path (default: <mod name>.zip in the repo folder)")
+                    help="override output .zip name or path")
     ap.add_argument("--install", action="store_true",
                     help="install the mod into the game folder on success")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
+    ap.add_argument("--write-manifest", action="store_true",
+                    help="save a manifest of this version; only intended for actual releases")
+    ap.add_argument("--force", action="store_true",
+                    help="create a release version even though this version already seems to exist")
     return ap.parse_args()
 
 def main():
@@ -58,26 +67,37 @@ def main():
     except ValueError as e:
         fail(str(e))
 
-    paths = config_paths(load_config())
+    config = load_config()
+    paths = config_paths(config)
+
+    mod_version = config['versions']['created_mod_version']
+    if not mod_version or not mod_version.startswith("v"):
+        fail("Invalid created_mod_version in [versions] section of config file")
+
+    if manifest_path(mod_version).exists():
+        if args.force:
+            print(f"Overwriting previously existing mod release {mod_version}, including the manifest")
+        else:
+            fail(f"Version {mod_version} already seems to exist! Use --force to overwrite, including the manifest")
 
     uncooked_gameplay = paths['uncooked_gameplay']
     game_path = paths['game_path']
     work_dir = paths['working_dir'] / "main"
     wcc_lite = paths['wcc_lite']
 
+    patched_dir = work_dir / "1_patched"
     output_dir = work_dir / "2_mod"
     output_mod_name = "modSmoothUIRemastered"
     output_content_path = output_dir / output_mod_name / "content"
 
     # Path to the output .zip for distribution.
-    zip_out = resolve_zip_path(args.zip, f"{output_mod_name}.zip")
+    zip_out = resolve_zip_path(args.zip, f"SmoothUIRemastered_{mod_version}.zip")
 
     if not uncooked_gameplay.is_dir():
         fail(f"not a directory: {uncooked_gameplay}")
     exclusions = load_exclusions()
     to_patch, excluded = select_files(uncooked_gameplay, exclusions)
 
-    patched_dir = work_dir / "1_patched"
     if not args.dry_run:
         # Clean out stale output
         print_step_header(f"Cleaning {patched_dir}")
@@ -102,6 +122,10 @@ def main():
     if not patched:
         fail("no patched files were produced, aborting.")
 
+    patched_file_list = list(patched_dir.rglob("*.redswf"))
+    if len(patched) != len(patched_file_list):
+        fail("BUG: number of output files doesn't match number of files patched")
+
     print_step_header("Removing old bundle/metadata from output folder")
     for old in [*output_content_path.glob("blob*.bundle"), output_content_path / "metadata.store"]:
         old.unlink(missing_ok=True)
@@ -121,6 +145,29 @@ def main():
         fail("wcc_lite did not produce blob*.bundle and metadata.store.")
 
     zip_tree(output_dir, zip_out)
+
+    if args.write_manifest:
+        print_step_header("Writing manifest")
+        records = {}
+        for relative_path in sorted(patched):
+            src = uncooked_gameplay / relative_path
+            dst = patched_dir / "gameplay" / relative_path
+            records[relative_path.as_posix()] = {
+                "source_sha256": sha256_file(src),
+                "output_sha256": sha256_file(dst),
+                "output_size": dst.stat().st_size, # source and output are always the same size, no point in stating both
+            }
+        write_manifest(mod_version, records, extra={
+            "targeted_game_version": config['versions'].get('targeted_game_version'),
+            "created_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+            "patch_settings": {
+                "fps": settings.fps,
+                "multiplier": settings.multiplier,
+                "max_fps": settings.max_fps,
+                "skip_at_or_above": settings.skip_at_or_above,
+            },
+            "output_zip": str(zip_out.relative_to(REPO_ROOT)) if zip_out.is_relative_to(REPO_ROOT) else str(zip_out),
+        })
 
     if args.install:
         install_mod(output_dir / output_mod_name, game_path)

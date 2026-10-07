@@ -1,5 +1,7 @@
 """Helpers shared by the build scripts (build_main, build_compat)"""
 
+import hashlib
+import json
 import shutil
 import subprocess
 import sys
@@ -9,12 +11,13 @@ from pathlib import Path
 
 from colorama import Back, Fore, Style
 
-from .common import to_native
+from .common import normalize_version, to_native
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXCLUDE_FILE = REPO_ROOT / "config" / "excluded-paths.txt"
+MANIFEST_DIR = REPO_ROOT / "manifests"
 
-CONFIG_KEYS = ("uncooked_gameplay", "game_path", "working_dir", "wcc_lite")
+REQUIRED_CONFIG_KEYS = ("uncooked_gameplay", "game_path", "working_dir", "wcc_lite")
 
 def fail(msg):
     print(f"ERROR: {msg}", file=sys.stderr, flush=True)
@@ -48,11 +51,15 @@ def load_config(path=None, section=None):
             fail(f"missing section {section} in {path}")
         return config[section]
 
+    validate_config(config, path)
+    return config
+
+def validate_config(config, path):
+    """Validate a config file; fail if not valid"""
     paths = config.get("paths", {})
-    missing = [k for k in CONFIG_KEYS if k not in paths]
+    missing = [k for k in REQUIRED_CONFIG_KEYS if k not in paths]
     if missing:
         fail(f"missing in [paths] of {path}: {', '.join(missing)}")
-    return config
 
 def config_paths(config):
     """The config's paths, converted to Path objects usable by this Python"""
@@ -124,6 +131,44 @@ def zip_tree(src_dir, zip_out):
             if f.is_file():
                 z.write(f, f.relative_to(src_dir))
     print(f"Created {zip_out} ({zip_out.stat().st_size:,} bytes)")
+
+def sha256_file(path):
+    """SHA-256 of a file's contents"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+def manifest_path(version):
+    """Where a mod release's manifest lives: manifests/<version>.json"""
+    return MANIFEST_DIR / f"{normalize_version(version)}.json"
+
+def write_manifest(version, records, extra=None):
+    """Write manifests/<version>.json for this mod release."""
+    manifest = {"created_mod_version": normalize_version(version)}
+    if extra:
+        manifest.update(extra)
+    manifest["files"] = records
+
+    path = manifest_path(version)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        print_step_header(f"Removing old manifest {path}")
+        path.unlink()
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=1, sort_keys=True)
+        f.write("\n")
+    print(f"Wrote manifest {path} ({len(records)} files)")
+    return path
+
+def load_manifest(version):
+    """Read manifests/<version>.json, or None if this release has none"""
+    path = manifest_path(version)
+    if not path.is_file():
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 def install_mod(mod_dir, game_path):
     """Copy <mod_dir> (a directory whose name is the mod's name) into <game_path>/mods"""
