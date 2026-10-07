@@ -26,7 +26,7 @@ from .build_common import (
     print_file_result,
     print_step_header,
     resolve_zip_path,
-    run_command,
+    wcc_lite,
     zip_tree,
 )
 from .common import normalize_version, to_windows
@@ -121,11 +121,10 @@ def find_unbundle_root(unpacked_dir):
         return content.parent
     return content
 
-def unbundle(root, out_dir, wcc_lite):
+def unbundle(root, out_dir):
     """Extract the bundle(s) under root into loose files under out_dir, at their depot paths"""
     out_dir.mkdir(parents=True, exist_ok=True)
-    run_command([wcc_lite, "unbundle", f"-dir={to_windows(root)}",
-                 f"-outdir={to_windows(out_dir)}"], cwd=wcc_lite.parent)
+    wcc_lite("unbundle", f"-dir={to_windows(root)}", f"-outdir={to_windows(out_dir)}")
     if not any(out_dir.rglob("*.redswf")):
         fail(f"no .redswf files found after unbundling into {out_dir}")
 
@@ -222,15 +221,11 @@ def main(argv=None):
     if not patched:
         fail("no patched files were produced, aborting.")
 
-    # wcc_lite is picky about its working directory, and needs Windows-style paths
-    # even under WSL
     print_step_header("Running wcc_lite pack")
-    run_command([wcc_lite, "pack", f"-dir={to_windows(patched_dir)}",
-                 f"-outdir={to_windows(content_dir)}"], cwd=wcc_lite.parent)
+    wcc_lite("pack", f"-dir={to_windows(patched_dir)}", f"-outdir={to_windows(content_dir)}")
 
     print_step_header("Running wcc_lite metadatastore")
-    run_command([wcc_lite, "metadatastore", "-noui", f"-path={to_windows(content_dir)}"],
-                cwd=wcc_lite.parent)
+    wcc_lite("metadatastore", "-noui", f"-path={to_windows(content_dir)}")
 
     if not (content_dir / "metadata.store").is_file() or not any(content_dir.glob("blob*.bundle")):
         fail("wcc_lite did not produce blob*.bundle and metadata.store.")

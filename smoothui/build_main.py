@@ -21,9 +21,9 @@ from .build_common import (
     print_file_result,
     print_step_header,
     resolve_zip_path,
-    run_command,
     select_files,
     sha256_file,
+    wcc_lite,
     write_manifest,
     zip_tree,
 )
@@ -83,7 +83,6 @@ def main():
     uncooked_files = paths['uncooked_files']
     game_path = paths['game_path']
     work_dir = paths['working_dir'] / "main"
-    wcc_lite = paths['wcc_lite']
 
     patched_dir = work_dir / "1_patched"
     output_dir = work_dir / "2_mod"
@@ -136,10 +135,10 @@ def main():
     CONTENT_PATH = to_windows(output_content_path)
 
     print_step_header("Running wcc_lite pack")
-    run_command([wcc_lite, "pack", f"-dir={PATCHED_DIR}", f"-outdir={CONTENT_PATH}"], cwd=wcc_lite.parent)
+    wcc_lite("pack", f"-dir={PATCHED_DIR}", f"-outdir={CONTENT_PATH}")
 
     print_step_header("Running wcc_lite metadatastore")
-    run_command([wcc_lite, "metadatastore", "-noui", f"-path={CONTENT_PATH}"], cwd=wcc_lite.parent)
+    wcc_lite("metadatastore", "-noui", f"-path={CONTENT_PATH}")
 
     if not (output_content_path / "metadata.store").is_file() or not any(output_content_path.glob("blob*.bundle")):
         fail("wcc_lite did not produce blob*.bundle and metadata.store.")

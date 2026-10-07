@@ -1,4 +1,7 @@
 
+# wcc_lite prints a lot of things it shouldn't ("errors" that are actually fine); hide these messages.
+silence_known_noise = true
+
 [paths]
 
 # NOTE: Use single quotes, NOT double quotes, to specify paths below!
@@ -14,10 +17,10 @@ working_dir = 'E:\Temp\Witcher3Modding\work'
 wcc_lite = 'D:\Games\The Witcher 3 Remastered\The Witcher 3 REDkit\bin\x64_RedKit\wcc_lite.exe'
 
 
-
-### The configuration below is only relevant for building Smooth UI Remastered itself,
-### not for other mod authors building compatibility patches.
-
+##########################################################################################
+### The configuration below is only relevant for building Smooth UI Remastered itself, ###
+### not for other mod authors building compatibility patches.                          ###
+##########################################################################################
 
 
 # Folder that holds the uncooked game files.

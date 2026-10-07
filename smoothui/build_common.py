@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -27,14 +28,42 @@ def print_step_header(msg):
     eq = "=" * 10
     print(f"{Back.BLACK}{Fore.YELLOW}{eq} {msg} {eq}{Style.RESET_ALL}", flush=True)
 
-def run_command(cmd, cwd=None):
+# wcc_lite lines that appear on every run and are harmless
+NOISE = [re.compile(p) for p in (
+    r"\[Error\]\[Core\] CreateFile failed to open '.*\.(?:ini|settings)' for reading.*0x[23]",
+    r"\[Error\]\[Assert\] .*depotDirectory\.cpp:\d+.*Depot directory path should end with",
+    r"\[Error\]\[Assert\] .*soundFileLoader\.cpp:\d+.*Always loaded bank is not in the banks array",
+)]
+
+def run_command(cmd, cwd=None, filter_predicate=None):
+    """Run a command, streaming output; optionally filter lines before printing."""
     print("$", " ".join(str(c) for c in cmd), flush=True)
     try:
-        subprocess.run([str(c) for c in cmd], cwd=cwd, check=True)
+        with subprocess.Popen(
+            [str(c) for c in cmd], cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace", bufsize=1,
+        ) as proc:
+            for line in proc.stdout:
+                line = line.rstrip()
+                if filter_predicate is None or not filter_predicate(line):
+                    print(line, flush=True)
     except FileNotFoundError:
-        fail(f"executable not found: {cmd[0]}")
-    except subprocess.CalledProcessError as e:
-        fail(f"command failed with exit code {e.returncode}: {cmd[0]}")
+        fail(f"executable or working directory not found: {cmd[0]}")
+    if proc.returncode != 0:
+        fail(f"command failed with exit code {proc.returncode}: {cmd[0]}")
+
+def wcc_lite(*args):
+    """Run wcc_lite, optionally filtering known noise from the output."""
+    config = load_config()
+    paths = config_paths(config)
+
+    def filter_noise(line):
+        return config['silence_known_noise'] and any(p.search(line) for p in NOISE)
+
+    wcc_lite_path = paths['wcc_lite']
+    run_command([wcc_lite_path] + list(args), cwd=wcc_lite_path.parent, filter_predicate=filter_noise)
 
 def load_config(path=None, section=None):
     """Read config.toml (or the given file) and perform basic validation"""
