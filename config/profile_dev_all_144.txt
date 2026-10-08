@@ -1,0 +1,24 @@
+[144]
+
+gameplay/gui_new/swf/alchemy/panel_alchemy.redswf
+gameplay/gui_new/swf/character/panel_character.redswf
+gameplay/gui_new/swf/character/panel_character_dupe.redswf
+gameplay/gui_new/swf/glossary/panel_glossary_main.redswf # Glossary root screen + tabs
+gameplay/gui_new/swf/glossary/panel_glossary_bestiary.redswf
+gameplay/gui_new/swf/glossary/panel_glossary_books.redswf
+gameplay/gui_new/swf/crafting/panel_crafting.redswf # Glossary > Crafting
+gameplay/gui_new/swf/glossary/panel_glossary_encyclopedia.redswf # Glossary > Characters
+gameplay/gui_new/swf/glossary/panel_glossary_tutorials.redswf
+gameplay/gui_new/swf/gwint/deck_builder.redswf
+gameplay/gui_new/swf/gwint/gwint_game.redswf
+gameplay/gui_new/swf/inventory/panel_inventory.redswf
+gameplay/gui_new/swf/journal/panel_journal_quests.redswf
+gameplay/gui_new/swf/noticeboard/panel_noticeboard.redswf
+gameplay/gui_new/swf/repair/panel_blacksmith.redswf
+gameplay/gui_new/swf/worldmap/panel_worldmap.redswf
+
+gameplay/gui_new/swf/preparation/panel_preparation.redswf
+gameplay/gui_new/swf/repair/panel_enchanting.redswf
+gameplay/gui_new/swf/repair/panel_transmog.redswf
+
+gameplay/gui_new/swf/loading/loadingscreen.redswf

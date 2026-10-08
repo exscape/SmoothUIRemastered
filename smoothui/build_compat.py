@@ -4,8 +4,8 @@
 # that conflict with Smooth UI Remastered, and build a compatibility patch containing only
 # those patched files.
 #
-# Use the same rate options (--multiplier, --max-fps, ...) as for the main mod build.
-# Example usage: python build-compat.py modOtherUI.zip --name OtherMod --multiplier 2 --max-fps 60
+# The files to patch and their target frame rates come from the profile file (see config/).
+# Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.2
 
 import argparse
 import shutil
@@ -22,8 +22,8 @@ from .build_common import (
     install_mod,
     launch_game,
     load_config,
-    load_exclusions,
     load_manifest,
+    load_profile,
     print_file_result,
     print_step_header,
     resolve_zip_path,
@@ -31,7 +31,6 @@ from .build_common import (
     zip_tree,
 )
 from .common import normalize_version, to_windows
-from .patcher import PatchSettings
 
 # Used to name the generated mod. The "mod000_" prefix sorts before the main mod and
 # (nearly) any other mod, so the compatibility patch loads first and wins conflicts.
@@ -49,17 +48,8 @@ def parse_args(argv=None):
                     help="version the other mod; only used to name the generated patch file")
     ap.add_argument("--smooth-version", required=True,
                     help="Smooth UI Remastered version that the patch targets; affects the patching process")
-
-    g = ap.add_mutually_exclusive_group(required=True)
-    g.add_argument("--fps", type=float, help="set this exact frame rate")
-    g.add_argument("--multiplier", type=float, help="multiply the original rate")
-
-    MAX_FPS=120
-    SKIP_AT=60
-    ap.add_argument("--max-fps", type=float, default=MAX_FPS,
-                    help=f"clamp the target rate to this (default {MAX_FPS})")
-    ap.add_argument("--skip-at-or-above", type=float, default=SKIP_AT,
-                    help=f"leave files already at/above this rate alone (default {SKIP_AT})")
+    ap.add_argument("--profile", default=None,
+                    help="the profile to use; a profile specifies which files to patch, and to which framerate")
 
     ap.add_argument("--zip", default=None,
                     help="output .zip name or path (default: <generated mod name>.zip "
@@ -131,7 +121,7 @@ def unbundle(root, out_dir):
     if not any(out_dir.rglob("*.redswf")):
         fail(f"no .redswf files found after unbundling into {out_dir}")
 
-def find_shared_files(their_dir, manifest, exclusions, smooth_version):
+def find_shared_files(their_dir, manifest, smooth_version):
     """The .redswf files (paths relative to their_dir, in their spelling) that the other mod
     ships AND that the Smooth UI Remastered release named by manifest patches."""
     def key(rel):
@@ -142,8 +132,6 @@ def find_shared_files(their_dir, manifest, exclusions, smooth_version):
         fail(f"no manifest exists for Smooth UI Remastered {smooth_version}")
 
     our_keys = {key(rel) for rel in manifest["files"]}
-    # load_exclusions() entries are already lowercase, slash-separated and stripped
-    excluded_keys = {key(e) for e in exclusions}
     theirs = sorted(f.relative_to(their_dir) for f in their_dir.rglob("*.redswf"))
     shared = [p for p in theirs if key(p) in our_keys]
 
@@ -151,8 +139,7 @@ def find_shared_files(their_dir, manifest, exclusions, smooth_version):
           f"Smooth UI Remastered {smooth_version} also patches")
     for p in theirs:
         if key(p) not in our_keys:
-            why = "on our exclusion list" if key(p) in excluded_keys else "not in our mod"
-            print(f"  not patched: {p} ({why})")
+            print(f"  not patched: {p} (not in our mod)")
 
     if not shared:
         fail("no .redswf files in common! This mod does not need a compat patch.")
@@ -161,25 +148,24 @@ def find_shared_files(their_dir, manifest, exclusions, smooth_version):
 def main(argv=None):
     args = parse_args(argv)
 
-    try:
-        settings = PatchSettings(fps=args.fps, multiplier=args.multiplier,
-                                 max_fps=args.max_fps, skip_at_or_above=args.skip_at_or_above)
-    except ValueError as e:
-        fail(str(e))
+    profile = load_profile(args.profile)
 
     if not args.mod_archive.is_file():
         fail(f"input mod archive not found: {args.mod_archive}")
 
     paths = config_paths(load_config())
-    game_path = paths["game_path"]
-    wcc_lite = paths["wcc_lite"]
+    game_path = paths.get("game_path")
+
+    if game_path is None and args.install:
+        print("Warning: game_path not set in config.toml; will ignore --install")
+    if game_path is None and args.launch:
+        print("Warning: game_path not set in config.toml; will ignore --launch")
 
     mod_name = mod_folder_name(args.mod_name)
     mod_version = normalize_version(args.mod_version)
     smooth_version = normalize_version(args.smooth_version)
 
     zip_out = resolve_zip_path(args.zip, f"SmoothUIRemastered_{smooth_version}_{args.mod_name}_{mod_version}_Compat.zip")
-    exclusions = load_exclusions()
 
     work_dir = paths["working_dir"] / "compat"
     unpacked_dir = work_dir / "1_unpacked"
@@ -200,18 +186,21 @@ def main(argv=None):
     unpack(args.mod_archive, unpacked_dir)
 
     print_step_header("Unbundling the other mod")
-    unbundle(find_unbundle_root(unpacked_dir), unbundled_dir, wcc_lite)
+    unbundle(find_unbundle_root(unpacked_dir), unbundled_dir)
 
     print_step_header(f"Loading manifest for Smooth UI Remastered {smooth_version}")
     manifest = load_manifest(smooth_version)
 
     print_step_header("Finding files in common")
-    shared = find_shared_files(unbundled_dir, manifest, exclusions, smooth_version)
+    shared = find_shared_files(unbundled_dir, manifest, smooth_version)
 
     print_step_header("Running FPS patcher")
+    shared_keys = {rel.as_posix().lower() for rel in shared}
+    shared_profile = {rel: fps for rel, fps in profile.items() if rel in shared_keys}
+
     try:
         patched, kept, failed = patcher.patch_files(
-            unbundled_dir, patched_dir, shared, settings, on_file=print_file_result)
+            unbundled_dir, patched_dir, shared_profile, on_file=print_file_result)
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
     print()

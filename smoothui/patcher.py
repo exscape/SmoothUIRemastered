@@ -6,34 +6,22 @@ from __future__ import annotations
 
 import struct
 import zlib
-from dataclasses import dataclass
 from pathlib import Path
 
 from zopfli.zlib import compress as zopfli_compress
 
 SIGS = (b"GFX", b"FWS", b"CFX", b"CWS")
 
-@dataclass(frozen=True)
-class PatchSettings:
-    """Exactly one of fps / multiplier must be given"""
-    fps: float | None = None            # set this exact frame rate
-    multiplier: float | None = None     # multiply the original rate
-    max_fps: float = 120                # clamp the target rate to this
-    skip_at_or_above: float = 60        # leave files already at/above this rate alone
+def profile_key(rel):
+    """One comparable spelling for a profile path: lowercase, slash-separated"""
+    return str(rel).replace("\\", "/").lower().strip("/")
 
-    def __post_init__(self):
-        if (self.fps is None) == (self.multiplier is None):
-            raise ValueError("specify exactly one of fps or multiplier")
+def file_target_fps(profile, rel):
+    """The frame rate the profile asks for this file, or None to leave it alone"""
+    target = profile.get(profile_key(rel))
+    return None if target is None else float(target)
 
-def target_fps(orig, s):
-    """Return the new fps, or None to leave the file untouched"""
-    if orig >= s.skip_at_or_above:
-        return None
-    t = s.fps if s.fps is not None else orig * s.multiplier
-    t = min(t, s.max_fps, 255.99)
-    return t if t > orig else None
-
-def patch_body(body, s):
+def patch_body(body, new_fps):
     """body = decompressed data after the 8-byte header. Patches in place.
     Returns None if not a valid movie, else (old_fps, new_fps_or_None)"""
     nbits = body[0] >> 3
@@ -45,15 +33,12 @@ def patch_body(body, s):
     raw, frames = struct.unpack_from("<HH", body, offset)
     if raw == 0 or frames == 0:
         return None
-    old = raw / 256.0
-    new = target_fps(old, s)
-    if new is None:
-        return old, None
-    new_raw = round(new * 256)
+    old_fps = raw / 256.0
+    new_raw = round(new_fps * 256)
     if not 1 <= new_raw <= 0xFFFF:
-        raise ValueError(f"fps {new:.2f} out of range (max 255.99)")
+        raise ValueError(f"fps {new_fps:.2f} out of range (max 255.99)")
     struct.pack_into("<H", body, offset, new_raw)
-    return old, new_raw / 256.0
+    return old_fps, new_raw / 256.0
 
 def recompress(body, max_len):
     """Recompress the patched data. Note that the output is zero padded, so we don't need this to
@@ -81,8 +66,8 @@ def recompress(body, max_len):
     raise ValueError(f"recompressed stream doesn't fit "
                      f"(smallest {smallest} bytes vs {max_len} allowed)")
 
-def process(data, s):
-    """Returns list of (old, new_or_None, note) per valid payload; patches data in place"""
+def process(data, new_fps):
+    """Returns list of (old, new_or_None, note) per valid payload; patches data in place."""
     found = []
     for sig in SIGS:
         pos = data.find(sig)
@@ -99,7 +84,7 @@ def process(data, s):
 
                     if body is not None and d.eof:
                         clen = len(data) - (pos + 8) - len(d.unused_data)
-                        res = patch_body(body, s)
+                        res = patch_body(body, new_fps)
                         if res and res[1] is None:
                             found.append((res[0], None, "left alone"))
                         elif res:
@@ -112,7 +97,7 @@ def process(data, s):
                         continue
                 elif 21 <= length and pos + length <= len(data):
                     body = bytearray(data[pos + 8:pos + length])
-                    res = patch_body(body, s)
+                    res = patch_body(body, new_fps)
                     if res and res[1] is None:
                         found.append((res[0], None, "left alone"))
                     elif res:
@@ -124,9 +109,10 @@ def process(data, s):
             pos = data.find(sig, pos + 3)
     return found
 
-def patch_files(src, dst, rels, settings, *, dry_run=False, on_file=None):
+def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
     """Patch the given files (paths relative to src), writing changed ones to dst with the
-    same relative path. Files that are left alone by the rate rules, or that fail, are not written.
+    same relative path. profile maps each file to its target frame rate; files that are not in
+    it, or that are already at/above that rate, are not written.
 
     on_file(rel, status, old_fps, new_fps, note) is called as soon as each file's result is
     known; status is "patched", "kept" or "failed".
@@ -146,11 +132,13 @@ def patch_files(src, dst, rels, settings, *, dry_run=False, on_file=None):
         if on_file:
             on_file(rel, status, old, new, note)
 
-    for rel in map(Path, rels):
+    for rel in map(Path, profile.keys()):
         orig = (src / rel).read_bytes()
         data = bytearray(orig)
         try:
-            found = process(data, settings)
+            target_fps = file_target_fps(profile, rel)
+            assert target_fps >= 1 and target_fps <= 256
+            found = process(data, target_fps)
         except ValueError as e:
             failed.append((rel, str(e)))
             report(rel, "failed", note=str(e))
@@ -161,17 +149,17 @@ def patch_files(src, dst, rels, settings, *, dry_run=False, on_file=None):
             report(rel, "failed", note=msg)
             continue
 
-        old, new, note = found[0]
-        if new is None:
+        old_fps, new_fps, note = found[0]
+        if new_fps is None:
             kept.append(rel)
-            report(rel, "kept", old, note=note)
+            report(rel, "kept", old_fps, note=note)
             continue
 
         if not dry_run:
             out = dst / rel
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(data)
-        patched.append(rel)
-        report(rel, "patched", old, new, note)
+        patched.append({"path": rel, "fps": new_fps})
+        report(rel, "patched", old_fps, new_fps, note)
 
     return patched, kept, failed

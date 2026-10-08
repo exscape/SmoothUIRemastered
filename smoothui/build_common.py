@@ -15,10 +15,10 @@ from colorama import Back, Fore, Style
 from .common import normalize_version, to_native
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXCLUDE_FILE = REPO_ROOT / "config" / "excluded-paths.txt"
+DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
 MANIFEST_DIR = REPO_ROOT / "manifests"
 
-REQUIRED_CONFIG_KEYS = ("uncooked_files", "game_path", "working_dir", "wcc_lite")
+REQUIRED_CONFIG_KEYS = ("working_dir", "wcc_lite")
 
 def fail(msg):
     print(f"ERROR: {msg}", file=sys.stderr, flush=True)
@@ -94,41 +94,37 @@ def config_paths(config):
     """The config's paths, converted to Path objects usable by this Python"""
     return {k: to_native(v) for k, v in config["paths"].items()}
 
-def load_exclusions():
-    """Read the exclusion list: one dir or file (relative to the input dir) per line"""
-    if not EXCLUDE_FILE.is_file():
-        fail(f"exclude file not found: {EXCLUDE_FILE}")
+def load_profile(profile_path):
+    """Read the profile list: files to patch mapped to their target frame rate."""
+    if profile_path is None: profile_path = DEFAULT_PROFILE
+    elif isinstance(profile_path, str): profile_path = Path(profile_path)
+    if not profile_path.is_file():
+        fail(f"profile file not found: {profile_path}")
 
-    entries = []
-    for line in EXCLUDE_FILE.read_text(encoding="utf-8").splitlines():
+    profile = {}
+    current_fps = 60 # Default fallback FPS if no section header is set
+
+    for line in profile_path.read_text(encoding="utf-8").splitlines():
         line = line.split("#", 1)[0].strip()
         if not line:
             continue
-        e = line.replace("\\", "/").lower()
-        e = e.strip("/")
-        if e:
-            entries.append(e)
-    print(f"Loaded {len(entries)} exclusion entries from {EXCLUDE_FILE}")
-    return entries
 
-def match_exclusion(rel_posix_lower, entries):
-    """Return the matching entry (file path or directory prefix), or None"""
-    for e in entries:
-        if rel_posix_lower == e or rel_posix_lower.startswith(e + "/"):
-            return e
-    return None
+        # Parse section headers, e.g. [60], [120]
+        if line.startswith("[") and line.endswith("]"):
+            section_val = line[1:-1].strip()
+            try:
+                current_fps = int(section_val)
+            except ValueError:
+                fail(f"Invalid frame rate section '{line}' in {profile_path}")
+            continue
 
-def select_files(src, exclusions):
-    """Find the .redswf files under src that are not excluded.
-    Returns (relative paths to patch, number excluded)"""
-    selected, excluded = [], []
-    for f in sorted(src.rglob("*.redswf")):
-        rel_path = f.relative_to(src)
-        if match_exclusion(rel_path.as_posix().lower(), exclusions):
-            excluded.append(rel_path)
-        else:
-            selected.append(rel_path)
-    return selected, excluded
+        # Normalize path and associate with current section's FPS
+        entry = line.replace("\\", "/").lower().strip("/")
+        if entry:
+            profile[entry] = current_fps
+
+    print(f"Loaded {len(profile)} entries from {profile_path}")
+    return profile
 
 def print_file_result(rel, status, old_fps, new_fps, note):
     """on_file callback for patcher.patch_files"""
@@ -183,7 +179,6 @@ def write_manifest(version, records, extra=None):
     path = manifest_path(version)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        print_step_header(f"Removing old manifest {path}")
         path.unlink()
     with open(path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1, sort_keys=True)
