@@ -76,8 +76,7 @@ def main():
 
     patched_dir = work_dir / "1_patched"
     output_dir = work_dir / "2_mod"
-    output_mod_name = "modSmoothUIRemastered"
-    output_content_path = output_dir / output_mod_name / "content"
+    output_content_path = output_dir / OUTPUT_MOD_NAME / "content"
 
     # Path to the output .zip for distribution.
     zip_out = resolve_zip_path(args.zip, f"SmoothUIRemastered_{mod_version}.zip")
@@ -153,7 +152,7 @@ def main():
         })
 
     if args.install:
-        install_mod(output_dir / output_mod_name, game_path)
+        install_mod(output_dir / OUTPUT_MOD_NAME, game_path)
 
         if args.launch:
             launch_game(game_path)

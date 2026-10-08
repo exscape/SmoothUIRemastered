@@ -26,9 +26,9 @@ game_path = 'D:\Games\The Witcher 3 Remastered'
 
 
 # Folder that holds the uncooked game files.
-uncooked_files = 'E:\Temp\Witcher3Modding\RemasteredUncooked5.00c'
+uncooked_files = 'E:\Temp\Witcher3Modding\RemasteredUncooked5.01'
 
 # Version information of the Smooth UI Remastered mod that is created.
 [versions]
 created_mod_version = "v0.2"
-targeted_game_version = "5.00c"
+targeted_game_version = "5.01"

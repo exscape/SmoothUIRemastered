@@ -1,0 +1,128 @@
+{
+ "created_at": "2026-10-08T17:46:26+00:00",
+ "created_mod_version": "v0.2",
+ "files": {
+  "gameplay/gui_new/swf/alchemy/panel_alchemy.redswf": {
+   "fps": 60.0,
+   "output_sha256": "a6426a1655dd73c103f3a2bad943cce7312274100b734d9f40b271ba84570cae",
+   "output_size": 2844765,
+   "source_sha256": "5301cb789da4a61a1e79db08bfb3e4448fe6cb4a7cf5cddbe634310013752caa"
+  },
+  "gameplay/gui_new/swf/character/panel_character.redswf": {
+   "fps": 60.0,
+   "output_sha256": "c203a3e50747d2fcd14f4eb0d79dd108e957844520882a2b6545656cfc32757f",
+   "output_size": 10762415,
+   "source_sha256": "5375120bf957c55d3656f12caa68d9f5021acc5c9f65fc8324909759730bee4e"
+  },
+  "gameplay/gui_new/swf/character/panel_character_dupe.redswf": {
+   "fps": 60.0,
+   "output_sha256": "e731ad281e28e3cee16dcab038d3ee5f0ec26001238c8a9c2964c431c13be371",
+   "output_size": 21029759,
+   "source_sha256": "5cd1a4a89d9f9c6d986558d3e57f5ccd38258c4d1c562e7baa1df89fc1047085"
+  },
+  "gameplay/gui_new/swf/crafting/panel_crafting.redswf": {
+   "fps": 60.0,
+   "output_sha256": "ef895d4b74a5fbf35409e8718e1b013f6bdcd0bad215e79f10d60efba41986a9",
+   "output_size": 2617003,
+   "source_sha256": "5ba43512a39a342da5e8415781f70a6051afdfdb9bf5f9d1371a315cca7df5fa"
+  },
+  "gameplay/gui_new/swf/glossary/panel_glossary_bestiary.redswf": {
+   "fps": 60.0,
+   "output_sha256": "7452385724cccfc5f3649a1d454879b79db6b7357152c67167b0a7773e6ec117",
+   "output_size": 1959438,
+   "source_sha256": "5504d971e06802cec015e235fe2cef6b0bff69a6680b56e118d8ef65364676cc"
+  },
+  "gameplay/gui_new/swf/glossary/panel_glossary_books.redswf": {
+   "fps": 60.0,
+   "output_sha256": "d16a2d35abafb927922cd75c8a940d6ac98f7bae23958313c61f420828a2d5da",
+   "output_size": 1071507,
+   "source_sha256": "e5c007fc8858f0fbad6909faa4c302f0c9dbd8ab55d7acf9de32ba90694dad94"
+  },
+  "gameplay/gui_new/swf/glossary/panel_glossary_encyclopedia.redswf": {
+   "fps": 60.0,
+   "output_sha256": "a4fb898125600582672484346feb8f45fd66fc9b9b1e5a945d083956eaca1032",
+   "output_size": 970618,
+   "source_sha256": "b673fec50aca2fd9e3efcc891134125939815b936fef69de3b2151d1006d28bb"
+  },
+  "gameplay/gui_new/swf/glossary/panel_glossary_main.redswf": {
+   "fps": 60.0,
+   "output_sha256": "091b9fa1d0c2d7993810ae8789c2b30372fd20e800f46e9f4ceb14b66df7f139",
+   "output_size": 2934384,
+   "source_sha256": "42287472d648c328f1fcba2f3ec8239910d36eb279fb82ad1b17f63191f9dbb1"
+  },
+  "gameplay/gui_new/swf/glossary/panel_glossary_tutorials.redswf": {
+   "fps": 60.0,
+   "output_sha256": "2221410bd4108c03d6e59d99071edd3f4191824e9ec3efa97bc933da80ec3bcb",
+   "output_size": 1779771,
+   "source_sha256": "2d03929c4d45391b12a2058c6676d8e2f43af62c7d63212194e5f4cac414fe7a"
+  },
+  "gameplay/gui_new/swf/gwint/deck_builder.redswf": {
+   "fps": 60.0,
+   "output_sha256": "4c0323bf4ec3d0414f739698dc5f0987006987f9ab02988c7fe6c87bb6168e80",
+   "output_size": 4932621,
+   "source_sha256": "9dfce1218d66233984b50deab4766c4855ec1ceae7c65f1a1b1e387e59d8b708"
+  },
+  "gameplay/gui_new/swf/gwint/gwint_game.redswf": {
+   "fps": 48.0,
+   "output_sha256": "2779199dddae0d7283a80b296c0f72c7023c910dc55d411bd9a143bacb6f61d1",
+   "output_size": 12284472,
+   "source_sha256": "aeb1255be5a4d218bf41a7630dd27e4b25b32936c0f06055fa77e7aec4d5664e"
+  },
+  "gameplay/gui_new/swf/inventory/panel_inventory.redswf": {
+   "fps": 60.0,
+   "output_sha256": "6e215bfdb2d6871f63320308e9c92a1d619c2bc2a31395db47ee84d14a5e1b95",
+   "output_size": 4035043,
+   "source_sha256": "79d448fcf006c6294eeb3f71a553570a8bee2c01cf53e1a3e6f89f5f2f28ed29"
+  },
+  "gameplay/gui_new/swf/journal/panel_journal_quests.redswf": {
+   "fps": 60.0,
+   "output_sha256": "32a0ecc6790bad231aa12f29b1361c46991d646b3ee0e7e72982562b5fe85a42",
+   "output_size": 1311974,
+   "source_sha256": "b8fb9df0ba62e6c61c62386dfc2f92c452b1c555aac2c05b81404bb7bd6ec542"
+  },
+  "gameplay/gui_new/swf/loading/loadingscreen.redswf": {
+   "fps": 120.0,
+   "output_sha256": "041b324a80365771d711d6e65cae2b40997b22406f13aa83e58adba15a898ac4",
+   "output_size": 690044,
+   "source_sha256": "dadca4ebab386d9f483475e34fdd3d4bd0770e5a75d4dcf3f4c081f7a667b5b4"
+  },
+  "gameplay/gui_new/swf/noticeboard/panel_noticeboard.redswf": {
+   "fps": 120.0,
+   "output_sha256": "1ff1a85e78fd1ce44534ff93a83c2dcde64a906d9e3e7605e47943e44873bfc7",
+   "output_size": 13005740,
+   "source_sha256": "47bad5192740b10d27368499063cad698045c8ac4fa863db7907b7bcbda21533"
+  },
+  "gameplay/gui_new/swf/preparation/panel_preparation.redswf": {
+   "fps": 60.0,
+   "output_sha256": "9cb4fd4114130369a9cfcc07e5135e4a14930fd2544c2b9d324b20b79c4fc93f",
+   "output_size": 1202849,
+   "source_sha256": "641209b36f3493c9d817489843ae6daafd3d192079adcee09688a014fe7e2244"
+  },
+  "gameplay/gui_new/swf/repair/panel_blacksmith.redswf": {
+   "fps": 60.0,
+   "output_sha256": "56b65e20f5140f7b52673aeacda5db2eb4fcc10300438f9e235179cb152ea7ef",
+   "output_size": 1849833,
+   "source_sha256": "353cf27ae7150625a1a54bba0f1628a149e8ec9d2ec05045a3b2c9d5051a4441"
+  },
+  "gameplay/gui_new/swf/repair/panel_enchanting.redswf": {
+   "fps": 60.0,
+   "output_sha256": "4198f843ff602fe92ad0a858f8e5914296c7838b23dd88c45856a9aa4553578d",
+   "output_size": 1325094,
+   "source_sha256": "0d1d17216a87a545dcf980dacd30497d1c6522f2297574269ad5c21ef0f54351"
+  },
+  "gameplay/gui_new/swf/repair/panel_transmog.redswf": {
+   "fps": 48.0,
+   "output_sha256": "8e05f96cb39d94bfd3a90c476966df7caff40a09b967dc8ba29c1c0b519bc01f",
+   "output_size": 3294808,
+   "source_sha256": "0bb13f13c8a52a2698469d831bf9464f947e89291ab96fb8ff76a364400e510c"
+  },
+  "gameplay/gui_new/swf/worldmap/panel_worldmap.redswf": {
+   "fps": 60.0,
+   "output_sha256": "b95cb49b1a35d05818150d4761ff78c41befeeb8db0acf12182a531cb200d897",
+   "output_size": 3877270,
+   "source_sha256": "cbcd44c8e84a0b35bfa3dd548437385f632060e4c5c372ff3e7c58030c9d03fb"
+  }
+ },
+ "output_zip": "SmoothUIRemastered_v0.2.zip",
+ "targeted_game_version": "5.01"
+}
