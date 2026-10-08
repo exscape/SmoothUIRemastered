@@ -9,7 +9,8 @@ silence_known_noise = true
 # REQUIRED: path to wcc_lite.exe (from the REDkit)
 wcc_lite = 'D:\Games\The Witcher 3 Remastered\The Witcher 3 REDkit\bin\x64_RedKit\wcc_lite.exe'
 
-# REQUIRED: working/temporary directory for generated files; files located here may be deleted by the script at any moment!
+# REQUIRED: working/temporary directory for generated files
+# NOTE: files located here may be deleted by the script at any moment!
 # NOTE: wcc_lite is said to dislike paths with spaces, so ensure this does not contain any!
 working_dir = 'E:\Temp\Witcher3Modding\work'
 

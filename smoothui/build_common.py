@@ -6,8 +6,13 @@ import re
 import shutil
 import subprocess
 import sys
-import tomllib
 import zipfile
+
+try:
+    import tomllib
+except ImportError:
+    # for Python 3.9 and 3.10, which lack tomllib
+    import tomli as tomllib  # type: ignore
 from pathlib import Path
 
 from colorama import Back, Fore, Style

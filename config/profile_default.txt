@@ -8,8 +8,14 @@
 # Currently mainmenu falls under #3, but that may change (perhaps with an optional mod,
 # which in that case will NOT be compatible with other mods that affect mainmenu .redswf files).
 
-# Files that have no jarring animations or speedups (like rapid flashing) are 120 fps by default.
-# Many files are 60 fps, as that's often a good balance between smoothness and frantic animations.
+# Files that have no jarring animations or speedups (like rapid flashing) are 120 fps by default, but
+# as you can see, they are extremely few and far between.
+# Most files are 60 fps, as that's often a good balance between smoothness and frantic animations.
+# The speedup varies, as the framerates used by the game are:
+# 22 fps (inventory, transmog)
+# 24 fps (gwent match, most panels)
+# 30 fps (remaining panels, deck builder screen)
+# 40 fps (character panel)
 
 [120]
 
@@ -31,6 +37,7 @@ gameplay/gui_new/swf/glossary/panel_glossary_books.redswf
 gameplay/gui_new/swf/crafting/panel_crafting.redswf # Glossary > Crafting
 gameplay/gui_new/swf/glossary/panel_glossary_encyclopedia.redswf # Glossary > Characters
 gameplay/gui_new/swf/glossary/panel_glossary_tutorials.redswf
+gameplay/gui_new/swf/gwint/deck_builder.redswf # Default 30 fps
 gameplay/gui_new/swf/inventory/panel_inventory.redswf
 gameplay/gui_new/swf/journal/panel_journal_quests.redswf
 gameplay/gui_new/swf/repair/panel_blacksmith.redswf
@@ -39,8 +46,6 @@ gameplay/gui_new/swf/worldmap/panel_worldmap.redswf
 # Not yet verified as required, but seems very likely
 gameplay/gui_new/swf/preparation/panel_preparation.redswf
 gameplay/gui_new/swf/repair/panel_enchanting.redswf
-
-gameplay/gui_new/swf/gwint/deck_builder.redswf # Default 30 fps
 
 [48]
 # A bit too fast at 60 for general release, I'd say, unfortunately.

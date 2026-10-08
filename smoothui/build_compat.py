@@ -17,6 +17,7 @@ import rarfile
 
 from . import patcher
 from .build_common import (
+    REPO_ROOT,
     config_paths,
     fail,
     install_mod,
@@ -31,6 +32,18 @@ from .build_common import (
     zip_tree,
 )
 from .common import normalize_version, to_windows
+
+
+# rarfile looks for an external unrar in PATH and in the current directory. When neither has it,
+# point it at the UnRAR.exe bundled in this repo, so .rar mods work from any working directory.
+def setup_rar_tool():
+    if shutil.which(rarfile.UNRAR_TOOL):
+        return # a system unrar is preferred (e.g. under WSL)
+    bundled_unrar = REPO_ROOT / "UnRAR.exe"
+    if bundled_unrar.is_file():
+        rarfile.UNRAR_TOOL = str(bundled_unrar)
+
+setup_rar_tool()
 
 # Used to name the generated mod. The "mod000_" prefix sorts before the main mod and
 # (nearly) any other mod, so the compatibility patch loads first and wins conflicts.

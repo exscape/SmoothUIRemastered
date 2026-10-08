@@ -2,3 +2,4 @@ zopfli
 colorama
 rarfile
 py7zr
+tomli; python_version < "3.11"
