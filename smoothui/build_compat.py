@@ -228,6 +228,8 @@ def main(argv=None):
         install_mod(mod_dir, game_path)
         if args.launch:
             launch_game(game_path)
+    elif args.launch:
+        print("\nWarning:--launch used without --install: not launching game with old mod version")
 
     if args.keep_work:
         print(f"Keeping work files in {work_dir}")

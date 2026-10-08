@@ -35,10 +35,16 @@ NOISE = [re.compile(p) for p in (
     r"\[Error\]\[Assert\] .*soundFileLoader\.cpp:\d+.*Always loaded bank is not in the banks array",
 )]
 
-def run_command(cmd, cwd=None, filter_predicate=None):
+def run_command(cmd, cwd=None, filter_predicate=None, detach=False):
     """Run a command, streaming output; optionally filter lines before printing."""
     print("$", " ".join(str(c) for c in cmd), flush=True)
     try:
+        if detach:
+            subprocess.Popen(
+                [str(c) for c in cmd], cwd=cwd,
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            return
         with subprocess.Popen(
             [str(c) for c in cmd], cwd=cwd,
             stdin=subprocess.DEVNULL,
@@ -208,4 +214,4 @@ def launch_game(game_path):
     """Attempt to launch the game executable."""
     print_step_header("Launching game")
     exe_path = game_path / "bin/x64_dx12/witcher3.exe"
-    run_command([exe_path], cwd=exe_path.parent)
+    run_command([exe_path], cwd=exe_path.parent, detach=True)
