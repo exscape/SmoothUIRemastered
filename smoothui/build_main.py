@@ -14,20 +14,19 @@ from .build_common import (
     REPO_ROOT,
     config_paths,
     fail,
-    install_mod,
-    launch_game,
+    finish_work_dir,
+    install_and_launch,
     load_config,
     load_profile,
     manifest_path,
+    pack_content,
     print_file_result,
     print_step_header,
     resolve_zip_path,
     sha256_file,
-    wcc_lite,
     write_manifest,
     zip_tree,
 )
-from .common import to_windows
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 
@@ -116,19 +115,7 @@ def main():
     for old in [*output_content_path.glob("blob*.bundle"), output_content_path / "metadata.store"]:
         old.unlink(missing_ok=True)
 
-    # wcc_lite is picky about its working directory, and needs Windows-style paths even under WSL
-    # ALL CAPS are used for Windows-style paths, lowercase for Python name (Windows or WSL)
-    PATCHED_DIR = to_windows(patched_dir)
-    CONTENT_PATH = to_windows(output_content_path)
-
-    print_step_header("Running wcc_lite pack")
-    wcc_lite("pack", f"-dir={PATCHED_DIR}", f"-outdir={CONTENT_PATH}")
-
-    print_step_header("Running wcc_lite metadatastore")
-    wcc_lite("metadatastore", "-noui", f"-path={CONTENT_PATH}")
-
-    if not (output_content_path / "metadata.store").is_file() or not any(output_content_path.glob("blob*.bundle")):
-        fail("wcc_lite did not produce blob*.bundle and metadata.store.")
+    pack_content(patched_dir, output_content_path)
 
     zip_tree(output_dir, zip_out)
 
@@ -151,16 +138,6 @@ def main():
             "output_zip": str(zip_out.relative_to(REPO_ROOT)) if zip_out.is_relative_to(REPO_ROOT) else str(zip_out),
         })
 
-    if args.install:
-        install_mod(output_dir / OUTPUT_MOD_NAME, game_path)
+    install_and_launch(output_dir / OUTPUT_MOD_NAME, game_path, args.install, args.launch)
 
-        if args.launch:
-            launch_game(game_path)
-    elif args.launch:
-        print("\nWarning:--launch used without --install: not launching game with old mod version")
-
-    if args.keep_work:
-        print(f"Keeping work files in {work_dir}")
-    else:
-        print_step_header(f"Removing {work_dir}")
-        shutil.rmtree(work_dir, ignore_errors=True)
+    finish_work_dir(work_dir, args.keep_work)

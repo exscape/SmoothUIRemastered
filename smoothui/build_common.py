@@ -17,7 +17,7 @@ from pathlib import Path
 
 from colorama import Back, Fore, Style
 
-from .common import normalize_version, to_native
+from .common import normalize_version, to_native, to_windows
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
@@ -41,7 +41,7 @@ NOISE = [re.compile(p) for p in (
 )]
 
 def run_command(cmd, cwd=None, filter_predicate=None, detach=False):
-    """Run a command, streaming output; optionally filter lines before printing."""
+    """Run a command, streaming output; optionally filter lines before printing"""
     print("$", " ".join(str(c) for c in cmd), flush=True)
     try:
         if detach:
@@ -66,7 +66,7 @@ def run_command(cmd, cwd=None, filter_predicate=None, detach=False):
         fail(f"command failed with exit code {proc.returncode}: {cmd[0]}")
 
 def wcc_lite(*args):
-    """Run wcc_lite, optionally filtering known noise from the output."""
+    """Run wcc_lite, optionally filtering known noise from the output"""
     config = load_config()
     paths = config_paths(config)
 
@@ -75,6 +75,17 @@ def wcc_lite(*args):
 
     wcc_lite_path = paths['wcc_lite']
     run_command([wcc_lite_path] + list(args), cwd=wcc_lite_path.parent, filter_predicate=filter_noise)
+
+def pack_content(patched_dir, content_dir):
+    """Pack the patched files into blob0.bundle and create metadata.store"""
+    print_step_header("Running wcc_lite pack")
+    wcc_lite("pack", f"-dir={to_windows(patched_dir)}", f"-outdir={to_windows(content_dir)}")
+
+    print_step_header("Running wcc_lite metadatastore")
+    wcc_lite("metadatastore", "-noui", f"-path={to_windows(content_dir)}")
+
+    if not (content_dir / "metadata.store").is_file() or not any(content_dir.glob("blob*.bundle")):
+        fail("wcc_lite did not produce blob*.bundle and metadata.store.")
 
 def load_config(path=None, section=None):
     """Read config.toml (or the given file) and perform basic validation"""
@@ -106,7 +117,7 @@ def config_paths(config):
     return {k: to_native(v) for k, v in config["paths"].items()}
 
 def load_profile(profile_path):
-    """Read the profile list: files to patch mapped to their target frame rate."""
+    """Read the profile list: files to patch mapped to their target frame rate"""
     if profile_path is None: profile_path = DEFAULT_PROFILE
     elif isinstance(profile_path, str): profile_path = Path(profile_path)
     if not profile_path.is_file():
@@ -181,7 +192,7 @@ def manifest_path(version):
     return MANIFEST_DIR / f"{normalize_version(version)}.json"
 
 def write_manifest(version, records, extra=None):
-    """Write manifests/<version>.json for this mod release."""
+    """Write manifests/<version>.json for this mod release"""
     manifest = {"created_mod_version": normalize_version(version)}
     if extra:
         manifest.update(extra)
@@ -216,7 +227,31 @@ def install_mod(mod_dir, game_path):
     print(f"Installed mod into {dest}")
 
 def launch_game(game_path):
-    """Attempt to launch the game executable."""
+    """Attempt to launch the game executable"""
     print_step_header("Launching game")
     exe_path = game_path / "bin/x64_dx12/witcher3.exe"
     run_command([exe_path], cwd=exe_path.parent, detach=True)
+
+def install_and_launch(mod_dir, game_path: Path, install, launch):
+    """Copy the built mod into the game folder, then launch the game if asked.
+    A missing game_path (None) means nothing can be installed or launched"""
+    if not game_path and (install or launch):
+        print("Warning: game_path not set in config.toml; will ignore --install/--launch")
+        return
+    if not game_path.exists():
+        print("Warning: game_path set in config.toml does not exist! Will ignore --install/--launch")
+        return
+    if install:
+        install_mod(mod_dir, game_path)
+        if launch:
+            launch_game(game_path)
+    elif launch:
+        print("\nWarning:--launch used without --install: not launching game with old mod version")
+
+def finish_work_dir(work_dir, keep_work):
+    """Keep or drop the work tree once the build is done"""
+    if keep_work:
+        print(f"Keeping work files in {work_dir}")
+    else:
+        print_step_header(f"Removing {work_dir}")
+        shutil.rmtree(work_dir, ignore_errors=True)

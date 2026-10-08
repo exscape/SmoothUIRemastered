@@ -42,7 +42,8 @@ def patch_body(body, new_fps):
 
 def recompress(body, max_len):
     """Recompress the patched data. Note that the output is zero padded, so we don't need this to
-    be as small as possible; just small enough to fit into the existing container"""
+    be as small as possible; just small enough to fit into the existing container: we cannot
+    use a single byte of additional space compared to the original file"""
     raw = bytes(body)
     smallest = None
 
@@ -67,7 +68,7 @@ def recompress(body, max_len):
                      f"(smallest {smallest} bytes vs {max_len} allowed)")
 
 def process(data, new_fps):
-    """Returns list of (old, new_or_None, note) per valid payload; patches data in place."""
+    """Returns list of (old, new_or_None, note) per valid payload; patches data in place"""
     found = []
     for sig in SIGS:
         pos = data.find(sig)

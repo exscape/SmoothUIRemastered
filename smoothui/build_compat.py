@@ -20,11 +20,12 @@ from .build_common import (
     REPO_ROOT,
     config_paths,
     fail,
-    install_mod,
-    launch_game,
+    finish_work_dir,
+    install_and_launch,
     load_config,
     load_manifest,
     load_profile,
+    pack_content,
     print_file_result,
     print_step_header,
     resolve_zip_path,
@@ -88,7 +89,7 @@ def check_member_paths(names, dest_dir):
             fail(f"unsafe path in archive: {name}")
 
 def unpack(mod_archive, dest_dir):
-    """Extract the whole mod archive (.zip, .7z or .rar) into dest_dir."""
+    """Extract the whole mod archive (.zip, .7z or .rar) into dest_dir"""
     dest_dir.mkdir(parents=True, exist_ok=True)
     try:
         if zipfile.is_zipfile(mod_archive):
@@ -115,7 +116,7 @@ def unpack(mod_archive, dest_dir):
 
 def find_unbundle_root(unpacked_dir):
     """The directory to give to wcc_lite unbundle: the modXxx folder if there is one,
-    otherwise the folder that holds the bundle(s)."""
+    otherwise the folder that holds the bundle(s)"""
     content_dirs = sorted({b.parent for b in unpacked_dir.rglob("*.bundle")})
     if not content_dirs:
         fail("no .bundle files found in the .zip (mods shipping loose files are not supported)")
@@ -136,7 +137,7 @@ def unbundle(root, out_dir):
 
 def find_shared_files(their_dir, manifest, smooth_version):
     """The .redswf files (paths relative to their_dir, in their spelling) that the other mod
-    ships AND that the Smooth UI Remastered release named by manifest patches."""
+    ships AND that the Smooth UI Remastered release named by manifest patches"""
     def key(rel):
         """One comparable spelling for both sides: lowercase, slash-separated"""
         return rel.as_posix().lower() if isinstance(rel, Path) else rel.lower()
@@ -158,8 +159,8 @@ def find_shared_files(their_dir, manifest, smooth_version):
         fail("no .redswf files in common! This mod does not need a compat patch.")
     return shared
 
-def main(argv=None):
-    args = parse_args(argv)
+def main():
+    args = parse_args()
 
     profile = load_profile(args.profile)
 
@@ -168,11 +169,6 @@ def main(argv=None):
 
     paths = config_paths(load_config())
     game_path = paths.get("game_path")
-
-    if game_path is None and args.install:
-        print("Warning: game_path not set in config.toml; will ignore --install")
-    if game_path is None and args.launch:
-        print("Warning: game_path not set in config.toml; will ignore --launch")
 
     mod_name = mod_folder_name(args.mod_name)
     mod_version = normalize_version(args.mod_version)
@@ -226,26 +222,10 @@ def main(argv=None):
     if not patched:
         fail("no patched files were produced, aborting.")
 
-    print_step_header("Running wcc_lite pack")
-    wcc_lite("pack", f"-dir={to_windows(patched_dir)}", f"-outdir={to_windows(content_dir)}")
-
-    print_step_header("Running wcc_lite metadatastore")
-    wcc_lite("metadatastore", "-noui", f"-path={to_windows(content_dir)}")
-
-    if not (content_dir / "metadata.store").is_file() or not any(content_dir.glob("blob*.bundle")):
-        fail("wcc_lite did not produce blob*.bundle and metadata.store.")
+    pack_content(patched_dir, content_dir)
 
     zip_tree(mod_root, zip_out)
 
-    if args.install:
-        install_mod(mod_dir, game_path)
-        if args.launch:
-            launch_game(game_path)
-    elif args.launch:
-        print("\nWarning:--launch used without --install: not launching game with old mod version")
+    install_and_launch(mod_dir, game_path, args.install, args.launch)
 
-    if args.keep_work:
-        print(f"Keeping work files in {work_dir}")
-    else:
-        print_step_header(f"Removing {work_dir}")
-        shutil.rmtree(work_dir, ignore_errors=True)
+    finish_work_dir(work_dir, args.keep_work)
