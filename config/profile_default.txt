@@ -39,12 +39,13 @@ gameplay/gui_new/swf/worldmap/panel_worldmap.redswf
 # Not yet verified as required, but seems very likely
 gameplay/gui_new/swf/preparation/panel_preparation.redswf
 gameplay/gui_new/swf/repair/panel_enchanting.redswf
-gameplay/gui_new/swf/repair/panel_transmog.redswf
+
+gameplay/gui_new/swf/gwint/deck_builder.redswf # Default 30 fps
 
 [48]
 # A bit too fast at 60 for general release, I'd say, unfortunately.
-gameplay/gui_new/swf/gwint/deck_builder.redswf
-gameplay/gui_new/swf/gwint/gwint_game.redswf
+gameplay/gui_new/swf/gwint/gwint_game.redswf # Default 24 fps
+gameplay/gui_new/swf/repair/panel_transmog.redswf # Default 22 fps(!)
 
 # Verified as NOT required, even though they may appear relevant to patch
 # gameplay/gui_new/swf/meditation/panel_meditation.redswf
