@@ -153,7 +153,7 @@ def print_file_result(rel, status, old_fps, new_fps, note):
     if status == "patched":
         print(f"{rel}: {old_fps:g} -> {new_fps:g} fps ({note})", flush=True)
     elif status == "kept":
-        print(f"KEEP {rel}: {old_fps:g} fps (not changed)", flush=True)
+        print(f"KEEP {rel}: {old_fps:g} fps ({note})", flush=True)
     else:
         print(f"SKIP {rel}: {note}", file=sys.stderr, flush=True)
 
