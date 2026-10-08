@@ -77,7 +77,7 @@ def main():
     if not mod_version or not mod_version.startswith("v"):
         fail("Invalid created_mod_version in [versions] section of config file")
 
-    if manifest_path(mod_version).exists():
+    if manifest_path(mod_version).exists() and args.write_manifest:
         if args.force:
             print(f"Overwriting previously existing mod release {mod_version}, including the manifest")
         else:
