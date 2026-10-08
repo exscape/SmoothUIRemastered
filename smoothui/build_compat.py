@@ -20,6 +20,7 @@ from .build_common import (
     config_paths,
     fail,
     install_mod,
+    launch_game,
     load_config,
     load_exclusions,
     load_manifest,
@@ -65,6 +66,8 @@ def parse_args(argv=None):
                          "in the repo folder)")
     ap.add_argument("--install", action="store_true",
                     help="install the new mod into the game folder on success")
+    ap.add_argument("--launch", action="store_true",
+                    help="launch the game after build and install success")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
     return ap.parse_args(argv)
@@ -234,6 +237,8 @@ def main(argv=None):
 
     if args.install:
         install_mod(mod_dir, game_path)
+        if args.launch:
+            launch_game(game_path)
 
     if args.keep_work:
         print(f"Keeping work files in {work_dir}")

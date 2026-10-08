@@ -15,6 +15,7 @@ from .build_common import (
     config_paths,
     fail,
     install_mod,
+    launch_game,
     load_config,
     load_exclusions,
     manifest_path,
@@ -50,6 +51,8 @@ def parse_args():
                     help="override output .zip name or path")
     ap.add_argument("--install", action="store_true",
                     help="install the mod into the game folder on success")
+    ap.add_argument("--launch", action="store_true",
+                    help="launch the game after build and install success")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
     ap.add_argument("--write-manifest", action="store_true",
@@ -170,6 +173,9 @@ def main():
 
     if args.install:
         install_mod(output_dir / output_mod_name, game_path)
+
+        if args.launch:
+            launch_game(game_path)
 
     if args.keep_work:
         print(f"Keeping work files in {work_dir}")

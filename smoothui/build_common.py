@@ -208,3 +208,9 @@ def install_mod(mod_dir, game_path):
     shutil.rmtree(dest, ignore_errors=True)
     shutil.copytree(mod_dir, dest)
     print(f"Installed mod into {dest}")
+
+def launch_game(game_path):
+    """Attempt to launch the game executable."""
+    print_step_header("Launching game")
+    exe_path = game_path / "bin/x64_dx12/witcher3.exe"
+    run_command([exe_path], cwd=exe_path.parent)
