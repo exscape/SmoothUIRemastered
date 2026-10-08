@@ -59,15 +59,14 @@ def parse_args(argv=None):
     ap.add_argument("--mod-name", required=True,
                     help="name of the other mod; only used to name the generated patch file")
     ap.add_argument("--mod-version", required=True,
-                    help="version the other mod; only used to name the generated patch file")
+                    help="version of the other mod; only used to name the generated patch file")
     ap.add_argument("--smooth-version", required=True,
                     help="Smooth UI Remastered version that the patch targets; affects the patching process")
     ap.add_argument("--profile", default=None,
                     help="the profile to use; a profile specifies which files to patch, and to which framerate")
 
     ap.add_argument("--zip", default=None,
-                    help="output .zip name or path (default: <generated mod name>.zip "
-                         "in the repo folder)")
+                    help="output .zip name or path; the default name is recommended over specifying this!")
     ap.add_argument("--install", action="store_true",
                     help="install the new mod into the game folder on success")
     ap.add_argument("--launch", action="store_true",
@@ -183,6 +182,14 @@ def main():
     mod_root = work_dir / "4_mod"
     mod_dir = mod_root / mod_name
     content_dir = mod_dir / "content"
+
+    # Perform some sanity checks, since every user that didn't change the config will likely get a very, very ugly exception tree otherwise
+    if game_path and not game_path.is_dir():
+        fail(f"game_path is not set to a valid directory in config/config.toml: {game_path} is not an existing directory")
+    if not (parent := work_dir.parent.parent).is_dir():
+        fail(f"working directory parent {parent} does not exist")
+    if not paths["wcc_lite"].is_file():
+        fail(f"wcc_lite setting in config/config.toml is not set to a valid wcc_lite.exe path: {paths['wcc_lite']} does not exist")
 
     print(f"Mod folder: {mod_name}")
     print(f"Output ZIP: {zip_out.name}")
