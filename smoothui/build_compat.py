@@ -4,10 +4,11 @@
 # that conflict with Smooth UI Remastered, and build a compatibility patch containing only
 # those patched files.
 #
-# The files to patch and their target frame rates come from the profile file (see config/).
+# The files to patch and their target frame rates come from the manifest (see manifests/), selected by --smooth-version.
 # Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.2
 
 import argparse
+import json
 import shutil
 import zipfile
 from pathlib import Path
@@ -23,8 +24,7 @@ from .build_common import (
     finish_work_dir,
     install_and_launch,
     load_config,
-    load_manifest,
-    load_profile,
+    manifest_path,
     pack_content,
     print_file_result,
     print_step_header,
@@ -62,8 +62,6 @@ def parse_args(argv=None):
                     help="version of the other mod; only used to name the generated patch file")
     ap.add_argument("--smooth-version", required=True,
                     help="Smooth UI Remastered version that the patch targets; affects the patching process")
-    ap.add_argument("--profile", default=None,
-                    help="the profile to use; a profile specifies which files to patch, and to which framerate")
 
     ap.add_argument("--zip", default=None,
                     help="output .zip name or path; the default name is recommended over specifying this!")
@@ -134,6 +132,25 @@ def unbundle(root, out_dir):
     if not any(out_dir.rglob("*.redswf")):
         fail(f"no .redswf files found after unbundling into {out_dir}")
 
+def load_manifest(version):
+    """Read manifests/<version>.json, or None if this release has none"""
+    path = manifest_path(version)
+    if not path.is_file():
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+def profile_from_manifest(manifest):
+    """Creates a relative path -> FPS map (i.e. a profile) from a mod manifest
+
+    Used to decide which FPS to use when creating a compatibility patch, to ensure
+    the patched screen is the same FPS as when patching the vanilla files.
+
+    All files patched by the mod will be in this profile, which is later filtered
+    to only patch files that both mods change."""
+
+    return {file: entry["fps"] for (file,entry) in manifest["files"].items()}
+
 def find_shared_files(their_dir, manifest, smooth_version):
     """The .redswf files (paths relative to their_dir, in their spelling) that the other mod
     ships AND that the Smooth UI Remastered release named by manifest patches"""
@@ -160,8 +177,6 @@ def find_shared_files(their_dir, manifest, smooth_version):
 
 def main():
     args = parse_args()
-
-    profile = load_profile(args.profile)
 
     if not args.mod_archive.is_file():
         fail(f"input mod archive not found: {args.mod_archive}")
@@ -206,13 +221,14 @@ def main():
 
     print_step_header(f"Loading manifest for Smooth UI Remastered {smooth_version}")
     manifest = load_manifest(smooth_version)
+    profile = profile_from_manifest(manifest)
 
     print_step_header("Finding files in common")
     shared = find_shared_files(unbundled_dir, manifest, smooth_version)
-
-    print_step_header("Running FPS patcher")
     shared_keys = {rel.as_posix().lower() for rel in shared}
     shared_profile = {rel: fps for rel, fps in profile.items() if rel in shared_keys}
+
+    print_step_header("Running FPS patcher")
 
     try:
         patched, kept, failed = patcher.patch_files(

@@ -208,14 +208,6 @@ def write_manifest(version, records, extra=None):
     print(f"Wrote manifest {path} ({len(records)} files)")
     return path
 
-def load_manifest(version):
-    """Read manifests/<version>.json, or None if this release has none"""
-    path = manifest_path(version)
-    if not path.is_file():
-        return None
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
 def install_mod(mod_dir, game_path):
     """Copy <mod_dir> (a directory whose name is the mod's name) into <game_path>/mods"""
     print_step_header("Installing mod to game folder")
