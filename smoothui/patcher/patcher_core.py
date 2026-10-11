@@ -23,7 +23,7 @@ MAX_RAW_FPS = 0xFFFF
 
 def file_target_fps(profile, rel):
     """The frame rate the profile states for this file"""
-    target = profile.get(profile_key(rel))
+    target = profile.get(profile_key(rel)).get("fps")
     assert target is not None
     return float(target)
 
@@ -59,7 +59,7 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
             target_fps = file_target_fps(profile, rel)
             assert target_fps >= 1 and target_fps <= 256
             print(f"********** START PROCESSING {rel} ************")
-            result = process(data, target_fps, dev_make_body_hook(rel))
+            result = process(data, profile.get(profile_key(rel)), dev_make_body_hook(rel))
         except ValueError as e:
             failed.append((rel, str(e)))
             report(rel, "failed", note=str(e))
@@ -81,7 +81,7 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
 
     return patched, kept, failed
 
-def process(data, new_fps, rel):
+def process(data, settings, rel):
     """Find the SWF payload embedded in data and set its frame rate. Patches data in place.
 
     Returns (old_fps, new_fps, note). Raises ValueError if there isn't exactly one valid SWF.
@@ -90,7 +90,7 @@ def process(data, new_fps, rel):
     for sig in SWF_SIGS:
         pos = data.find(sig)
         while pos != -1:
-            payload = read_and_patch_swf(data, pos, sig, new_fps, rel)
+            payload = read_and_patch_swf(data, pos, sig, settings, rel)
             if payload is None:
                 pos = data.find(sig, pos + len(sig))
                 continue
@@ -106,7 +106,7 @@ def process(data, new_fps, rel):
         raise ValueError("found 0 payloads (expected 1)")
     return result
 
-def read_and_patch_swf(data, pos, sig, new_fps, rel):
+def read_and_patch_swf(data, pos, sig, settings, rel):
     """Check for an SWF header at data[pos] and patch the payload if found."""
     if pos + SWF_HEADER_SIZE > len(data):
         return None
@@ -116,9 +116,9 @@ def read_and_patch_swf(data, pos, sig, new_fps, rel):
     if sig not in SWF_COMPRESSED_SIGS:
         raise ValueError("SWF was not compressed: please open a GitHub issue that uncompressed SWFs needs to be supported!")
 
-    return patch_fps(data, pos, new_fps, rel)
+    return patch_fps(data, pos, settings, rel)
 
-def patch_fps(data, pos, new_fps, body_hook=None):
+def patch_fps(data, pos, settings, body_hook=None):
     """Set the frame rate of the compressed SWF at data[pos] and freeze focus animations.
 
     The freeze always runs, even when the fps already matches. This likely won't matter, but
@@ -135,17 +135,21 @@ def patch_fps(data, pos, new_fps, body_hook=None):
     def patch(body):
         before = bytes(body)
 
-        patched = patch_fps_in_body(body, new_fps)
+        patched = patch_fps_in_body(body, settings["fps"])
         if patched is None:
             return None
         old_fps, applied_fps = patched
 
-        # Freeze focus animations etc.
-        # Do this for all files, for UX consistency. (Won't actually matter unless we release a lower fps version, though.)
-        old_len = len(body)
-        freeze_focus_animations(body)
-        if len(body) > old_len:
-            raise AssertionError("Body got BIGGER from patch")
+        if settings["freeze"]:
+            # Freeze focus animations etc.
+            # Do this for all files, for UX consistency. (Won't actually matter unless we release a lower fps version, though.)
+            # Excluded files don't contain the relevant animations (such as Gwent, deckbuilder).
+            old_len = len(body)
+            freeze_focus_animations(body)
+            if len(body) > old_len:
+                raise AssertionError("Body got BIGGER from patch")
+        else:
+            print("Skipping freeze for this file")
 
         if body == before:
             return False, (old_fps, None, "nothing to patch")

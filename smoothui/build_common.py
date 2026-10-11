@@ -141,9 +141,12 @@ def load_profile(profile_path):
             continue
 
         # Normalize path and associate with current section's FPS
-        entry = line.replace("\\", "/").lower().strip("/")
-        if entry:
-            profile[entry] = current_fps
+        parts = line.split()
+        should_freeze = parts[0] != "no_freeze"
+        path = parts[1] if len(parts) > 1 else parts[0]
+
+        if entry := path.replace("\\", "/").lower().strip("/"):
+            profile[entry] = {"fps": current_fps, "freeze": should_freeze}
 
     print(f"Loaded {len(profile)} entries from {profile_path}")
     return profile
