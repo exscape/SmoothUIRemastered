@@ -71,6 +71,19 @@ def parse_args(argv=None):
                     help="launch the game after build and install success")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
+
+    # Dev hooks; useful for exploring the data format, etc.
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--dev-dump", metavar="FILE",
+                   help="DEV: target a specific .redswf FILE, write its decompressed body to "
+                        "{FILE}_payload.swf, and exit")
+    g.add_argument("--dev-insert", metavar="FILE",
+                   help="DEV: target a specific .redswf FILE, and replace its body with the "
+                        "(manually edited) contents of {FILE}_payload.swf")
+    g.add_argument("--dev-pause", metavar="FILE",
+                   help="DEV: target a specific .redswf FILE, dump its body to {FILE}_payload.swf, "
+                        "pause until you type 'continue', then use the edited file")
+
     return ap.parse_args(argv)
 
 def mod_folder_name(name):
@@ -177,6 +190,14 @@ def find_shared_files(their_dir, manifest, smooth_version):
 
 def main():
     args = parse_args()
+
+    # Dev mode: hand the mode to the patcher's dev hook
+    if args.dev_dump:
+        patcher.set_dev("dump", args.dev_dump)
+    elif args.dev_insert:
+        patcher.set_dev("insert", args.dev_insert)
+    elif args.dev_pause:
+        patcher.set_dev("pause", args.dev_pause)
 
     if not args.mod_archive.is_file():
         fail(f"input mod archive not found: {args.mod_archive}")

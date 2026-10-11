@@ -50,10 +50,31 @@ def parse_args():
                     help="save a manifest of this version; only intended for actual releases")
     ap.add_argument("--force", action="store_true",
                     help="create a release version even though this version already seems to exist")
+
+    # Dev hooks; useful for exploring the data format, etc.
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--dev-dump", metavar="FILE",
+                   help="DEV: target a specific .redswf FILE, write its decompressed body to "
+                        "{FILE}_payload.swf, and exit")
+    g.add_argument("--dev-insert", metavar="FILE",
+                   help="DEV: target a specific .redswf FILE, and replace its body with the "
+                        "(manually edited) contents of {FILE}_payload.swf")
+    g.add_argument("--dev-pause", metavar="FILE",
+                   help="DEV: target a specific .redswf FILE, dump its body to {FILE}_payload.swf, "
+                        "pause until you type 'continue', then use the edited file")
+
     return ap.parse_args()
 
 def main():
     args = parse_args()
+
+    # Dev mode: hand the mode to the patcher's dev hook
+    if args.dev_dump:
+        patcher.set_dev("dump", args.dev_dump)
+    elif args.dev_insert:
+        patcher.set_dev("insert", args.dev_insert)
+    elif args.dev_pause:
+        patcher.set_dev("pause", args.dev_pause)
 
     config = load_config()
     paths = config_paths(config)
