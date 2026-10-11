@@ -34,3 +34,7 @@ def normalize_version(ver):
     if not ver.startswith("v"):
         ver = "v" + ver
     return ver
+
+def profile_key(rel):
+    """One comparable spelling for a profile path: lowercase, slash-separated"""
+    return str(rel).replace("\\", "/").lower().strip("/")

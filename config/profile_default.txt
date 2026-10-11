@@ -45,7 +45,7 @@ gameplay/gui_new/swf/preparation/panel_preparation.redswf
 gameplay/gui_new/swf/repair/panel_enchanting.redswf
 
 [60]
-# TODO: coordinate with Smooth Map Remastered author
+# TODO: coordinate with Smooth Map Remastered author; should be 120
 gameplay/gui_new/swf/worldmap/panel_worldmap.redswf
 
 [48]

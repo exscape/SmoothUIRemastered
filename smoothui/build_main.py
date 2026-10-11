@@ -26,7 +26,7 @@ from .build_common import (
     write_manifest,
     zip_tree,
 )
-from .patcher import patcher_core
+from .patcher import dev_mode, patcher_core
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 
@@ -70,11 +70,11 @@ def main():
 
     # Dev mode: hand the mode to the patcher's dev hook
     if args.dev_dump:
-        patcher_core.set_dev("dump", args.dev_dump)
+        dev_mode.set_dev("dump", args.dev_dump)
     elif args.dev_insert:
-        patcher_core.set_dev("insert", args.dev_insert)
+        dev_mode.set_dev("insert", args.dev_insert)
     elif args.dev_pause:
-        patcher_core.set_dev("pause", args.dev_pause)
+        dev_mode.set_dev("pause", args.dev_pause)
 
     config = load_config()
     paths = config_paths(config)

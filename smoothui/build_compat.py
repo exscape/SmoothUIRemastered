@@ -32,7 +32,7 @@ from .build_common import (
     zip_tree,
 )
 from .common import normalize_version, to_windows
-from .patcher import patcher_core
+from .patcher import dev_mode, patcher_core
 
 
 # rarfile looks for an external unrar in PATH and in the current directory. When neither has it,
@@ -193,11 +193,11 @@ def main():
 
     # Dev mode: hand the mode to the patcher's dev hook
     if args.dev_dump:
-        patcher_core.set_dev("dump", args.dev_dump)
+        dev_mode.set_dev("dump", args.dev_dump)
     elif args.dev_insert:
-        patcher_core.set_dev("insert", args.dev_insert)
+        dev_mode.set_dev("insert", args.dev_insert)
     elif args.dev_pause:
-        patcher_core.set_dev("pause", args.dev_pause)
+        dev_mode.set_dev("pause", args.dev_pause)
 
     if not args.mod_archive.is_file():
         fail(f"input mod archive not found: {args.mod_archive}")
