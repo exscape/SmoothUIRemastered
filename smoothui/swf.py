@@ -6,13 +6,12 @@ import zlib
 from zopfli.zlib import compress as zopfli_compress
 
 from .build_common import fail
-from .swf_tags import Tag
 
 # Every SWF/GFX file starts with: 3-byte signature, 1-byte version, 4-byte total length
-HEADER_SIZE = 8
+SWF_HEADER_SIZE = 8
 valid_versions = range(1, 41)
-SIGS = (b"GFX", b"FWS", b"CFX", b"CWS")
-COMPRESSED_SIGS = (b"CFX", b"CWS")
+SWF_SIGS = (b"GFX", b"FWS", b"CFX", b"CWS")
+SWF_COMPRESSED_SIGS = (b"CFX", b"CWS")
 
 # Sanity floor for the declared length of an uncompressed SWF: the header, a minimal
 # frame-size rectangle, the frame rate and frame count, and at least a few tags
@@ -20,11 +19,6 @@ MIN_UNCOMPRESSED_LENGTH = 21
 
 # DefineSprite payload: SpriteId (UI16) and FrameCount (UI16), 4 bytes in total.
 SPRITE_FIELDS_SIZE = 4
-
-# PlaceObject2 payload: a flags byte, then Depth (UI16), then optional fields
-PLACE_OBJECT2_MIN_LENGTH = 3
-PLACE_FLAG_HAS_CHARACTER = 0x02
-PLACE_FLAG_HAS_COLOR_TRANSFORM = 0x08
 
 def swf_patch(data, pos, patch, body_hook=None):
     """Apply an arbitrary patch to the zlib-compressed SWF whose header starts
@@ -48,7 +42,7 @@ def swf_patch(data, pos, patch, body_hook=None):
     bytes written, or None if nothing was written. result is None if patch returned None.
     Raises ValueError if the patched body no longer fits.
     """
-    stream_start = pos + HEADER_SIZE
+    stream_start = pos + SWF_HEADER_SIZE
     decompressor = zlib.decompressobj()
     try:
         body = bytearray(decompressor.decompress(bytes(data[stream_start:])))
@@ -65,9 +59,9 @@ def swf_patch(data, pos, patch, body_hook=None):
     # payload. Nothing in the game would read them, so I see no reason to preserve them.
     # The 20 files patched (as of v0.3 development) range between 24 and 3927 bytes of trailing junk.
     (declared_total,) = struct.unpack_from("<I", data, pos + 4)
-    declared_body_len = declared_total - HEADER_SIZE
+    declared_body_len = declared_total - SWF_HEADER_SIZE
     if declared_body_len < 0 or declared_body_len > len(body):
-        fail(f"declared length {declared_total} doesn't match the decompressed size {HEADER_SIZE + len(body)}")
+        fail(f"declared length {declared_total} doesn't match the decompressed size {SWF_HEADER_SIZE + len(body)}")
     if declared_body_len < len(body):
         print(f"[!] Dropping {len(body) - declared_body_len} bytes after the declared end of the SWF")
         del body[declared_body_len:]
@@ -86,7 +80,7 @@ def swf_patch(data, pos, patch, body_hook=None):
 
     if len(body) != old_body_len:
         print(f"*** Updated body length: {old_body_len} => {len(body)} bytes ({old_body_len - len(body)} bytes gone from freeze patch)")
-        data[pos + 4:pos + 8] = (HEADER_SIZE + len(body)).to_bytes(4, "little")
+        data[pos + 4:pos + 8] = (SWF_HEADER_SIZE + len(body)).to_bytes(4, "little")
 
     compressed = recompress(body, stream_len)
     padding = stream_len - len(compressed)
@@ -153,12 +147,3 @@ def swf_get_header_offsets(body: bytearray):
     # This could return first_tag_offset, since fps_offset = first_tag_offset = 4.
     # Not sure which I prefer.
     return fps_offset, first_tag_offset
-
-# TODO: move to patcher/freeze.py
-def is_color_transform_update(body: bytearray, tag: Tag) -> bool:
-    """True for a PlaceObject2 that only modifies the color transform of an existing object."""
-    if tag.length < PLACE_OBJECT2_MIN_LENGTH:
-        fail(f"PlaceObject2 at offset {tag.start} is too short ({tag.length} bytes)")
-    flags = body[tag.payload_start]
-    relevant = PLACE_FLAG_HAS_CHARACTER | PLACE_FLAG_HAS_COLOR_TRANSFORM
-    return (flags & relevant) == PLACE_FLAG_HAS_COLOR_TRANSFORM

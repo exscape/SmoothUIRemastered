@@ -9,7 +9,6 @@ import argparse
 import datetime
 import shutil
 
-from . import patcher
 from .build_common import (
     REPO_ROOT,
     config_paths,
@@ -27,6 +26,7 @@ from .build_common import (
     write_manifest,
     zip_tree,
 )
+from .patcher import patcher_core
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 
@@ -70,11 +70,11 @@ def main():
 
     # Dev mode: hand the mode to the patcher's dev hook
     if args.dev_dump:
-        patcher.set_dev("dump", args.dev_dump)
+        patcher_core.set_dev("dump", args.dev_dump)
     elif args.dev_insert:
-        patcher.set_dev("insert", args.dev_insert)
+        patcher_core.set_dev("insert", args.dev_insert)
     elif args.dev_pause:
-        patcher.set_dev("pause", args.dev_pause)
+        patcher_core.set_dev("pause", args.dev_pause)
 
     config = load_config()
     paths = config_paths(config)
@@ -112,7 +112,7 @@ def main():
 
     print_step_header("Running FPS patcher")
     try:
-        patched, kept, failed = patcher.patch_files(
+        patched, kept, failed = patcher_core.patch_files(
             uncooked_files, patched_dir, profile,
             dry_run=args.dry_run, on_file=print_file_result)
     except (NotADirectoryError, ValueError) as e:
