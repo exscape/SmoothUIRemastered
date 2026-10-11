@@ -1,0 +1,131 @@
+"""Low-level SWF manipulation code, used by the patcher"""
+
+import zlib
+
+from zopfli.zlib import compress as zopfli_compress
+
+# Every SWF/GFX file starts with: 3-byte signature, 1-byte version, 4-byte total length
+HEADER_SIZE = 8
+MIN_VERSION, MAX_VERSION = 1, 40
+SIGS = (b"GFX", b"FWS", b"CFX", b"CWS")
+COMPRESSED_SIGS = (b"CFX", b"CWS")
+
+# Sanity floor for the declared length of an uncompressed SWF: the header, a minimal
+# frame-size rectangle, the frame rate and frame count, and at least a few tags
+MIN_UNCOMPRESSED_LENGTH = 21
+
+def swf_patch(data, pos, patch, body_hook=None):
+    """Low-level: apply an arbitrary patch to the zlib-compressed SWF whose header
+    starts at data[pos], writing the result back into exactly the space the original
+    occupied (zero padded), so the file size never changes.
+
+    patch(body) receives the decompressed body (a bytearray, the data after the 8-byte
+    header) and may modify it in place, including changing its length. It returns:
+      - None                  if body isn't something it can/should patch (nothing is written)
+      - (False, result)       if it looked at body but left it unchanged (nothing is written)
+      - (True, result)        if body was modified (it will be recompressed and written back)
+    `result` is opaque to this function and is passed through to the caller.
+
+    body_hook(header, body), if given, is called after a successful patch, just before
+    recompression. header is the original 8-byte container header, body is the patched
+    body. It returns the body to use (possibly a different bytearray, of a different
+    length), so it can be used for debugging or manual editing.
+
+    Returns None if there is no complete zlib stream at pos (not an SWF payload).
+    Otherwise returns (stream_end, result, padding): padding is the number of zero pad
+    bytes written, or None if nothing was written. result is None if patch returned None.
+    Raises ValueError if the patched body no longer fits.
+    """
+    stream_start = pos + HEADER_SIZE
+    decompressor = zlib.decompressobj()
+    try:
+        body = bytearray(decompressor.decompress(bytes(data[stream_start:])))
+    except zlib.error:
+        return None
+    if not decompressor.eof:
+        return None  # Truncated stream
+
+    stream_len = len(data) - stream_start - len(decompressor.unused_data)
+    stream_end = stream_start + stream_len
+
+    old_body_len = len(body)
+    outcome = patch(body)
+    if outcome is None:
+        return stream_end, None, None
+    modified, result = outcome
+    if not modified:
+        return stream_end, result, None
+
+    # Runs before the length fix-up below, because the hook may change the body's length
+    if body_hook is not None:
+        body = body_hook(data[pos:stream_start], body)
+
+    if len(body) != old_body_len:
+        print(f"*** Updated body length: {old_body_len} => {len(body)} bytes")
+        data[pos + 4:pos + 8] = (HEADER_SIZE + len(body)).to_bytes(4, "little")
+
+    compressed = recompress(body, stream_len)
+    padding = stream_len - len(compressed)
+    data[stream_start:stream_end] = compressed + b"\0" * padding
+    return stream_end, result, padding
+
+def recompress(body, max_len):
+    """Recompress the patched data to fit in the same size as the original.
+
+    We can't resize the container, so we *need* the data to fit in the original bytes.
+    However, since we've just changed one or two bytes, that's almost certainly possible,
+    especially using zopfli which compresses better than the zlib typically used by default.
+    """
+    raw = bytes(body)
+    smallest = None
+
+    # try zlib first
+    # mem 8 often compresses slightly better(?!) and often yields the exact size
+    # of the original blob, so let's start there
+    for mem in (8, 9):
+        print(".")
+        c = zlib.compressobj(9, zlib.DEFLATED, 15, mem)
+        out = c.compress(raw) + c.flush()
+        smallest = len(out) if smallest is None else min(smallest, len(out))
+        if len(out) <= max_len:
+            return out
+
+    # zlib failed, output too large: try zopfli with increasing effort
+    for iters in (1, 10, 40):
+        print("*")
+        out = zopfli_compress(raw, numiterations=iters)
+        smallest = min(smallest, len(out))
+        if len(out) <= max_len:
+            return out
+
+    raise ValueError(f"recompressed stream doesn't fit "
+                     f"(smallest {smallest} bytes vs {max_len} allowed)")
+
+def swf_get_header_offsets(body: bytearray):
+    """
+    Parses the uncompressed SWF MovieHeader to find the byte offsets for
+    the frame rate (FPS) and the start of the tag stream.
+
+    Returns (fps_offset, first_tag_offset) or (None, None) if the stream is invalid.
+    """
+    if not body:
+        return None, None
+
+    # The body starts with the frame-size RECT: a 5-bit field giving the bit width
+    # of each of its four coordinates, then the coordinates themselves, padded to a whole byte.
+    coord_bits = body[0] >> 3
+    if coord_bits == 0:
+        return None, None
+
+    rect_bytes = (5 + 4 * coord_bits + 7) // 8
+
+    # Directly after the RECT: frame rate (uint16, 8.8 fixed point), frame count (uint16)
+    fps_offset = rect_bytes
+    first_tag_offset = fps_offset + 4
+
+    if first_tag_offset > len(body):
+        return None, None
+
+    # This could return first_tag_offset, since fps_offset = first_tag_offset = 4.
+    # Not sure which I prefer.
+    return fps_offset, first_tag_offset
