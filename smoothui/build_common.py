@@ -140,13 +140,8 @@ def load_profile(profile_path):
                 fail(f"Invalid frame rate section '{line}' in {profile_path}")
             continue
 
-        # Normalize path and associate with current section's FPS
-        parts = line.split()
-        should_freeze = parts[0] != "no_freeze"
-        path = parts[1] if len(parts) > 1 else parts[0]
-
-        if entry := path.replace("\\", "/").lower().strip("/"):
-            profile[entry] = {"fps": current_fps, "freeze": should_freeze}
+        if entry := line.replace("\\", "/").lower().strip("/"):
+            profile[entry] = current_fps
 
     print(f"Loaded {len(profile)} entries from {profile_path}")
     return profile
@@ -159,6 +154,29 @@ def print_file_result(rel, status, old_fps, new_fps, note):
         print(f"KEEP {rel}: {old_fps:g} fps ({note})", flush=True)
     else:
         print(f"SKIP {rel}: {note}", file=sys.stderr, flush=True)
+
+def print_rule_problems(rule_problems):
+    """Explicit patching rules that could not be followed (see patcher.patch_files). The build
+    still finishes, so these must be impossible to miss."""
+    if not rule_problems:
+        return
+    print(f"\n{Back.RED}{Fore.WHITE} {len(rule_problems)} EXPLICIT RULE(S) NOT FOLLOWED: "
+          f"the result is NOT patched entirely as configured {Style.RESET_ALL}", flush=True)
+    for problem in rule_problems:
+        print(f"{Fore.RED}  {problem}{Style.RESET_ALL}", flush=True)
+    print(flush=True)
+
+def enforce_strict(failed, kept, rule_problems):
+    """--strict: fail unless every file was patched, exactly as configured"""
+    problems = []
+    if failed:
+        problems.append(f"{len(failed)} file(s) could not be patched")
+    if kept:
+        problems.append(f"{len(kept)} file(s) left unchanged, as they are already at or above their target frame rate")
+    if rule_problems:
+        problems.append(f"{len(rule_problems)} explicit rule(s) not followed")
+    if problems:
+        fail("--strict: " + "; ".join(problems) + " (see above)")
 
 def resolve_zip_path(zip_arg, default_name):
     """Output .zip for a build: bare name goes in the repo folder, .zip suffix added"""

@@ -13,12 +13,13 @@ valid_versions = range(1, 41)
 SWF_SIGS = (b"GFX", b"FWS", b"CFX", b"CWS")
 SWF_COMPRESSED_SIGS = (b"CFX", b"CWS")
 
+# The frame rate is stored as an unsigned 8.8 fixed-point number
+FPS_FIXED_POINT_SCALE = 256
+MAX_RAW_FPS = 0xFFFF
+
 # Sanity floor for the declared length of an uncompressed SWF: the header, a minimal
 # frame-size rectangle, the frame rate and frame count, and at least a few tags
 MIN_UNCOMPRESSED_LENGTH = 21
-
-# DefineSprite payload: SpriteId (UI16) and FrameCount (UI16), 4 bytes in total.
-SPRITE_FIELDS_SIZE = 4
 
 def swf_patch(data, pos, patch, body_hook=None):
     """Apply an arbitrary patch to the zlib-compressed SWF whose header starts
@@ -38,8 +39,9 @@ def swf_patch(data, pos, patch, body_hook=None):
     length), so it can be used for debugging or manual editing.
 
     Returns None if there is no complete zlib stream at pos (not an SWF payload).
-    Otherwise returns (stream_end, result, padding): padding is the number of zero pad
-    bytes written, or None if nothing was written. result is None if patch returned None.
+    Otherwise returns (stream_end, result, padding, new_swf_bytes): padding is the number of
+    zero pad bytes written, and new_swf_bytes the new header + compressed stream; both are None
+    if nothing was written. result is None if patch returned None.
     Raises ValueError if the patched body no longer fits.
     """
     stream_start = pos + SWF_HEADER_SIZE
@@ -69,23 +71,26 @@ def swf_patch(data, pos, patch, body_hook=None):
     old_body_len = len(body)
     outcome = patch(body)
     if outcome is None:
-        return stream_end, None, None
+        return stream_end, None, None, None
     modified, result = outcome
     if not modified:
-        return stream_end, result, None
+        return stream_end, result, None, None
 
     # Runs before the length fix-up below, because the hook may change the body's length
     if body_hook is not None:
         body = body_hook(data[pos:stream_start], body)
 
     if len(body) != old_body_len:
-        print(f"*** Updated body length: {old_body_len} => {len(body)} bytes ({old_body_len - len(body)} bytes gone from freeze patch)")
+        print(f"*** Updated body length: {old_body_len} => {len(body)} bytes ({old_body_len - len(body):+} byte delta from patch")
         data[pos + 4:pos + 8] = (SWF_HEADER_SIZE + len(body)).to_bytes(4, "little")
 
     compressed = recompress(body, stream_len)
     padding = stream_len - len(compressed)
-    data[stream_start:stream_end] = compressed + b"\0" * padding
-    return stream_end, result, padding
+
+    data[stream_start:stream_end] = compressed + b"\0" * padding # TODO: not used with new patcher; change patcher OR make data read only
+    new_swf_bytes = data[pos:pos+SWF_HEADER_SIZE] + compressed
+
+    return stream_end, result, padding, new_swf_bytes
 
 def recompress(body, max_len):
     """Recompress the patched data to fit in the same size as the original.
@@ -104,19 +109,25 @@ def recompress(body, max_len):
         print(".")
         c = zlib.compressobj(9, zlib.DEFLATED, 15, mem)
         out = c.compress(raw) + c.flush()
+        return out
+
+
+
+
         smallest = len(out) if smallest is None else min(smallest, len(out))
         if len(out) <= max_len:
             return out
 
     # zlib failed, output too large: try zopfli with increasing effort
-    for iters in (1, 10, 40):
+    for iters in (1,):# 10, 40):
         print("*")
         out = zopfli_compress(raw, numiterations=iters)
+        return out
         smallest = min(smallest, len(out))
         if len(out) <= max_len:
             return out
 
-    raise ValueError(f"recompressed stream doesn't fit "
+    fail(f"recompressed stream doesn't fit "
                      f"(smallest {smallest} bytes vs {max_len} allowed)")
 
 def swf_get_header_offsets(body: bytearray):

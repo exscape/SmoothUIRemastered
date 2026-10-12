@@ -12,6 +12,7 @@ import shutil
 from .build_common import (
     REPO_ROOT,
     config_paths,
+    enforce_strict,
     fail,
     finish_work_dir,
     install_and_launch,
@@ -20,6 +21,7 @@ from .build_common import (
     manifest_path,
     pack_content,
     print_file_result,
+    print_rule_problems,
     print_step_header,
     resolve_zip_path,
     sha256_file,
@@ -44,6 +46,9 @@ def parse_args():
                     help="install the mod into the game folder on success")
     ap.add_argument("--launch", action="store_true",
                     help="launch the game after build and install success")
+    ap.add_argument("--strict", action="store_true",
+                    help="fail unless every file is patched exactly as configured: no file failed or left "
+                         "unchanged, and every explicit rule followed; intended for automation")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
     ap.add_argument("--write-manifest", action="store_true",
@@ -112,7 +117,7 @@ def main():
 
     print_step_header("Running FPS patcher")
     try:
-        patched, kept, failed = patcher_core.patch_files(
+        patched, kept, failed, rule_problems = patcher_core.patch_files(
             uncooked_files, patched_dir, profile,
             dry_run=args.dry_run, on_file=print_file_result)
     except (NotADirectoryError, ValueError) as e:
@@ -120,6 +125,9 @@ def main():
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, "
           f"{len(failed)} skipped.")
+    print_rule_problems(rule_problems)
+    if args.strict:
+        enforce_strict(failed, kept, rule_problems)
 
     if args.dry_run:
         print_step_header("DRY RUN: exiting")
@@ -150,7 +158,8 @@ def main():
             records[relative_path.as_posix()] = {
                 "source_sha256": sha256_file(src),
                 "output_sha256": sha256_file(dst),
-                "output_size": dst.stat().st_size, # source and output are always the same size, no point in stating both
+                "source_size": src.stat().st_size, # for v0.2, source_size == output_size for all files
+                "output_size": dst.stat().st_size,
                 "fps": entry["fps"],
             }
         write_manifest(mod_version, records, extra={
@@ -162,3 +171,6 @@ def main():
     install_and_launch(output_dir / OUTPUT_MOD_NAME, game_path, args.install, args.launch)
 
     finish_work_dir(work_dir, args.keep_work)
+
+    # Repeated, as the packing output has likely scrolled it away
+    print_rule_problems(rule_problems)

@@ -19,6 +19,7 @@ import rarfile
 from .build_common import (
     REPO_ROOT,
     config_paths,
+    enforce_strict,
     fail,
     finish_work_dir,
     install_and_launch,
@@ -26,6 +27,7 @@ from .build_common import (
     manifest_path,
     pack_content,
     print_file_result,
+    print_rule_problems,
     print_step_header,
     resolve_zip_path,
     wcc_lite,
@@ -69,6 +71,9 @@ def parse_args(argv=None):
                     help="install the new mod into the game folder on success")
     ap.add_argument("--launch", action="store_true",
                     help="launch the game after build and install success")
+    ap.add_argument("--strict", action="store_true",
+                    help="fail unless every file is patched exactly as configured: no file failed or left "
+                         "unchanged, and every explicit rule followed; intended for automation")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
 
@@ -252,12 +257,15 @@ def main():
     print_step_header("Running FPS patcher")
 
     try:
-        patched, kept, failed = patcher_core.patch_files(
+        patched, kept, failed, rule_problems = patcher_core.patch_files(
             unbundled_dir, patched_dir, shared_profile, on_file=print_file_result)
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
+    print_rule_problems(rule_problems)
+    if args.strict:
+        enforce_strict(failed, kept, rule_problems)
 
     # A conflicting file missing from the patch would let our main mod's version
     # override the other mod's changes to that screen.
@@ -273,3 +281,6 @@ def main():
     install_and_launch(mod_dir, game_path, args.install, args.launch)
 
     finish_work_dir(work_dir, args.keep_work)
+
+    # Repeated, as the packing output has likely scrolled it away
+    print_rule_problems(rule_problems)

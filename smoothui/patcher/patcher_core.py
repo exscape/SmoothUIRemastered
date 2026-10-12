@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import struct
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..common import profile_key
 from ..swf import (
+    FPS_FIXED_POINT_SCALE,
+    MAX_RAW_FPS,
     SWF_COMPRESSED_SIGS,
     SWF_HEADER_SIZE,
     SWF_SIGS,
@@ -15,28 +18,36 @@ from ..swf import (
     valid_versions,
 )
 from .dev_mode import dev_make_body_hook, resolve_dev_target
-from .patcher_freeze import freeze_focus_animations
+from .redswf import replace_swf
+from .swf_patcher import format_unmet_rule, make_rules, report_to_text, rescale_body
 
-# The frame rate is stored as an unsigned 8.8 fixed-point number
-FPS_FIXED_POINT_SCALE = 256
-MAX_RAW_FPS = 0xFFFF
+
+@dataclass(frozen=True)
+class PatchSettings:
+    target_fps: float
+    rules: tuple = ()   # FpsRules, applied to every file
 
 def file_target_fps(profile, rel):
     """The frame rate the profile states for this file"""
-    target = profile.get(profile_key(rel)).get("fps")
+    target = profile.get(profile_key(rel))
     assert target is not None
     return float(target)
 
-def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
+def patch_files(src, dst, profile, *, rules=(), dry_run=False, on_file=None):
     """Patch the given files (paths relative to src), writing changed ones to dst with the
     same relative path. profile maps each file to its target frame rate; files that are not in
     it, or that are already at/above that rate, are not written.
 
+    rules are FpsRules or (class name regex, fps) pairs, applied to every file.
+
     on_file(rel, status, old_fps, new_fps, note) is called as soon as each file's result is
     known; status is "patched", "kept" or "failed".
 
-    Returns (patched, kept, failed): lists of relative paths, except that failed holds
-    (rel, message) tuples. Raises NotADirectoryError / ValueError for invalid directories.
+    Returns (patched, kept, failed, rule_problems): lists of relative paths, except that failed
+    holds (rel, message) tuples, and rule_problems holds messages about explicit rules that were
+    not followed (including rules that matched nothing at all). Files are still patched as well as
+    possible when a rule can't be followed, so the caller must make rule_problems very visible.
+    Raises NotADirectoryError / ValueError for invalid directories.
     """
     src, dst = Path(src).resolve(), Path(dst).resolve()
     if not src.is_dir():
@@ -46,7 +57,9 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
 
     resolve_dev_target(profile)
 
-    patched, kept, failed = [], [], []
+    rules = make_rules(rules)
+    patched, kept, failed, rule_problems = [], [], [], []
+    matched_rules = set()   # indices into rules
 
     def report(rel, status, old=None, new=None, note=""):
         if on_file:
@@ -54,18 +67,27 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
 
     for rel in map(Path, profile.keys()):
         orig = (src / rel).read_bytes()
-        data = bytearray(orig)
+        redswf_bytes = bytearray(orig)
+
+        # TODO: used by the temp redswf code which need refactoring to fit into the project
+        orig_redswf_bytes = redswf_bytes[:]
+
         try:
             target_fps = file_target_fps(profile, rel)
             assert target_fps >= 1 and target_fps <= 256
             print(f"********** START PROCESSING {rel} ************")
-            result = process(data, profile.get(profile_key(rel)), dev_make_body_hook(rel))
+
+            # TODO
+            settings = PatchSettings(target_fps, rules)
+            result, new_swf_bytes = process(redswf_bytes, settings, dev_make_body_hook(rel))
         except ValueError as e:
             failed.append((rel, str(e)))
             report(rel, "failed", note=str(e))
             continue
 
-        old_fps, new_fps, note = result
+        old_fps, new_fps, note, rescale_report = result
+        rule_problems += [f"{rel}: {format_unmet_rule(unmet)}" for unmet in rescale_report["unmet_rules"]]
+        matched_rules.update(i for i, rule in enumerate(rescale_report.get("rules", [])) if rule["matched"])
         if new_fps is None:
             kept.append(rel)
             report(rel, "kept", old_fps, note=note)
@@ -74,100 +96,105 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
         if not dry_run:
             out = dst / rel
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(data)
+
+            # TODO: replace when extent-supporting patcher is fully integrated
+            print("*** Got to container work ***")
+
+            print(new_swf_bytes[:32])
+
+
+
+
+# TODO: re-enable validate!
+
+            out_data = replace_swf(orig_redswf_bytes, new_swf_bytes)
+            out.write_bytes(out_data)
+
         patched.append({"path": rel, "fps": new_fps})
         report(rel, "patched", old_fps, new_fps, note)
-        print(f"********** DONE PROCESSING {rel} ************")
+        print(f"********** DONE PROCESSING {rel} ************\n")
 
-    return patched, kept, failed
+    rule_problems += [f"{rule.description}: matched no sprite in any of the patched files"
+                      for i, rule in enumerate(rules) if i not in matched_rules]
+    return patched, kept, failed, rule_problems
 
-def process(data, settings, rel):
+def process(redswf_bytes, settings, rel):
     """Find the SWF payload embedded in data and set its frame rate. Patches data in place.
 
-    Returns (old_fps, new_fps, note). Raises ValueError if there isn't exactly one valid SWF.
+    Returns (old_fps, new_fps, note, report). Raises ValueError if there isn't exactly one valid SWF.
     """
     result = None
+    new_swf_bytes = None
     for sig in SWF_SIGS:
-        pos = data.find(sig)
+        pos = redswf_bytes.find(sig)
         while pos != -1:
-            payload = read_and_patch_swf(data, pos, sig, settings, rel)
+            print(f"read_and_patch at pos {pos}: {sig}")
+            payload = read_and_patch_swf(redswf_bytes, pos, sig, settings, rel)
             if payload is None:
-                pos = data.find(sig, pos + len(sig))
+                pos = redswf_bytes.find(sig, pos + len(sig))
                 continue
 
-            end, found = payload
+            end, found, returned_bytes = payload
             if found is not None:
                 if result is not None:
                     raise ValueError("found more than 1 payload (expected 1)")
                 result = found
-            pos = data.find(sig, end)
+                new_swf_bytes = returned_bytes
+            pos = redswf_bytes.find(sig, end)
 
     if result is None:
-        raise ValueError("found 0 payloads (expected 1)")
-    return result
+        #raise ValueError("found 0 payloads (expected 1)")
 
-def read_and_patch_swf(data, pos, sig, settings, rel):
+        # TEMP
+        from ..common import fail
+        fail("0 payloads found in process")
+    return result, new_swf_bytes
+
+def read_and_patch_swf(redswf_bytes, pos, sig, settings, rel):
     """Check for an SWF header at data[pos] and patch the payload if found."""
-    if pos + SWF_HEADER_SIZE > len(data):
+    if pos + SWF_HEADER_SIZE > len(redswf_bytes):
         return None
-    if not data[pos + 3] in valid_versions:
+    if not redswf_bytes[pos + 3] in valid_versions:
         return None
 
     if sig not in SWF_COMPRESSED_SIGS:
         raise ValueError("SWF was not compressed: please open a GitHub issue that uncompressed SWFs needs to be supported!")
 
-    return patch_fps(data, pos, settings, rel)
+    return patch_fps(redswf_bytes, pos, settings, rel)
 
-def patch_fps(data, pos, settings, body_hook=None):
-    """Set the frame rate of the compressed SWF at data[pos] and freeze focus animations.
-
-    The freeze always runs, even when the fps already matches. This likely won't matter, but
-    it gives UX consistency for files where the fps isn't changed.
+def patch_fps(redswf_bytes, pos, settings, body_hook=None):
+    """Set the frame rate of the compressed SWF at redswf_bytes[pos] and interpolate animations.
 
     Returns:
     None if there is no valid SWF stream at pos
     (stream_end, found) where found is None if the body doesn't look like an SWF, or
-    (old_fps, new_fps_or_None, note).
+    (old_fps, new_fps_or_None, note, report), report being the rescale report dict.
     new_fps is None only when nothing at all changed;
     if just the freeze changed something, new_fps equals old_fps, so the file still
     counts as patched and gets written."""
 
     def patch(body):
-        before = bytes(body)
+        """Helper that is called on the decompressed SWF bytes, and patches them in place"""
+        result = rescale_body(body, settings.target_fps, rules=settings.rules, exclude=("InputFeedbackButton",))
+        print(f"\n{report_to_text(result.report)}\n")
+        if result.new_fps is None:
+            return False, (result.old_fps, None, None, result.report)
+        body[:] = result.body
+        return True, (result.old_fps, result.new_fps, None, result.report)
 
-        patched = patch_fps_in_body(body, settings["fps"])
-        if patched is None:
-            return None
-        old_fps, applied_fps = patched
+    out = swf_patch(redswf_bytes, pos, patch, body_hook)
 
-        if settings["freeze"]:
-            # Freeze focus animations etc.
-            # Do this for all files, for UX consistency. (Won't actually matter unless we release a lower fps version, though.)
-            # Excluded files don't contain the relevant animations (such as Gwent, deckbuilder).
-            old_len = len(body)
-            freeze_focus_animations(body)
-            if len(body) > old_len:
-                raise AssertionError("Body got BIGGER from patch")
-        else:
-            print("Skipping freeze for this file")
-
-        if body == before:
-            return False, (old_fps, None, "nothing to patch")
-
-        if old_fps == applied_fps:
-            return True, (old_fps, applied_fps, "fps already matches; freeze applied")
-        return True, (old_fps, applied_fps, None)
-
-    out = swf_patch(data, pos, patch, body_hook)
     if out is None:
+        print("!!! out is None")
         return None
-    stream_end, result, padding = out
+    stream_end, result, padding, new_swf_bytes = out
     if result is None:
-        return stream_end, None
-    old_fps, applied_fps, note = result
+        print("!!! result is None")
+        return stream_end, None, None
+    old_fps, applied_fps, note, report = result
     if padding is not None:
         note = f"{note}, {padding} pad bytes" if note else f"{padding} pad bytes"
-    return stream_end, (old_fps, applied_fps, note)
+    return stream_end, (old_fps, applied_fps, note, report), new_swf_bytes
 
 def patch_fps_in_body(body, new_fps):
     """The method that actually patches the framerate bytes.

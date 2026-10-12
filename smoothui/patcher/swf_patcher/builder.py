@@ -1,0 +1,65 @@
+"""Building the new SWF body from the original and a plan"""
+
+from __future__ import annotations
+
+import struct
+
+from ...swf import FPS_FIXED_POINT_SCALE, MAX_RAW_FPS
+from ...swf_tags import Tag, TagCode, build_sprite, serialize_tags
+from .abc_bytecode import assemble
+from .abc_file import serialize_abc
+from .interpolation import TweenStep, interpolate
+from .movie import RescaleError, Sprite, SwfMovie
+from .place_object import build_move
+from .planner import RescalePlan
+from .retiming import Retiming
+
+SHOW_FRAME = Tag(TagCode.SHOW_FRAME, b"")
+
+
+def raw_fps(fps: float) -> int:
+    raw = round(fps * FPS_FIXED_POINT_SCALE)
+    if not 1 <= raw <= MAX_RAW_FPS:
+        raise RescaleError(f"fps {fps:.2f} out of range (max 255.99)")
+    return raw
+
+
+def stretch_sprite(sprite: Sprite, tag: Tag, retiming: Retiming, tweens: dict[int, list[TweenStep]]) -> Tag:
+    """Hold every frame of the sprite for retiming.hold(frame) frames. The extra frames carry
+    interpolated moves of the tweened objects (see interpolation.find_tweens), and are otherwise empty."""
+    tags, frame = [], 0
+    for sub in sprite.tags:
+        tags.append(sub)
+        if sub.code != TagCode.SHOW_FRAME:
+            continue
+        hold = retiming.hold(frame)
+        steps = sorted(tweens.get(frame, []), key=lambda step: step.depth)
+        for tick in range(1, hold):
+            for step in steps:
+                tags.append(build_move(step.depth, *interpolate(step.start, step.end, tick / hold)))
+            tags.append(SHOW_FRAME)
+        frame += 1
+    return build_sprite(sprite.character_id, retiming.tick(frame), tags, long_header=tag.long_header)
+
+
+def build_body(movie: SwfMovie, plan: RescalePlan) -> bytes:
+    tags = list(movie.tags)
+
+    for character_id, retiming in plan.sprite_retiming.items():
+        sprite = movie.sprites[character_id]
+        tweens = plan.tweens.get(character_id)
+        tags[sprite.tag_index] = stretch_sprite(sprite, tags[sprite.tag_index], retiming,
+                                                tweens.steps if tweens else {})
+
+    if plan.code_edits:
+        new_bodies = {}
+        for method, edits in plan.code_edits.items():
+            body = movie.abc.bodies[method]
+            new_bodies[method] = assemble(body.code, movie.code[method], edits, body.exceptions)
+        abc_bytes = serialize_abc(movie.abc, new_bodies, plan.new_doubles)
+        old = tags[movie.abc_tag_index]
+        tags[movie.abc_tag_index] = Tag(TagCode.DO_ABC, movie.abc_prefix + abc_bytes, old.long_header)
+
+    header = bytearray(movie.body[:movie.first_tag_offset])
+    struct.pack_into("<H", header, movie.fps_offset, raw_fps(plan.target_fps))
+    return bytes(header) + serialize_tags(tags)
