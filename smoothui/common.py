@@ -14,7 +14,7 @@ def fail(msg):
 
 def print_step_header(msg):
     eq = "=" * 10
-    print(f"{Back.BLACK}{Fore.YELLOW}{eq} {msg} {eq}{Style.RESET_ALL}", flush=True)
+    print(f"{Back.BLACK}{Fore.GREEN}{eq} {msg} {eq}{Style.RESET_ALL}", flush=True)
 
 def print_substep_header(msg):
     print(f"\n{Fore.CYAN}--- {msg} ---{Style.RESET_ALL}", flush=True)
