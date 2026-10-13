@@ -25,6 +25,11 @@ from .place_object import (
 
 MAX_RATIO = 0xFFFF
 
+# Changes between two frames smaller than this (see change_magnitude; roughly pixels) are not
+# interpolated: the in-between states would differ by less than can be seen, so they would only add
+# bytes. Such changes are counted as "subpixel" in TweenStats.
+MIN_MOTION = 0.5
+
 # A step more than this many times the median step of its run (and over OUTLIER_MIN_MOTION) is a
 # jump, not part of the tween
 OUTLIER_FACTOR = 8.0
@@ -124,7 +129,7 @@ def _rotation(matrix: Matrix) -> float:
     return math.atan2(matrix.rotate_skew0 / FIXED_ONE, matrix.scale_x / FIXED_ONE)
 
 
-def find_tweens(snapshots: list[Snapshot], min_motion: float) -> tuple[dict[int, list[TweenStep]], TweenStats]:
+def find_tweens(snapshots: list[Snapshot]) -> tuple[dict[int, list[TweenStep]], TweenStats]:
     """Find the frame transitions to interpolate.
 
     Returns ({k: [steps for the transition from frame k to k + 1]}, stats)."""
@@ -155,7 +160,7 @@ def find_tweens(snapshots: list[Snapshot], min_motion: float) -> tuple[dict[int,
                 if median > 0 and magnitudes[i] > OUTLIER_FACTOR * median and magnitudes[i] > OUTLIER_MIN_MOTION:
                     stats.outlier += 1
                     continue
-                if magnitudes[i] < min_motion:
+                if magnitudes[i] < MIN_MOTION:
                     stats.subpixel += 1
                     continue
                 a, b = snapshots[k - 1][depth], snapshots[k][depth]

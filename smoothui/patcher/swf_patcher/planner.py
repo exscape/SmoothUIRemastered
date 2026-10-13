@@ -225,8 +225,6 @@ class Planner:
             reasons = self.reasons.get(sprite.character_id, [])
             if reasons and sprite.labels and all(reason.startswith("computed ") for reason in reasons):
                 self.plan.probably_safe[sprite.character_id] = sorted(sprite.labels.values())
-                if self.options.include_likely:
-                    self.reasons[sprite.character_id] = []
 
     def _apply_fps_rules(self):
         """A rule at the file's original frame rate is allowed: the sprite is then "stretched" by a
@@ -376,16 +374,15 @@ class Planner:
                 continue
             name = short_owner(handler.owner)
             patched = False
-            if self.options.scale_handlers:
-                for push_index, step, prop in handler.increments:
-                    if prop not in ANIMATED_PROPERTIES:
-                        continue
-                    new_step = step / float(ratio) if isinstance(step, float) \
-                        else float(Fraction(step).limit_denominator(10**6) / ratio)
-                    plan.code_edits[handler.method][push_index] = PushDouble(double_pool_size + len(plan.new_doubles))
-                    plan.new_doubles.append(new_step)
-                    plan.increments.append(IncrementPatch(name, prop, float(step), new_step))
-                    patched = True
+            for push_index, step, prop in handler.increments:
+                if prop not in ANIMATED_PROPERTIES:
+                    continue
+                new_step = step / float(ratio) if isinstance(step, float) \
+                    else float(Fraction(step).limit_denominator(10**6) / ratio)
+                plan.code_edits[handler.method][push_index] = PushDouble(double_pool_size + len(plan.new_doubles))
+                plan.new_doubles.append(new_step)
+                plan.increments.append(IncrementPatch(name, prop, float(step), new_step))
+                patched = True
             if not patched:
                 plan.warnings.append(f"persistent ENTER_FRAME handler {name} runs once per frame "
                                      f"(now {float(ratio):.2f}x as often); check it for frame counting")
@@ -417,8 +414,7 @@ class Planner:
         for character_id, retiming in sorted(plan.sprite_retiming.items()):
             if retiming.ratio == 1:
                 continue    # no frames in between to interpolate
-            steps, stats = find_tweens(simulate_timeline(self.movie.sprites[character_id].tags),
-                                       self.options.min_motion)
+            steps, stats = find_tweens(simulate_timeline(self.movie.sprites[character_id].tags))
             if not steps:
                 continue
             added_bytes, motion = 0, 0.0

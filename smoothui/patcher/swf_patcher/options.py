@@ -48,13 +48,6 @@ class RescaleOptions:
     # these / stretch these despite the automatic exclusions
     exclude: tuple = ()
     include: tuple = ()
-    # Also stretch the clips that are only excluded because an untyped value is passed to
-    # gotoAndStop/gotoAndPlay, but whose labels suggest that the value is a label name
-    include_likely: bool = False
-    # Rescale per-frame `obj.prop += K` in persistent ENTER_FRAME handlers
-    scale_handlers: bool = True
-    # Don't interpolate steps smaller than this (in roughly pixel-sized units)
-    min_motion: float = 0.5
 
     def __post_init__(self):
         object.__setattr__(self, "rules", make_rules(self.rules))

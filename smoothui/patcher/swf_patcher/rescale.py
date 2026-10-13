@@ -34,8 +34,7 @@ class RescaleResult:
         return self.report["unmet_rules"]
 
 
-def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclude=(), include_likely=False,
-                 scale_handlers=True, min_motion=0.5) -> RescaleResult:
+def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclude=()) -> RescaleResult:
     """Raise the frame rate of an SWF to target_fps, retiming its animations to keep their speed.
 
     body is the decompressed SWF after the 8-byte signature/version/length header. The new body
@@ -50,8 +49,7 @@ def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclud
     raise; they are listed in result.unmet_rules, which callers must check.
     Raises RescaleError if the file is not supported, or if the result fails verification.
     """
-    options = RescaleOptions(target_fps, tuple(rules), tuple(exclude), tuple(include), include_likely,
-                             scale_handlers, min_motion)
+    options = RescaleOptions(target_fps, tuple(rules), tuple(exclude), tuple(include))
     movie = SwfMovie(body)
     if target_fps <= movie.fps:
         return RescaleResult(None, unchanged_report(movie.fps, options))

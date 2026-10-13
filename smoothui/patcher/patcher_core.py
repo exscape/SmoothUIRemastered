@@ -185,7 +185,7 @@ def patch_fps(redswf_bytes, pos, settings, body_hook=None):
 
     def patch(body):
         """Helper that is called on the decompressed SWF bytes, and patches them in place"""
-        result = rescale_body(body, settings.target_fps, rules=settings.rules, exclude=("InputFeedbackButton",))
+        result = rescale_body(body, settings.target_fps, rules=settings.rules)
         if result.new_fps is None:
             return False, (result.old_fps, None, None, result.report)
         body[:] = result.body

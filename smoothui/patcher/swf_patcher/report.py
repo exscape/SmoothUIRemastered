@@ -10,6 +10,7 @@ so reports of two versions of a file can be matched up even if ids shift.
       "target_fps": 120.0,
       "ratio": "60/11", "holds": [5, 6],    # each original frame lasts 5 or 6 new frames
       "rules": [{"pattern": "...", "fps": 80.0, "ratio": "40/11", "holds": [3, 4], "matched": [338]}],
+      "include": ["..."], "exclude": ["..."],   # as passed to rescale_body: sprite ids or class regexes
       # Explicit rules (fps rules, include) that were NOT followed; should be empty
       "unmet_rules": [{"rule": "fps rule '...' (80 fps)", "id": 338, "class": "...", "problem": "..."}],
       "patched": {"frame_scripts": 88, "gotos": 1, "increments": 0},
@@ -161,7 +162,7 @@ def report_to_text(report: dict) -> str:
     if probably_safe:
         out("")
         out("PROBABLY SAFE TO STRETCH -- excluded only because an untyped value is passed to gotoAndStop/Play,")
-        out("but their labels suggest the value is a label name.  Opt in with include_likely, or include them:")
+        out("but their labels suggest the value is a label name.  Include them explicitly to stretch them:")
         for s in probably_safe:
             out(f"  {s['id']:>4}  {s['class'] or '-':<45} labels: {', '.join(s['probably_safe_labels'])}")
 
