@@ -113,7 +113,7 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
     """on_file callback for patcher_core.patch_files: the result, and anything to check by hand.
     Bind is_reviewed(rel, warning key) (see reviewed_warnings.py) to hide warnings already checked."""
     if status == "failed":
-        print(f"{Fore.RED}SKIP {rel}: {error}{Style.RESET_ALL}", file=sys.stderr, flush=True)
+        print(f"{Style.BRIGHT}{Fore.RED}SKIP {rel}: {error}{Style.RESET_ALL}", file=sys.stderr, flush=True)
         return
     if status == "kept":
         print(f"KEEP {rel}: {report['old_fps']:g} fps, already at or above the target "
@@ -122,7 +122,7 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
 
     print(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps", flush=True)
     if report["unmet_rules"]:
-        print(f"{Fore.RED}  {len(report['unmet_rules'])} explicit rule(s) not followed "
+        print(f"{Style.BRIGHT}{Fore.RED}  {len(report['unmet_rules'])} explicit rule(s) not followed "
               f"(listed at the end){Style.RESET_ALL}", flush=True)
     warnings = [warning for warning in report["warnings"]
                 if not (is_reviewed and is_reviewed(rel, warning["key"]))]
@@ -143,7 +143,7 @@ def print_rule_issues(issues):
         print(f"\n{Back.RED}{Fore.WHITE} {len(issues.errors)} EXPLICIT RULE(S) NOT FOLLOWED: "
               f"the result is NOT patched entirely as configured {Style.RESET_ALL}", flush=True)
         for error in issues.errors:
-            print(f"{Fore.RED}  {error}{Style.RESET_ALL}", flush=True)
+            print(f"{Style.BRIGHT}{Fore.RED}  {error}{Style.RESET_ALL}", flush=True)
         print(flush=True)
 
 def enforce_strict(failed, kept, rule_errors, unreviewed_warnings=()):

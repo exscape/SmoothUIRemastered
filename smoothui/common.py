@@ -9,15 +9,27 @@ from colorama import Back, Fore, Style
 
 
 def fail(msg):
-    print(f"ERROR: {msg}", file=sys.stderr, flush=True)
+    print(f"{Style.BRIGHT}{Fore.RED} ERROR: {msg}{Style.RESET_ALL}", file=sys.stderr, flush=True)
     sys.exit(1)
 
 def print_step_header(msg):
-    eq = "=" * 10
-    print(f"{Back.BLACK}{Fore.GREEN}{eq} {msg} {eq}{Style.RESET_ALL}", flush=True)
+    _print_header(msg, f"{Back.BLACK}{Fore.GREEN}", "=", 130)
 
 def print_substep_header(msg):
-    print(f"\n{Fore.CYAN}--- {msg} ---{Style.RESET_ALL}", flush=True)
+    _print_header(msg, f"{Fore.CYAN}", "-", 90, align_start=True)
+
+def _print_header(msg, color, symbol, width, align_start=False):
+    if align_start:
+        NUM_SYMBOLS = max(width - 1 - len(msg), 5)
+        symbols = symbol * NUM_SYMBOLS
+        text = f"{msg} {symbols}"
+    else:
+        NUM_SYMBOLS = max(5, (width - len(msg) - 2)// 2)
+        symbols = symbol * NUM_SYMBOLS
+        text = f"{symbols} {msg} {symbols}"
+
+    if len(text) % 2 != 0: text += symbol
+    print(f"\n{color}{text}{Style.RESET_ALL}", flush=True)
 
 WIN_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
