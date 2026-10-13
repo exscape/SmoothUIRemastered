@@ -169,7 +169,7 @@ def enforce_strict(failed, kept, rule_errors, unreviewed_warnings=()):
     if unreviewed_warnings:
         problems.append(f"{len(unreviewed_warnings)} unreviewed warning(s)")
     if problems:
-        fail("--strict: " + "; ".join(problems) + " (see above)")
+        fail("--strict: " + "; ".join(problems) + " (see above; use --no-strict to build anyway)")
 
 def resolve_zip_path(zip_arg, default_name):
     """Output .zip for a build: bare name goes in the repo folder, .zip suffix added"""

@@ -51,9 +51,10 @@ def parse_args():
                     help="install the mod into the game folder on success")
     ap.add_argument("--launch", action="store_true",
                     help="launch the game after build and install success")
-    ap.add_argument("--strict", action="store_true",
+    ap.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True,
                     help="fail unless every file is patched exactly as configured: no file failed or left "
-                         "unchanged, and every explicit rule followed; intended for automation")
+                         "unchanged, every explicit rule followed, and no unreviewed warnings (default: on; "
+                         "use --no-strict to build anyway, e.g. while experimenting)")
     ap.add_argument("--accept-warnings", action="store_true",
                     help="mark all current patcher warnings as reviewed (adds them to config/reviewed_warnings.txt); "
                          "only after checking them by hand")

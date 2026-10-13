@@ -80,9 +80,10 @@ def parse_args(argv=None):
                     help="install the new mod into the game folder on success")
     ap.add_argument("--launch", action="store_true",
                     help="launch the game after build and install success")
-    ap.add_argument("--strict", action="store_true",
+    ap.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True,
                     help="fail unless every file is patched exactly as configured: no file failed or left "
-                         "unchanged, and every explicit rule followed; intended for automation")
+                         "unchanged, every explicit rule followed, and no unreviewed warnings (default: on; "
+                         "use --no-strict to build anyway, e.g. while experimenting)")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
 
