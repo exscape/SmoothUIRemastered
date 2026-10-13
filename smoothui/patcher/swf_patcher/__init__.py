@@ -34,9 +34,9 @@ Modules, roughly in the order the work happens:
 """
 
 from .movie import RescaleError
-from .options import FpsRule, make_rules
-from .report import format_unmet_rule, report_to_text
+from .options import FpsRule, SpriteRef, make_rules, parse_sprite_pattern
+from .report import format_unmet_rule, report_settings, report_to_text
 from .rescale import RescaleResult, rescale_body
 
-__all__ = ["FpsRule", "RescaleError", "RescaleResult", "format_unmet_rule", "make_rules", "report_to_text",
-           "rescale_body"]
+__all__ = ["FpsRule", "RescaleError", "RescaleResult", "SpriteRef", "format_unmet_rule", "make_rules",
+           "parse_sprite_pattern", "report_settings", "report_to_text", "rescale_body"]

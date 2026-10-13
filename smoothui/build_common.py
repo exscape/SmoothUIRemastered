@@ -116,36 +116,6 @@ def config_paths(config):
     """The config's paths, converted to Path objects usable by this Python"""
     return {k: to_native(v) for k, v in config["paths"].items()}
 
-def load_profile(profile_path):
-    """Read the profile list: files to patch mapped to their target frame rate"""
-    if profile_path is None: profile_path = DEFAULT_PROFILE
-    elif isinstance(profile_path, str): profile_path = Path(profile_path)
-    if not profile_path.is_file():
-        fail(f"profile file not found: {profile_path}")
-
-    profile = {}
-    current_fps = 60 # Default fallback FPS if no section header is set
-
-    for line in profile_path.read_text(encoding="utf-8").splitlines():
-        line = line.split("#", 1)[0].strip()
-        if not line:
-            continue
-
-        # Parse section headers, e.g. [60], [120]
-        if line.startswith("[") and line.endswith("]"):
-            section_val = line[1:-1].strip()
-            try:
-                current_fps = int(section_val)
-            except ValueError:
-                fail(f"Invalid frame rate section '{line}' in {profile_path}")
-            continue
-
-        if entry := line.replace("\\", "/").lower().strip("/"):
-            profile[entry] = current_fps
-
-    print(f"Loaded {len(profile)} entries from {profile_path}")
-    return profile
-
 def print_file_result(rel, status, old_fps, new_fps, note):
     """on_file callback for patcher.patch_files"""
     if status == "patched":
@@ -155,26 +125,30 @@ def print_file_result(rel, status, old_fps, new_fps, note):
     else:
         print(f"SKIP {rel}: {note}", file=sys.stderr, flush=True)
 
-def print_rule_problems(rule_problems):
-    """Explicit patching rules that could not be followed (see patcher.patch_files). The build
-    still finishes, so these must be impossible to miss."""
-    if not rule_problems:
-        return
-    print(f"\n{Back.RED}{Fore.WHITE} {len(rule_problems)} EXPLICIT RULE(S) NOT FOLLOWED: "
-          f"the result is NOT patched entirely as configured {Style.RESET_ALL}", flush=True)
-    for problem in rule_problems:
-        print(f"{Fore.RED}  {problem}{Style.RESET_ALL}", flush=True)
-    print(flush=True)
+def print_rule_issues(issues):
+    """Print patcher_core.RuleIssues. The build still finishes, so these must be impossible to miss."""
+    if issues.warnings:
+        print(f"\n{Back.YELLOW}{Fore.BLACK} {len(issues.warnings)} INHERITED SETTING(S) NO LONGER APPLY: "
+              f"the other mod changed what they matched {Style.RESET_ALL}", flush=True)
+        for warning in issues.warnings:
+            print(f"{Fore.YELLOW}  {warning}{Style.RESET_ALL}", flush=True)
+        print(flush=True)
+    if issues.errors:
+        print(f"\n{Back.RED}{Fore.WHITE} {len(issues.errors)} EXPLICIT RULE(S) NOT FOLLOWED: "
+              f"the result is NOT patched entirely as configured {Style.RESET_ALL}", flush=True)
+        for error in issues.errors:
+            print(f"{Fore.RED}  {error}{Style.RESET_ALL}", flush=True)
+        print(flush=True)
 
-def enforce_strict(failed, kept, rule_problems):
+def enforce_strict(failed, kept, rule_errors):
     """--strict: fail unless every file was patched, exactly as configured"""
     problems = []
     if failed:
         problems.append(f"{len(failed)} file(s) could not be patched")
     if kept:
         problems.append(f"{len(kept)} file(s) left unchanged, as they are already at or above their target frame rate")
-    if rule_problems:
-        problems.append(f"{len(rule_problems)} explicit rule(s) not followed")
+    if rule_errors:
+        problems.append(f"{len(rule_errors)} explicit rule(s) not followed")
     if problems:
         fail("--strict: " + "; ".join(problems) + " (see above)")
 

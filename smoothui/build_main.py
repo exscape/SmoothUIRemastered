@@ -17,12 +17,11 @@ from .build_common import (
     finish_work_dir,
     install_and_launch,
     load_config,
-    load_profile,
     manifest_path,
     patcher_commit,
     pack_content,
     print_file_result,
-    print_rule_problems,
+    print_rule_issues,
     print_step_header,
     resolve_zip_path,
     sha256_file,
@@ -31,6 +30,7 @@ from .build_common import (
 )
 from .patcher import dev_mode, patcher_core
 from .patcher.redswf import swf_sha256
+from .profile import load_profile
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 
@@ -43,7 +43,8 @@ def parse_args():
     ap.add_argument("--zip", default=None,
                     help="override output .zip name or path")
     ap.add_argument("--profile", default=None,
-                    help="the profile to use; a profile specifies which files to patch, and to which framerate")
+                    help="the profile to use (default: config/profile_default.txt); it specifies which files "
+                         "to patch, and how")
     ap.add_argument("--install", action="store_true",
                     help="install the mod into the game folder on success")
     ap.add_argument("--launch", action="store_true",
@@ -85,7 +86,7 @@ def main():
 
     config = load_config()
     paths = config_paths(config)
-    profile = load_profile(args.profile)
+    profile, shared_settings = load_profile(args.profile)
 
     mod_version = config['versions']['created_mod_version']
     if not mod_version or not mod_version.startswith("v"):
@@ -127,10 +128,10 @@ def main():
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, "
           f"{len(failed)} skipped.")
-    rule_problems = patcher_core.find_rule_problems(patched, kept)
-    print_rule_problems(rule_problems)
+    rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings)
+    print_rule_issues(rule_issues)
     if args.strict:
-        enforce_strict(failed, kept, rule_problems)
+        enforce_strict(failed, kept, rule_issues.errors)
 
     if args.dry_run:
         print_step_header("DRY RUN: exiting")
@@ -182,4 +183,4 @@ def main():
     finish_work_dir(work_dir, args.keep_work)
 
     # Repeated, as the packing output has likely scrolled it away
-    print_rule_problems(rule_problems)
+    print_rule_issues(rule_issues)

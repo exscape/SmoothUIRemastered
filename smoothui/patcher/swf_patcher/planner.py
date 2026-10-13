@@ -30,7 +30,7 @@ from .interpolation import (
     simulate_timeline,
 )
 from .movie import SwfMovie
-from .options import RescaleOptions
+from .options import RescaleOptions, SpriteRef
 from .place_object import build_move
 from .retiming import Retiming, fps_ratio
 
@@ -65,7 +65,7 @@ class SpriteTweens:
 @dataclass
 class UnmetRule:
     """An explicit rule that was not followed for a sprite"""
-    rule: str           # e.g. "fps rule 'pattern' (80 fps)"
+    rule: str           # as written in a profile, e.g. "retime 80: pattern" or "include: sprite 338"
     character_id: int
     problem: str
 
@@ -92,9 +92,11 @@ class RescalePlan:
     increments: list[IncrementPatch] = field(default_factory=list)
     tweens: dict[int, SpriteTweens] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
-    # Character ids matched by each of options.rules (in the same order)
+    # Character ids matched by each of options.rules / include / exclude (in the same order)
     rule_matches: list[list[int]] = field(default_factory=list)
-    # Explicit rules (fps rules, include) that could not be followed, see UnmetRule
+    include_matches: list[list[int]] = field(default_factory=list)
+    exclude_matches: list[list[int]] = field(default_factory=list)
+    # Explicit rules (fps rules, include, exclude) that could not be followed, see UnmetRule
     unmet_rules: list[UnmetRule] = field(default_factory=list)
 
     @property
@@ -115,6 +117,7 @@ class Planner:
         self.plan = RescalePlan(movie.fps, options.target_fps,
                                 Retiming(fps_ratio(movie.fps, options.target_fps)))
         self.reasons = self.plan.reasons
+        self.mismatched_refs = set()    # SpriteRefs whose sprite doesn't match what they expect
 
     def make_plan(self) -> RescalePlan:
         frame_scripts = self.analysis.find_frame_scripts()
@@ -124,6 +127,7 @@ class Planner:
         self._check_selectors(frame_scripts)
         self._check_goto_calls(literal_gotos, unresolved_gotos)
         frame_property_uses = self._check_frame_property_uses()
+        self._check_sprite_refs()
         self._apply_include_exclude()
         self._find_probably_safe()
         self._apply_fps_rules()
@@ -202,20 +206,38 @@ class Planner:
                 self.reasons[character_id].append(f"{use.prop} read in {short_owner(use.owner)}")
         return uses
 
-    def _apply_include_exclude(self):
-        for character_id in self.movie.sprites:
-            if self._matches(self.options.exclude, character_id):
-                self.reasons[character_id].append("excluded by the exclude list")
-        for character_id in self.movie.sprites:
-            if self._matches(self.options.include, character_id):
-                # Overrides everything except an explicit exclude, and code that can't be patched
-                self.reasons[character_id] = [reason for reason in self.reasons[character_id]
-                                              if reason.startswith("excluded by") or "unrecognised" in reason]
+    def _check_sprite_refs(self):
+        """SpriteRefs with an expected class and frame count that the sprite doesn't match are not applied"""
+        describe = lambda class_and_frames: f"{class_and_frames[0] or '(no class)'} with {class_and_frames[1]} frames"
+        for kind, tokens in (("include", self.options.include), ("exclude", self.options.exclude)):
+            for ref in tokens:
+                if not isinstance(ref, SpriteRef) or ref.expected is None:
+                    continue
+                sprite = self.movie.sprites.get(ref.id)
+                found = (self.movie.class_of_sprite.get(ref.id), sprite.frame_count) if sprite else None
+                if found != ref.expected:
+                    self.mismatched_refs.add(ref)
+                    self._unmet(f"{kind}: {ref}", ref.id,
+                                f"expected {describe(ref.expected)}, found "
+                                f"{describe(found) if found else 'no such sprite'}; not applied")
 
-    def _matches(self, tokens, character_id) -> bool:
-        class_name = self.movie.class_name(character_id)
-        return any(int(token) == character_id if token.isdigit() else re.search(token, class_name)
-                   for token in tokens)
+    def _apply_include_exclude(self):
+        plan = self.plan
+        plan.exclude_matches = [self._matching_sprites(token) for token in self.options.exclude]
+        plan.include_matches = [self._matching_sprites(token) for token in self.options.include]
+        for character_id in set().union(*plan.exclude_matches):
+            self.reasons[character_id].append("excluded by the exclude list")
+        for character_id in set().union(*plan.include_matches):
+            # Overrides everything except an explicit exclude, and code that can't be patched
+            self.reasons[character_id] = [reason for reason in self.reasons[character_id]
+                                          if reason.startswith("excluded by") or "unrecognised" in reason]
+
+    def _matching_sprites(self, token) -> list[int]:
+        """The ids of the sprites an include/exclude token (a SpriteRef or class name regex) matches"""
+        if isinstance(token, SpriteRef):
+            return [token.id] if token.id in self.movie.sprites and token not in self.mismatched_refs else []
+        return [character_id for character_id in sorted(self.movie.sprites)
+                if (class_name := self.movie.class_name(character_id)) and re.search(token, class_name)]
 
     def _find_probably_safe(self):
         """Clips excluded only because an untyped value is passed to gotoAndStop/Play, yet whose
@@ -235,7 +257,7 @@ class Planner:
             rule = self.options.fps_rule_for(self.movie.class_name(sprite.character_id))
             if rule and fps_ratio(plan.source_fps, rule.fps) < 1:
                 self.reasons[sprite.character_id].append(
-                    f"fps rule '{rule.pattern.pattern}' asks for {rule.fps:g} fps, below the original "
+                    f"'{rule.description}' asks for {rule.fps:g} fps, below the original "
                     f"{plan.source_fps:g} fps (that would need dropping frames, which is not supported)")
             plan.sprite_fps[sprite.character_id] = rule.fps if rule else plan.target_fps
 
@@ -301,7 +323,7 @@ class Planner:
         self.plan.unmet_rules.append(UnmetRule(rule, character_id, problem))
 
     def _check_explicit_rules(self):
-        """Every sprite an fps rule or include matches must end up as the rule says"""
+        """Every sprite a retime rule or include matches must end up as the rule says"""
         plan = self.plan
         plan.rule_matches = [[] for _ in self.options.rules]
         for character_id, sprite in sorted(self.movie.sprites.items()):
@@ -312,9 +334,13 @@ class Planner:
             if matching:
                 self._check_fps_rule(sprite, [self.options.rules[i] for i in matching])
 
-            include = next((token for token in self.options.include if self._matches([token], character_id)), None)
-            if include is not None and sprite.frame_count > 1 and character_id not in plan.sprite_retiming:
-                self._unmet(f"include '{include}'", character_id,
+        included = {}   # character id -> the first include token that matches it
+        for token, ids in zip(self.options.include, plan.include_matches):
+            for character_id in ids:
+                included.setdefault(character_id, token)
+        for character_id, token in sorted(included.items()):
+            if self.movie.sprites[character_id].frame_count > 1 and character_id not in plan.sprite_retiming:
+                self._unmet(f"include: {token}", character_id,
                             "not stretched: " + "; ".join(dict.fromkeys(self.reasons[character_id])))
 
     def _check_fps_rule(self, sprite, matching_rules):

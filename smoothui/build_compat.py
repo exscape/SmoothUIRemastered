@@ -4,7 +4,8 @@
 # that conflict with Smooth UI Remastered, and build a compatibility patch containing only
 # those patched files.
 #
-# The files to patch and their target frame rates come from the manifest (see manifests/), selected by --smooth-version.
+# The files to patch and their settings come from the manifest (see manifests/), selected by --smooth-version,
+# optionally with additions from an override file (--overrides; see smoothui/profile.py).
 # Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.2
 
 import argparse
@@ -27,7 +28,7 @@ from .build_common import (
     manifest_path,
     pack_content,
     print_file_result,
-    print_rule_problems,
+    print_rule_issues,
     print_step_header,
     resolve_zip_path,
     wcc_lite,
@@ -35,6 +36,9 @@ from .build_common import (
 )
 from .common import normalize_version, to_windows
 from .patcher import dev_mode, patcher_core
+from .patcher.patcher_core import PatchSettings
+from .patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
+from .profile import apply_overrides
 
 
 # rarfile looks for an external unrar in PATH and in the current directory. When neither has it,
@@ -64,6 +68,9 @@ def parse_args(argv=None):
                     help="version of the other mod; only used to name the generated patch file")
     ap.add_argument("--smooth-version", required=True,
                     help="Smooth UI Remastered version that the patch targets; affects the patching process")
+    ap.add_argument("--overrides", type=Path, default=None,
+                    help="optional file with settings to add for this mod, on top of those the Smooth UI "
+                         "release was patched with (same format as config/profile_default.txt, minus [N] sections)")
 
     ap.add_argument("--zip", default=None,
                     help="output .zip name or path; the default name is recommended over specifying this!")
@@ -159,15 +166,29 @@ def load_manifest(version):
         return json.load(f)
 
 def profile_from_manifest(manifest):
-    """Creates a relative path -> FPS map (i.e. a profile) from a mod manifest
+    """The settings each file was patched with in a Smooth UI release, from its manifest: a profile
+    ({profile key: PatchSettings}), so compat patches match the release.
 
-    Used to decide which FPS to use when creating a compatibility patch, to ensure
-    the patched screen is the same FPS as when patching the vanilla files.
+    Sprite ids carry the class and frame count the release recorded for them, so that they aren't
+    applied to a different sprite in the other mod's version of the file. Manifests from before
+    v0.3 have no reports, and only give the frame rate."""
+    profile = {}
+    for key, record in manifest["files"].items():
+        report = record.get("report")
+        if report is None:
+            profile[key] = PatchSettings(float(record["fps"]))
+            continue
+        recorded_sprites = {sprite["id"]: (sprite["class"], sprite["frames"]) for sprite in report["sprites"]}
 
-    All files patched by the mod will be in this profile, which is later filtered
-    to only patch files that both mods change."""
+        def tokens(kind):
+            parsed = (parse_sprite_pattern(setting["pattern"]) for setting in report[kind])
+            return tuple(SpriteRef(token.id, recorded_sprites.get(token.id)) if isinstance(token, SpriteRef)
+                         else token for token in parsed)
 
-    return {file: entry["fps"] for (file,entry) in manifest["files"].items()}
+        profile[key] = PatchSettings(float(record["fps"]),
+                                     tuple(FpsRule(rule["pattern"], rule["fps"]) for rule in report["rules"]),
+                                     tokens("include"), tokens("exclude"))
+    return profile
 
 def find_shared_files(their_dir, manifest, smooth_version):
     """The .redswf files (paths relative to their_dir, in their spelling) that the other mod
@@ -247,12 +268,15 @@ def main():
 
     print_step_header(f"Loading manifest for Smooth UI Remastered {smooth_version}")
     manifest = load_manifest(smooth_version)
-    profile = profile_from_manifest(manifest)
 
     print_step_header("Finding files in common")
     shared = find_shared_files(unbundled_dir, manifest, smooth_version)
     shared_keys = {rel.as_posix().lower() for rel in shared}
-    shared_profile = {rel: fps for rel, fps in profile.items() if rel in shared_keys}
+    shared_profile = {key: settings for key, settings in profile_from_manifest(manifest).items()
+                      if key in shared_keys}
+    shared_settings = []
+    if args.overrides:
+        shared_profile, shared_settings = apply_overrides(shared_profile, args.overrides)
 
     print_step_header("Running FPS patcher")
 
@@ -263,10 +287,11 @@ def main():
         fail(str(e))
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
-    rule_problems = patcher_core.find_rule_problems(patched, kept)
-    print_rule_problems(rule_problems)
+    recorded = {key: record["report"] for key, record in manifest["files"].items() if "report" in record}
+    rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings, recorded)
+    print_rule_issues(rule_issues)
     if args.strict:
-        enforce_strict(failed, kept, rule_problems)
+        enforce_strict(failed, kept, rule_issues.errors)
 
     # A conflicting file missing from the patch would let our main mod's version
     # override the other mod's changes to that screen.
@@ -284,4 +309,4 @@ def main():
     finish_work_dir(work_dir, args.keep_work)
 
     # Repeated, as the packing output has likely scrolled it away
-    print_rule_problems(rule_problems)
+    print_rule_issues(rule_issues)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from ..common import profile_key
 from ..swf import (
@@ -19,35 +20,31 @@ from ..swf import (
 )
 from .dev_mode import dev_make_body_hook, resolve_dev_target
 from .redswf import replace_swf
-from .swf_patcher import format_unmet_rule, make_rules, report_to_text, rescale_body
+from .swf_patcher import (
+    format_unmet_rule,
+    report_settings,
+    rescale_body,
+)
 
 
 @dataclass(frozen=True)
 class PatchSettings:
+    """How to patch one file; see config/profile_default.txt"""
     target_fps: float
-    rules: tuple = ()   # FpsRules, applied to every file
+    rules: tuple = ()       # FpsRules ("retime"); the first matching one applies
+    include: tuple = ()     # class name regexes and SpriteRefs
+    exclude: tuple = ()
 
-def file_target_fps(profile, rel):
-    """The frame rate the profile states for this file"""
-    target = profile.get(profile_key(rel))
-    assert target is not None
-    return float(target)
-
-def patch_files(src, dst, profile, *, rules=(), dry_run=False, on_file=None):
+def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
     """Patch the given files (paths relative to src), writing changed ones to dst with the
-    same relative path. profile maps each file to its target frame rate; files that are not in
-    it, or that are already at/above that rate, are not written.
-
-    rules are FpsRules or (class name regex, fps) pairs, applied to every file.
+    same relative path. profile maps each file's profile key to its PatchSettings; files that are
+    not in it, or that are already at/above their target frame rate, are not written.
 
     on_file(rel, status, old_fps, new_fps, note) is called as soon as each file's result is
     known; status is "patched", "kept" or "failed".
 
     Returns (patched, kept, failed): patched holds {"path", "fps", "report"} dicts, kept holds
-    {"path", "report"} dicts, and failed holds (rel, message) tuples. Each report is the file's
-    rescale report (see swf_patcher/report.py); its "unmet_rules" and "rules" tell which explicit
-    rules were not followed. Files are still patched as well as possible when a rule can't be
-    followed, so the caller must check the reports and make such problems very visible.
+    {"path", "report"} dicts, and failed holds (rel, message) tuples.
     Raises NotADirectoryError / ValueError for invalid directories.
     """
     src, dst = Path(src).resolve(), Path(dst).resolve()
@@ -58,14 +55,14 @@ def patch_files(src, dst, profile, *, rules=(), dry_run=False, on_file=None):
 
     resolve_dev_target(profile)
 
-    rules = make_rules(rules)
     patched, kept, failed = [], [], []
 
     def report(rel, status, old=None, new=None, note=""):
         if on_file:
             on_file(rel, status, old, new, note)
 
-    for rel in map(Path, profile.keys()):
+    for key, settings in profile.items():
+        rel = Path(key)
         orig = (src / rel).read_bytes()
         redswf_bytes = bytearray(orig)
 
@@ -73,12 +70,8 @@ def patch_files(src, dst, profile, *, rules=(), dry_run=False, on_file=None):
         orig_redswf_bytes = redswf_bytes[:]
 
         try:
-            target_fps = file_target_fps(profile, rel)
-            assert target_fps >= 1 and target_fps <= 256
+            assert 1 <= settings.target_fps <= 256
             print(f"********** START PROCESSING {rel} ************")
-
-            # TODO
-            settings = PatchSettings(target_fps, rules)
             result, new_swf_bytes = process(redswf_bytes, settings, dev_make_body_hook(rel))
         except ValueError as e:
             failed.append((rel, str(e)))
@@ -114,19 +107,44 @@ def patch_files(src, dst, profile, *, rules=(), dry_run=False, on_file=None):
 
     return patched, kept, failed
 
-def find_rule_problems(patched, kept):
-    """Messages about explicit patching rules that were not followed, including rules that matched
-    nothing at all, from the reports in patch_files' patched and kept lists"""
-    entries = [*patched, *kept]
-    problems = [f"{entry['path']}: {format_unmet_rule(unmet)}"
-                for entry in entries for unmet in entry["report"]["unmet_rules"]]
-    # Every report lists the same rules, in the same order
-    for rule_records in zip(*(entry["report"]["rules"] for entry in entries)):
-        if not any(rule["matched"] for rule in rule_records):
-            rule = rule_records[0]
-            problems.append(f"fps rule '{rule['pattern']}' ({rule['fps']:g} fps): "
-                            "matched no sprite in any of the patched files")
-    return problems
+class RuleIssues(NamedTuple):
+    """Messages about explicit settings (retime, include, exclude); see find_rule_issues"""
+    errors: list[str]       # settings that were not followed: the output is NOT as configured
+    warnings: list[str]     # inherited settings that matched in the release but no longer match
+                            # anything: the output is as configured, but may need a look
+
+def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
+    """Check explicit settings against the reports in patch_files' patched and kept lists.
+
+    Errors: a setting that couldn't be followed (an unmet rule), or that matches no sprite in its
+    file. Settings in shared (a profile's "*" block, as written there) only need to match in at
+    least one file.
+
+    For compat builds, recorded maps profile keys to the reports the Smooth UI release recorded.
+    A setting from there that matches nothing in the other mod's version of a file is only a
+    warning, and only if it matched something in the release (otherwise it is not reported)."""
+    errors, warnings = [], []
+    matched_anywhere = set()
+    for entry in [*patched, *kept]:
+        path, report = entry["path"], entry["report"]
+        errors += [f"{path}: {format_unmet_rule(unmet)}" for unmet in report["unmet_rules"]]
+        unmet = {unmet["rule"] for unmet in report["unmet_rules"]}   # already reported
+        release = (recorded or {}).get(profile_key(path))
+        inherited = dict(report_settings(release)) if release else {}
+        for setting, matched in report_settings(report):
+            if matched:
+                matched_anywhere.add(setting)
+            elif setting in unmet:
+                continue
+            elif setting in inherited:
+                if inherited[setting]:
+                    warnings.append(f"{path}: {setting}: matched sprite(s) {inherited[setting]} in the "
+                                    "Smooth UI release, but nothing in this mod's version of the file")
+            elif setting not in shared:
+                errors.append(f"{path}: {setting}: matched no sprite")
+    errors += [f"* {setting}: matched no sprite in any file" for setting in shared
+               if setting not in matched_anywhere]
+    return RuleIssues(errors, warnings)
 
 def process(redswf_bytes, settings, rel):
     """Find the SWF payload embedded in data and set its frame rate. Patches data in place.
@@ -185,7 +203,8 @@ def patch_fps(redswf_bytes, pos, settings, body_hook=None):
 
     def patch(body):
         """Helper that is called on the decompressed SWF bytes, and patches them in place"""
-        result = rescale_body(body, settings.target_fps, rules=settings.rules)
+        result = rescale_body(body, settings.target_fps, rules=settings.rules, include=settings.include,
+                              exclude=settings.exclude)
         if result.new_fps is None:
             return False, (result.old_fps, None, None, result.report)
         body[:] = result.body

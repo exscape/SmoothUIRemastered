@@ -10,9 +10,11 @@ so reports of two versions of a file can be matched up even if ids shift.
       "target_fps": 120.0,
       "ratio": "60/11", "holds": [5, 6],    # each original frame lasts 5 or 6 new frames
       "rules": [{"pattern": "...", "fps": 80.0, "ratio": "40/11", "holds": [3, 4], "matched": [338]}],
-      "include": ["..."], "exclude": ["..."],   # as passed to rescale_body: sprite ids or class regexes
-      # Explicit rules (fps rules, include) that were NOT followed; should be empty
-      "unmet_rules": [{"rule": "fps rule '...' (80 fps)", "id": 338, "class": "...", "problem": "..."}],
+      # Patterns are class name regexes, or "sprite N"
+      "include": [{"pattern": "sprite 338", "matched": [338]}],
+      "exclude": [{"pattern": "...", "matched": []}],
+      # Explicit rules (retime, include, exclude) that were NOT followed; should be empty
+      "unmet_rules": [{"rule": "retime 80: ...", "id": 338, "class": "...", "problem": "..."}],
       "patched": {"frame_scripts": 88, "gotos": 1, "increments": 0},
       "increments": [{"handler": "Class.method", "property": "rotation", "old": 5.0, "new": 0.92}],
       "sprites": [
@@ -43,7 +45,9 @@ from .retiming import Retiming, fps_ratio
 def unchanged_report(old_fps: float, options: RescaleOptions) -> dict:
     return {"old_fps": old_fps, "new_fps": None, "target_fps": options.target_fps,
             "rules": _rule_records(old_fps, options.rules, [[] for _ in options.rules]),
-            "include": list(options.include), "exclude": list(options.exclude), "unmet_rules": []}
+            "include": _pattern_records(options.include, [[] for _ in options.include]),
+            "exclude": _pattern_records(options.exclude, [[] for _ in options.exclude]),
+            "unmet_rules": []}
 
 
 def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) -> dict:
@@ -54,8 +58,8 @@ def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) ->
         "ratio": str(plan.retiming.ratio),
         "holds": plan.retiming.hold_lengths(),
         "rules": _rule_records(plan.source_fps, options.rules, plan.rule_matches),
-        "include": list(options.include),
-        "exclude": list(options.exclude),
+        "include": _pattern_records(options.include, plan.include_matches),
+        "exclude": _pattern_records(options.exclude, plan.exclude_matches),
         "unmet_rules": [{"rule": unmet.rule, "id": unmet.character_id,
                          "class": movie.class_of_sprite.get(unmet.character_id), "problem": unmet.problem}
                         for unmet in plan.unmet_rules],
@@ -80,6 +84,18 @@ def _rule_records(source_fps: float, rules, rule_matches) -> list[dict]:
         records.append({"pattern": rule.pattern.pattern, "fps": float(rule.fps),
                         "ratio": str(retiming.ratio), "holds": retiming.hold_lengths(), "matched": matched})
     return records
+
+
+def _pattern_records(tokens, matches) -> list[dict]:
+    return [{"pattern": str(token), "matched": matched} for token, matched in zip(tokens, matches)]
+
+
+def report_settings(report: dict) -> list[tuple[str, list[int]]]:
+    """(setting as written in a profile, ids of the sprites it matched) for each retime, include and
+    exclude in a report"""
+    return ([(f"retime {rule['fps']:g}: {rule['pattern']}", rule["matched"]) for rule in report["rules"]]
+            + [(f"include: {record['pattern']}", record["matched"]) for record in report["include"]]
+            + [(f"exclude: {record['pattern']}", record["matched"]) for record in report["exclude"]])
 
 
 def _sprite_record(movie: SwfMovie, plan: RescalePlan, sprite) -> dict:
@@ -123,8 +139,11 @@ def report_to_text(report: dict) -> str:
     out(f"holds per source frame: {report['holds']}")
     for rule in report["rules"]:
         rule_ratio = Fraction(rule["ratio"])
-        out(f"fps rule '{rule['pattern']}': {rule['fps']:.3f} fps   (R = {rule_ratio} = {float(rule_ratio):.4f})   "
+        out(f"retime {rule['fps']:g}: {rule['pattern']}   (R = {rule_ratio} = {float(rule_ratio):.4f})   "
             f"holds per source frame: {rule['holds']}   matched sprites: {rule['matched'] or 'none'}")
+    for kind in ("include", "exclude"):
+        for record in report[kind]:
+            out(f"{kind}: {record['pattern']}   matched sprites: {record['matched'] or 'none'}")
 
     sprites = report["sprites"]
     stretched = [s for s in sprites if s["stretched"]]

@@ -1,6 +1,28 @@
-# A list of the files we should patch, and to what framerate.
+# The files we patch, and how.
 #
-# Files that are not here are either:
+# [N] sets the frame rate of the files below it. Indented lines are settings for the file (or *)
+# above them. Patterns are case-sensitive regexes matched against sprite class names, or
+# "sprite N" for a character id (only for sprites without a class; not allowed under *).
+# Note that sprite IDs are likely unstable, and so likely break on game updates.
+#
+# Settings applied for every file:
+#   *
+#       exclude: ^SomeSpinner$
+#       retime 60: ^SomeGlow$
+#
+#   [120]
+#   gameplay/gui_new/swf/example/panel_a.redswf
+#       include: ^SomeClass$            Stretch, even if the safety checks say not to (exclude wins)
+#       include: sprite 338
+#       retime 80: ^OtherGlow$          Plays at 120/80 = 1.5x speed at 120 fps; or 60/80 = 0.75x at 60 Hz
+#   gameplay/gui_new/swf/example/panel_b.redswf
+#       fps: 90                         Override the section's frame rate for just this file
+#       exclude: ^SomeClass$            Never stretch
+#       exclude: sprite 412
+#
+# A setting that matches no sprite (under *: if it matches in no file) or can't be followed fails --strict.
+#
+# Files that are not listed here are either:
 # 1. missed by me; contact me if you think something needs to be added here
 # 2. not relevant (framerate field is not used)
 # 3. possibly noticeable, but not enough to be patched and cause compatibility issues
