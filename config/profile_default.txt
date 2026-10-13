@@ -36,8 +36,10 @@
 # Remove if there are mod conflicts
 gameplay/gui_new/swf/loading/loadingscreen.redswf
 
-# VERIFIED AS REQUIRED: the files below are extremely choppy when patched to low FPS, smooth when patched to high
+# Speed up alchemy a bit: the default would halve the speed for 60 Hz players
 gameplay/gui_new/swf/alchemy/panel_alchemy.redswf
+    retime 80: panel_alchemy_fla.progressbar2_27
+
 gameplay/gui_new/swf/character/panel_character.redswf
 gameplay/gui_new/swf/character/panel_character_dupe.redswf
 gameplay/gui_new/swf/glossary/panel_glossary_main.redswf # Glossary root screen + tabs
@@ -45,7 +47,11 @@ gameplay/gui_new/swf/glossary/panel_glossary_bestiary.redswf
 gameplay/gui_new/swf/glossary/panel_glossary_books.redswf
 gameplay/gui_new/swf/gwint/deck_builder.redswf # Default 30 fps
 gameplay/gui_new/swf/gwint/gwint_game.redswf # Default 24 fps
+
+# Speed up crafting a bit: the default would halve the speed for 60 Hz players
 gameplay/gui_new/swf/crafting/panel_crafting.redswf # Glossary > Crafting
+    retime 80: panel_crafting_fla.progressbar2_48
+
 gameplay/gui_new/swf/glossary/panel_glossary_encyclopedia.redswf # Glossary > Characters
 gameplay/gui_new/swf/glossary/panel_glossary_tutorials.redswf
 gameplay/gui_new/swf/inventory/panel_inventory.redswf
