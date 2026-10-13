@@ -30,6 +30,18 @@
 # Currently mainmenu falls under #3, but that may change (perhaps with an optional mod,
 # which in that case will NOT be compatible with other mods that affect mainmenu .redswf files).
 
+# Applies to every file below
+*
+    # Selector clips that code addresses by (numeric) frame number or by nextFrame(). They are not stretched
+    # today, and several entries in config/reviewed_warnings.txt are only harmless because of that.
+    # Stretching them would break the code, so don't let an include (or a patcher change) stretch them.
+    # gotoAndStop(actionType): the drag avatar's action icon
+    exclude: ^SlotAvatarIconRef$
+    # gotoAndStop(quality + 1): item quality backgrounds in ModuleTransmogVis
+    exclude: ^panel_transmog_fla\.McTransmogItemBg_50$
+    # nextFrame() steps through the tutorial pages; incrementTutorial() compares against totalFrames
+    exclude: ^GwintTutorials$
+
 [120]
 
 # Dubious: mostly affects the fade at the end of loading
