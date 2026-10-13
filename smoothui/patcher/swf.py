@@ -5,7 +5,7 @@ import zlib
 
 from zopfli.zlib import compress as zopfli_compress
 
-from .build_common import fail
+from ..common import fail
 
 # Every SWF/GFX file starts with: 3-byte signature, 1-byte version, 4-byte total length
 SWF_HEADER_SIZE = 8

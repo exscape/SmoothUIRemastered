@@ -6,8 +6,8 @@ import struct
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from ...swf_tags import Tag, TagCode, read_cstring
 from .bits import BitReader, BitWriter, signed_bits_needed
+from .swf_tags import Tag, TagCode, read_cstring
 
 # PlaceObject2/3 flag byte
 FLAG_MOVE = 0x01

@@ -1,23 +1,25 @@
 """Profiles (which .redswf files to patch, and how) and compat override files.
 The format is described at the top of config/profile_default.txt.
 
-Override files (build_compat --overrides) add settings for one other mod, on top of the ones the
+Override files (build-compat.py --overrides) add settings for one other mod, on top of the ones the
 Smooth UI release recorded in its manifest. They use the same format without [N] sections: a file
 line refers to a file both mods contain, rather than adding one. fps replaces the recorded frame rate,
 retime lines are tried before the recorded ones, and include/exclude lines are added to them.
 Recorded settings can't be removed.
 
 Override files may also mark patcher warnings that the other mod introduces as checked by hand, with
-"reviewed: <warning key>" lines under "*" (see smoothui/reviewed_warnings.py)."""
+"reviewed: <warning key>" lines under "*" (see smoothui/build/reviewed_warnings.py)."""
+
+from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .build_common import DEFAULT_PROFILE, fail
-from .common import profile_key
-from .patcher.patcher_core import PatchSettings
-from .patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
+from ..common import fail, profile_key
+from ..patcher.patcher_core import PatchSettings
+from ..patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
+from .shared import DEFAULT_PROFILE
 
 SETTING = re.compile(r"(fps|include|exclude|reviewed|retime (\S+)):\s*(.*)")
 MIN_FPS, MAX_FPS = 1, 256

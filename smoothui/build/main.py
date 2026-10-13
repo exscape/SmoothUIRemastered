@@ -1,38 +1,40 @@
 #!/usr/bin/env python3
 
-# build-mod.py -- patch UI frame rates, then pack the mod with wcc_lite.
+# build-main.py -- patch UI frame rates, then pack the mod with wcc_lite.
 # The files to patch and their target frame rates come from the profile file (see config/).
-#
-# Tested on Windows 11: via WSL and via cmd.exe (mostly via WSL)
 
 import argparse
 import datetime
 import shutil
 from functools import partial
 
-from .build_common import (
+from ..common import fail, print_step_header
+from ..patcher import dev_mode, patcher_core
+from ..patcher.redswf import swf_sha256
+from .profile import load_profile
+from .reviewed_warnings import (
+    WarningReview,
+    accept_warnings,
+    load_reviewed,
+    print_warning_summary,
+)
+from .shared import (
     REPO_ROOT,
     config_paths,
     enforce_strict,
-    fail,
     finish_work_dir,
     install_and_launch,
     load_config,
     manifest_path,
-    patcher_commit,
     pack_content,
+    patcher_commit,
     print_file_result,
     print_rule_issues,
-    print_step_header,
     resolve_zip_path,
     sha256_file,
     write_manifest,
     zip_tree,
 )
-from .patcher import dev_mode, patcher_core
-from .patcher.redswf import swf_sha256
-from .profile import load_profile
-from .reviewed_warnings import WarningReview, accept_warnings, load_reviewed, print_warning_summary
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 

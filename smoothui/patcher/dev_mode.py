@@ -4,7 +4,7 @@ import zlib
 from pathlib import Path
 
 from ..common import profile_key
-from ..swf import SWF_COMPRESSED_SIGS, SWF_HEADER_SIZE, SWF_UNCOMPRESSED_SIGS
+from .swf import SWF_COMPRESSED_SIGS, SWF_HEADER_SIZE, SWF_UNCOMPRESSED_SIGS
 
 # Dev hooks for manually exploring and/or editing a target SWF payload
 # DEV_MODE:

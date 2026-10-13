@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-from ..build_common import print_substep_header
-from ..common import profile_key
-from ..swf import (
+from ..common import print_substep_header, profile_key
+from .dev_mode import dev_make_body_hook, resolve_dev_target
+from .redswf import replace_swf
+from .swf import (
     FPS_FIXED_POINT_SCALE,
     MAX_RAW_FPS,
     SWF_COMPRESSED_SIGS,
@@ -19,8 +20,6 @@ from ..swf import (
     swf_patch,
     valid_versions,
 )
-from .dev_mode import dev_make_body_hook, resolve_dev_target
-from .redswf import replace_swf
 from .swf_patcher import (
     format_unmet_rule,
     report_settings,
@@ -88,9 +87,6 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
         if not dry_run:
             out = dst / rel
             out.parent.mkdir(parents=True, exist_ok=True)
-
-            # TODO: re-enable validate!
-
             out_data = replace_swf(orig_redswf_bytes, new_swf_bytes)
             out.write_bytes(out_data)
 

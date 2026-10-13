@@ -22,6 +22,7 @@ Frame rate independent things (GTween, scaleform.clik.motion.Tween, Timer, setTi
 need nothing. AS3 only (one DoABC tag); AS2 DoAction clips are not handled.
 
 Modules, roughly in the order the work happens:
+  swf_tags       SWF tag lists: parsing and serializing, and the simple tags
   movie          the parsed SWF body: sprites, linkage classes, ActionScript classes
   abc_file       ABC (ActionScript bytecode file) parsing and serializing
   abc_bytecode   method bytecode: disassembly, re-assembly, stack model

@@ -16,8 +16,8 @@ from typing import NamedTuple
 
 from colorama import Back, Fore, Style
 
-from .build_common import REVIEWED_WARNINGS
-from .common import profile_key
+from ..common import profile_key
+from .shared import REVIEWED_WARNINGS
 
 
 class WarningSummary(NamedTuple):

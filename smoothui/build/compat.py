@@ -18,11 +18,16 @@ from pathlib import Path
 import py7zr
 import rarfile
 
-from .build_common import (
+from ..common import fail, normalize_version, print_step_header, to_windows
+from ..patcher import dev_mode, patcher_core
+from ..patcher.patcher_core import PatchSettings
+from ..patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
+from .profile import apply_overrides
+from .reviewed_warnings import WarningReview, print_warning_summary
+from .shared import (
     REPO_ROOT,
     config_paths,
     enforce_strict,
-    fail,
     finish_work_dir,
     install_and_launch,
     load_config,
@@ -30,17 +35,10 @@ from .build_common import (
     pack_content,
     print_file_result,
     print_rule_issues,
-    print_step_header,
     resolve_zip_path,
     wcc_lite,
     zip_tree,
 )
-from .common import normalize_version, to_windows
-from .patcher import dev_mode, patcher_core
-from .patcher.patcher_core import PatchSettings
-from .patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
-from .profile import apply_overrides
-from .reviewed_warnings import WarningReview, print_warning_summary
 
 
 # rarfile looks for an external unrar in PATH and in the current directory. When neither has it,
@@ -181,17 +179,18 @@ def profile_from_manifest(manifest):
         if report is None:
             profile[key] = PatchSettings(float(record["fps"]))
             continue
-        recorded_sprites = {sprite["id"]: (sprite["class"], sprite["frames"]) for sprite in report["sprites"]}
-
-        def tokens(kind):
-            parsed = (parse_sprite_pattern(setting["pattern"]) for setting in report[kind])
-            return tuple(SpriteRef(token.id, recorded_sprites.get(token.id)) if isinstance(token, SpriteRef)
-                         else token for token in parsed)
-
         profile[key] = PatchSettings(float(record["fps"]),
                                      tuple(FpsRule(rule["pattern"], rule["fps"]) for rule in report["rules"]),
-                                     tokens("include"), tokens("exclude"))
+                                     _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"))
     return profile
+
+def _recorded_tokens(report, kind):
+    """A report's include or exclude patterns, with sprite ids expecting the class and frame count
+    recorded for them"""
+    recorded_sprites = {sprite["id"]: (sprite["class"], sprite["frames"]) for sprite in report["sprites"]}
+    parsed = (parse_sprite_pattern(setting["pattern"]) for setting in report[kind])
+    return tuple(SpriteRef(token.id, recorded_sprites.get(token.id)) if isinstance(token, SpriteRef)
+                 else token for token in parsed)
 
 def find_shared_files(their_dir, manifest, smooth_version):
     """The .redswf files (paths relative to their_dir, in their spelling) that the other mod
@@ -297,8 +296,8 @@ def main():
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
 
     warnings = review.summarize(patched)
-    how_to_accept = ["These come from the other mod's changes. Once checked, add these lines under * in "
-                     "the --overrides file to mark them as reviewed:",
+    how_to_accept = [("These come from the other mod's changes. Once checked, add these lines under * in "
+                      "the --overrides file to mark them as reviewed:"),
                      *(f"    reviewed: {key}" for key in warnings.unreviewed)]
     print_warnings = partial(print_warning_summary, warnings, how_to_accept=how_to_accept,
                              reviewed_source=str(args.overrides))

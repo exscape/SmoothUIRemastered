@@ -6,7 +6,7 @@ import struct
 from dataclasses import dataclass
 from enum import IntEnum
 
-from .build_common import fail
+from ...common import fail
 
 # Every tag starts with a 16-bit little-endian header: the tag code in the upper 10 bits
 # and the payload length in the lower 6 bits. A length of 0x3F is a marker for the

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import struct
 
-from ...swf import FPS_FIXED_POINT_SCALE, MAX_RAW_FPS
-from ...swf_tags import Tag, TagCode, build_sprite, serialize_tags
+from ..swf import FPS_FIXED_POINT_SCALE, MAX_RAW_FPS
 from .abc_bytecode import assemble
 from .abc_file import serialize_abc
 from .interpolation import TweenStep, interpolate
@@ -13,6 +12,7 @@ from .movie import RescaleError, Sprite, SwfMovie
 from .place_object import build_move
 from .planner import RescalePlan
 from .retiming import Retiming
+from .swf_tags import Tag, TagCode, build_sprite, serialize_tags
 
 SHOW_FRAME = Tag(TagCode.SHOW_FRAME, b"")
 

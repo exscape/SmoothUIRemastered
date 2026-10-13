@@ -6,17 +6,7 @@ import struct
 from collections import defaultdict
 from dataclasses import dataclass
 
-from ...swf import FPS_FIXED_POINT_SCALE, swf_get_header_offsets
-from ...swf_tags import (
-    Tag,
-    TagCode,
-    parse_frame_label,
-    parse_sprite_header,
-    parse_sprite_tags,
-    parse_symbol_class,
-    parse_tags,
-    split_do_abc,
-)
+from ..swf import FPS_FIXED_POINT_SCALE, swf_get_header_offsets
 from .abc_bytecode import Instruction, disassemble
 from .abc_file import (
     CONSTANT_INT,
@@ -27,6 +17,16 @@ from .abc_file import (
     parse_abc,
 )
 from .place_object import PLACE_OBJECT_CODES, parse_place_object
+from .swf_tags import (
+    Tag,
+    TagCode,
+    parse_frame_label,
+    parse_sprite_header,
+    parse_sprite_tags,
+    parse_symbol_class,
+    parse_tags,
+    split_do_abc,
+)
 
 ROOT_TIMELINE = 0   # stands in for the main timeline's id where a sprite id is expected
 

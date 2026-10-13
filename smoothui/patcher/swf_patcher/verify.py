@@ -8,15 +8,7 @@ from __future__ import annotations
 
 import struct
 
-from ...swf import swf_get_header_offsets
-from ...swf_tags import (
-    Tag,
-    TagCode,
-    parse_sprite_header,
-    parse_sprite_tags,
-    parse_tags,
-    split_do_abc,
-)
+from ..swf import swf_get_header_offsets
 from .abc_bytecode import INTEGER_PUSH_NAMES, PushDouble, disassemble
 from .abc_file import parse_abc
 from .builder import raw_fps
@@ -25,6 +17,14 @@ from .movie import Sprite, SwfMovie
 from .place_object import parse_place_object
 from .planner import RescalePlan
 from .retiming import Retiming
+from .swf_tags import (
+    Tag,
+    TagCode,
+    parse_sprite_header,
+    parse_sprite_tags,
+    parse_tags,
+    split_do_abc,
+)
 
 MAX_SPRITE_PROBLEMS = 12
 

@@ -12,7 +12,6 @@ import dataclasses
 import math
 from dataclasses import dataclass
 
-from ...swf_tags import TagCode, parse_remove_object_depth
 from .place_object import (
     FIXED_ONE,
     IDENTITY_COLOR_TRANSFORM,
@@ -22,6 +21,7 @@ from .place_object import (
     Matrix,
     parse_place_object,
 )
+from .swf_tags import TagCode, parse_remove_object_depth
 
 MAX_RATIO = 0xFFFF
 

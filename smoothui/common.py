@@ -1,8 +1,23 @@
 import platform
 import re
 import subprocess
+import sys
 from functools import cache
 from pathlib import Path
+
+from colorama import Back, Fore, Style
+
+
+def fail(msg):
+    print(f"ERROR: {msg}", file=sys.stderr, flush=True)
+    sys.exit(1)
+
+def print_step_header(msg):
+    eq = "=" * 10
+    print(f"{Back.BLACK}{Fore.YELLOW}{eq} {msg} {eq}{Style.RESET_ALL}", flush=True)
+
+def print_substep_header(msg):
+    print(f"\n{Fore.CYAN}--- {msg} ---{Style.RESET_ALL}", flush=True)
 
 WIN_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 

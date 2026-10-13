@@ -1,4 +1,4 @@
-"""Helpers shared by the build scripts (build_main, build_compat)"""
+"""Helpers shared by the build scripts (main, compat)"""
 
 import hashlib
 import json
@@ -17,25 +17,14 @@ from pathlib import Path
 
 from colorama import Back, Fore, Style
 
-from .common import normalize_version, to_native, to_windows
+from ..common import fail, normalize_version, print_step_header, to_native, to_windows
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
 REVIEWED_WARNINGS = REPO_ROOT / "config" / "reviewed_warnings.txt"
 MANIFEST_DIR = REPO_ROOT / "manifests"
 
 REQUIRED_CONFIG_KEYS = ("working_dir", "wcc_lite")
-
-def fail(msg):
-    print(f"ERROR: {msg}", file=sys.stderr, flush=True)
-    sys.exit(1)
-
-def print_step_header(msg):
-    eq = "=" * 10
-    print(f"{Back.BLACK}{Fore.YELLOW}{eq} {msg} {eq}{Style.RESET_ALL}", flush=True)
-
-def print_substep_header(msg):
-    print(f"\n{Fore.CYAN}--- {msg} ---{Style.RESET_ALL}", flush=True)
 
 # wcc_lite lines that appear on every run and are harmless
 NOISE = [re.compile(p) for p in (

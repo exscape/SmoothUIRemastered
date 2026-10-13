@@ -52,6 +52,9 @@ This will:
 Optionally, you can add `--install --launch` to copy the mod to the game folder and launch the game for testing.  
 Make sure that Smooth UI Remastered and the target mod, both of the correct version, are both already present in the mods folder! build-compat.py will only build the compatibility patch mod required to make the mods work together.
 
+The conflicting files are patched with the same settings as in the specified Smooth UI Remastered release (`--smooth-version`), which should work for most mods.  
+If a mod changes identifiers in an incompatible way, or needs more control, `--overrides FILE` adds settings on top; see `config/compat_overrides_example.txt` for the format.
+
 Run `python3 build-compat.py --help` for basic help. I'm considering making a simple (and optional) GUI to streamline things further, and a binary release (likely PyInstaller-based) to go with it.  
 Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwas?gameId=952), or create a GitHub issue if something is wrong or unclear.
 
@@ -61,10 +64,9 @@ Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwa
 | --- | --- |
 | `build-compat.py` | Builds a compatibility patch against another mod (zip/rar/7z) |
 | `build-main.py` | Builds the mod; mainly intended for my own use |
-| `smoothui/build_compat.py` | Actual `build-compat.py` implementation |
-| `smoothui/build_main.py` | Actual `build-main.py` implementation |
-| `smoothui/build_common.py` | Shared implementation details for the `build-*` tools |
 | `smoothui/common.py` | Various shared logic |
-| `smoothui/patcher.py` | Binary patcher; creates new, higher framerate `.redswf` files from a given list of files |
+| `smoothui/build/` | The build process: implements `build-main.py` (`main.py`) and `build-compat.py` (`compat.py`), and reads profiles, override files and reviewed warnings (see `config/`) |
+| `smoothui/patcher/` | Binary patcher; creates new, higher framerate `.redswf` files from a given list of files |
+| `smoothui/patcher/swf_patcher/` | Rescales a single SWF: retimes its animations for the new frame rate, and adjusts the ActionScript code that depends on frame numbers |
 
 Only build-main.py and build-compat.py can be called as scripts.

@@ -1,5 +1,4 @@
 env*/
-Build/
 __pycache__/
 releases/
 test-tools/
