@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from ..swf import FPS_FIXED_POINT_SCALE, swf_get_header_offsets
-from .abc_bytecode import Instruction, disassemble
+from .abc_bytecode import NO_OP_NAMES, Instruction, disassemble, stack_effect
 from .abc_file import (
     CONSTANT_INT,
     CONSTANT_UINT,
@@ -29,6 +29,13 @@ from .swf_tags import (
 )
 
 ROOT_TIMELINE = 0   # stands in for the main timeline's id where a sprite id is expected
+
+# Instructions that use a class as their object: C.CONSTANT, C.staticMethod(), ...
+CLASS_MEMBER_OPS = frozenset({
+    "getproperty", "setproperty", "initproperty", "callproperty", "callpropvoid", "callproplex", "constructprop",
+})
+# Instructions that use a class as a type: `x is C`, `x as C`, Vector.<C>
+CLASS_TYPE_OPS = frozenset({"istypelate", "astypelate", "applytype"})
 
 
 class RescaleError(ValueError):
@@ -120,18 +127,22 @@ class SwfMovie:
         self.method_owner = {}      # method index -> "pkg.Class.method"
         self.class_of_method = {}   # method index -> "pkg.Class"
         self.superclass = {}        # "pkg.Class" -> "pkg.Super" or None
+        self.static_methods = set()  # method indices of static methods and class initializers
 
         for instance, cls in zip(abc.instances, abc.classes):
             class_name = abc.full_name_of(instance.name)
             self.superclass[class_name] = abc.full_name_of(instance.super_name) if instance.super_name else None
             self._set_method_owner(instance.constructor, class_name, "<iinit>")
             self._set_method_owner(cls.static_init, class_name, "<cinit>")
+            self.static_methods.add(cls.static_init)
             for trait in instance.traits + cls.traits:
                 if trait.kind in METHOD_TRAIT_KINDS:
                     self._set_method_owner(trait.method, class_name, abc.name_of(trait.name))
+            self.static_methods.update(trait.method for trait in cls.traits if trait.kind in METHOD_TRAIT_KINDS)
 
         self._load_string_typing()
         self.code: dict[int, list[Instruction]] = {m: disassemble(body.code) for m, body in abc.bodies.items()}
+        self._load_live_code()
 
     def _set_method_owner(self, method, class_name, method_name):
         self.method_owner[method] = f"{class_name}.{method_name}"
@@ -157,6 +168,82 @@ class SwfMovie:
                     if return_type and abc.name_of(return_type) == "String":
                         self.string_methods.add(abc.name_of(trait.name))
         self.string_properties = {name for name, types in property_types.items() if types == {"String"}}
+
+    def _load_live_code(self):
+        """Find the code that can run in this file. The whole shared class library is compiled into
+        every file, but only part of it is used: a class's instance methods run only if something
+        creates an instance (a clip linked to it or a subclass, `new C()`, code that passes the
+        class on, or a string naming it, for getDefinitionByName()), and its static methods only if
+        running code names the class at all."""
+        abc = self.abc
+        classes_named = defaultdict(set)    # full or unqualified name -> classes
+        for class_name in self.superclass:
+            classes_named[class_name].add(class_name)
+            classes_named[class_name.rsplit(".", 1)[-1]].add(class_name)
+
+        # (class, static?) -> {(name, whether the code may create an instance)}; (None, False) is
+        # the code outside any class (closures)
+        uses = defaultdict(set)
+        for method, code in self.code.items():
+            if any(ins.name == "newclass" for ins in code):
+                continue    # a script initializer, which names each class's superclass to define it
+            class_name, static = self.class_of_method.get(method), method in self.static_methods
+            used = uses[(class_name, static)]
+            for k, ins in enumerate(code):
+                if ins.name == "construct" and static:
+                    used.add((class_name, True))    # maybe `new this()`, as in a singleton's getInstance()
+                    continue
+                if ins.name == "pushstring":
+                    name = abc.strings[ins.args[0]].replace("::", ".")
+                elif ins.name in ("getlex", "findpropstrict", "findproperty", "constructprop"):
+                    name = abc.name_of(ins.args[0])
+                else:
+                    continue
+                if name in classes_named:
+                    used.add((name, ins.name in ("pushstring", "constructprop")
+                              or (ins.name == "getlex" and self._class_passed_on(code, k))))
+
+        self.created, self.statics_used = set(), set()
+        pending = [(None, True)] + [(class_name, True) for class_name in self.sprites_of_class]
+        while pending:
+            class_name, create = pending.pop()  # create: its instance methods can run, else its static ones
+            done = self.created if create else self.statics_used
+            if class_name in done:
+                continue
+            done.add(class_name)
+            if create and class_name:
+                pending += [(class_name, False), (self.superclass.get(class_name), True)]
+            for name, creates in uses.get((class_name, not create), ()):
+                pending.extend((used_class, creates) for used_class in classes_named.get(name, ()))
+
+    def _class_passed_on(self, code, index) -> bool:
+        """Is the value that code[index] pushes passed on, rather than just used to access a static
+        member or as a type? True if unsure."""
+        depth = 1   # the value's position on the stack, counted from the top
+        for ins in code[index + 1:]:
+            if ins.name in NO_OP_NAMES:
+                continue
+            if ins.name in ("setproperty", "initproperty"):
+                effect = (2 + self.abc.runtime_name_operands(ins.args[0]), 0)
+            elif ins.name == "pop":
+                effect = (1, 0)
+            else:
+                effect = stack_effect(self.abc, ins)
+            if effect is None:
+                return True
+            popped, pushed = effect
+            if depth <= popped:
+                # The object of a property access or call is the instruction's first (deepest) operand
+                return not ((depth == popped and ins.name in CLASS_MEMBER_OPS) or ins.name in CLASS_TYPE_OPS)
+            depth += pushed - popped
+        return True
+
+    def may_run(self, method: int) -> bool:
+        """Can this method run in this file? (see _load_live_code)"""
+        class_name = self.class_of_method.get(method)
+        if class_name is None:
+            return True
+        return class_name in (self.statics_used if method in self.static_methods else self.created)
 
     def owner_name(self, method: int, default: str = "?") -> str:
         return self.method_owner.get(method, default)

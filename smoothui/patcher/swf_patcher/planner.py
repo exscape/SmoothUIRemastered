@@ -148,12 +148,15 @@ class Planner:
         self._plan_interpolation()
         return self.plan
 
-    def _target_sprites(self, class_name: str | None, receiver: Receiver) -> set[int] | None:
-        """The sprites code in class_name can be addressing via receiver; None if unknown"""
+    def _target_sprites(self, method: int, receiver: Receiver) -> set[int] | None:
+        """The sprites code in method can be addressing via receiver; None if unknown"""
+        class_name = self.movie.class_of_method.get(method)
         if receiver.kind == ReceiverKind.UNRESOLVED or not class_name:
             return None
         linked = self.movie.sprites_linked_to(class_name)
         if not linked:
+            if receiver.kind == ReceiverKind.NAMED and self.movie.may_run(method):
+                return None     # created by code, so its children can be anything added to it
             self.plan.unlinked_classes.add(class_name)
             return set()
         if receiver.kind == ReceiverKind.THIS:
@@ -192,7 +195,7 @@ class Planner:
         for call in self.analysis.find_goto_calls():
             if call.arg.kind == ArgKind.LABEL:
                 continue
-            targets = self._target_sprites(call.class_name, call.receiver)
+            targets = self._target_sprites(call.method, call.receiver)
             if targets is None:
                 if call.arg.kind == ArgKind.COMPUTED or call.arg.value > 1:
                     unresolved_gotos.append(call)
@@ -207,7 +210,7 @@ class Planner:
         """totalFrames, currentFrame etc. change meaning when a clip is stretched"""
         uses = []
         for use in self.analysis.find_frame_property_uses():
-            targets = self._target_sprites(use.class_name, use.receiver)
+            targets = self._target_sprites(use.method, use.receiver)
             uses.append((use, targets))
             for character_id in targets or ():
                 self.reasons[character_id].append(f"{use.prop} read in {short_owner(use.owner)}")
@@ -427,25 +430,36 @@ class Planner:
             self.plan.warnings.append(warning)
 
     def _warn_unresolved(self, unresolved_gotos, frame_property_uses):
-        plan = self.plan
+        """One warning per key (kind and code location), naming everything found there"""
+        stretched = self.plan.stretched
+        found = {}  # key -> (kind, {owner: None}, {what: None}, stretched clips); dicts keep the order found
+
+        def add(kind, owner, what, clips=()):
+            entry = found.setdefault(f"{kind} {short_owner(owner)}", (kind, {}, {}, set()))
+            entry[1][owner] = entry[2][what] = None
+            entry[3].update(clips)
+
         for call in unresolved_gotos:
-            if not call.class_name or not self.movie.sprites_linked_to(call.class_name):
-                continue    # class not instantiated by any clip in this file
-            if call.arg.kind == ArgKind.NUMBER:
-                description = f"literal {call.call}({call.arg.value})"
-            else:
-                description = f"computed {call.call}(...)"
-            self._warn(f"unresolved-goto {short_owner(call.owner)}",
-                       f"unresolved receiver: {description} in {call.owner} -- "
-                       "if it targets a stretched clip, check by hand")
+            if not self.movie.may_run(call.method):
+                continue    # nothing in this file can call it
+            kind = "literal" if call.arg.kind == ArgKind.NUMBER else "computed"
+            add("unresolved-goto", call.owner,
+                f"{kind} {call.call}({call.arg.value if kind == 'literal' else '...'})")
 
         for use, targets in frame_property_uses:
-            if targets is None:
-                self._warn(f"unresolved-frame-property {short_owner(use.owner)}",
-                           f"{use.prop} used in {use.owner} on an unresolved receiver")
-            elif targets & plan.stretched:
-                self._warn(f"stretched-frame-property {short_owner(use.owner)}",
-                           f"{use.prop} used in {use.owner} on stretched clips {sorted(targets & plan.stretched)}")
+            if targets is None and self.movie.may_run(use.method):
+                add("unresolved-frame-property", use.owner, use.prop)
+            elif targets and targets & stretched:
+                add("stretched-frame-property", use.owner, use.prop, targets & stretched)
+
+        for key, (kind, owners, whats, clips) in found.items():
+            where, what = ", ".join(owners), ", ".join(whats)
+            self._warn(key, {
+                "unresolved-goto": f"unresolved receiver: {what} in {where} -- "
+                                   "if it targets a stretched clip, check by hand",
+                "unresolved-frame-property": f"{what} used in {where} on an unresolved receiver",
+                "stretched-frame-property": f"{what} used in {where} on stretched clips {sorted(clips)}",
+            }[kind])
 
     # --- Interpolation ---
 

@@ -94,6 +94,7 @@ class FrameHandler:
 @dataclass
 class FramePropertyUse:
     """A read of totalFrames/currentFrame/..., or a nextFrame()/prevFrame() call"""
+    method: int
     prop: str
     owner: str
     class_name: str | None
@@ -358,7 +359,7 @@ class CodeAnalysis:
                 prop = self.name(ins)
                 if prop not in FRAME_PROPERTIES:
                     continue
-                uses.append(FramePropertyUse(prop, self.movie.owner_name(method),
+                uses.append(FramePropertyUse(method, prop, self.movie.owner_name(method),
                                              self.movie.class_of_method.get(method),
                                              self._frame_property_receiver(code, i)))
         return uses
