@@ -12,6 +12,8 @@ SWF_HEADER_SIZE = 8
 valid_versions = range(1, 41)
 SWF_SIGS = (b"GFX", b"FWS", b"CFX", b"CWS")
 SWF_COMPRESSED_SIGS = (b"CFX", b"CWS")
+# The signature of the same SWF when stored uncompressed
+SWF_UNCOMPRESSED_SIGS = {b"CWS": b"FWS", b"CFX": b"GFX"}
 
 # The frame rate is stored as an unsigned 8.8 fixed-point number
 FPS_FIXED_POINT_SCALE = 256

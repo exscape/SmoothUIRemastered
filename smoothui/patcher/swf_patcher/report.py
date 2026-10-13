@@ -26,8 +26,8 @@ so reports of two versions of a file can be matched up even if ids shift.
     }
 
 "interpolation" and "probably_safe_labels" are only present where they apply. A report for a file
-that was left unchanged only has old_fps, new_fps, target_fps, rules (each matching nothing) and
-unmet_rules. A sprite's "class" is None if it has no linkage class.
+that was left unchanged only has old_fps, new_fps, target_fps, rules (each matching nothing),
+include, exclude and unmet_rules. A sprite's "class" is None if it has no linkage class.
 """
 
 from __future__ import annotations
@@ -42,7 +42,8 @@ from .retiming import Retiming, fps_ratio
 
 def unchanged_report(old_fps: float, options: RescaleOptions) -> dict:
     return {"old_fps": old_fps, "new_fps": None, "target_fps": options.target_fps,
-            "rules": _rule_records(old_fps, options.rules, [[] for _ in options.rules]), "unmet_rules": []}
+            "rules": _rule_records(old_fps, options.rules, [[] for _ in options.rules]),
+            "include": list(options.include), "exclude": list(options.exclude), "unmet_rules": []}
 
 
 def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) -> dict:
@@ -53,6 +54,8 @@ def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) ->
         "ratio": str(plan.retiming.ratio),
         "holds": plan.retiming.hold_lengths(),
         "rules": _rule_records(plan.source_fps, options.rules, plan.rule_matches),
+        "include": list(options.include),
+        "exclude": list(options.exclude),
         "unmet_rules": [{"rule": unmet.rule, "id": unmet.character_id,
                          "class": movie.class_of_sprite.get(unmet.character_id), "problem": unmet.problem}
                         for unmet in plan.unmet_rules],

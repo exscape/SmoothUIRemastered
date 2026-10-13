@@ -27,11 +27,12 @@ CRC. All CRCs are the standard CRC-32 (zlib.crc32).
 
 from __future__ import annotations
 
+import hashlib
 import struct
 import zlib
 from typing import NamedTuple
 
-from ..swf import SWF_COMPRESSED_SIGS, SWF_HEADER_SIZE, SWF_SIGS
+from ..swf import SWF_COMPRESSED_SIGS, SWF_HEADER_SIZE, SWF_SIGS, SWF_UNCOMPRESSED_SIGS
 
 CR2W_MAGIC = b"CR2W"
 CR2W_VERSION = 164
@@ -248,6 +249,27 @@ def replace_swf(redswf: bytes | bytearray, swf: bytes | bytearray) -> bytearray:
     print(f"Replaced the SWF: {len(old.swf)} -> {len(swf)} bytes, "
           f".redswf {len(old.data)} -> {len(out)} bytes")
     return out
+
+
+def swf_sha256(redswf: bytes | bytearray) -> str:
+    """SHA-256 of the SWF in a .redswf, taken in uncompressed form (FWS/GFX signature) and ending where
+    its header says it ends. Files that hold the same SWF get the same hash, however (and whether) it
+    was compressed, and whatever junk follows its stated end (see swf_patch)."""
+    swf = RedSwf(redswf).swf
+    sig, body = swf[:3], swf[SWF_HEADER_SIZE:]
+    (declared,) = struct.unpack_from("<I", swf, 4)
+    if sig in SWF_COMPRESSED_SIGS:
+        decompressor = zlib.decompressobj()
+        try:
+            body = decompressor.decompress(body)
+        except zlib.error as e:
+            raise RedSwfError(f"the SWF's zlib stream is corrupt: {e}") from e
+        if not decompressor.eof:
+            raise RedSwfError("the SWF's zlib stream is truncated")
+        sig = SWF_UNCOMPRESSED_SIGS[sig]
+    if SWF_HEADER_SIZE + len(body) < declared:
+        raise RedSwfError(f"the SWF is {SWF_HEADER_SIZE + len(body)} bytes, but its header states {declared}")
+    return hashlib.sha256(sig + swf[3:SWF_HEADER_SIZE] + body[:declared - SWF_HEADER_SIZE]).hexdigest()
 
 
 def check_swf(swf: bytes):

@@ -208,6 +208,18 @@ def sha256_file(path):
             h.update(chunk)
     return h.hexdigest()
 
+def patcher_commit():
+    """(commit, uncommitted) for the code doing the build: the git commit hash of this checkout, and
+    whether tracked files have uncommitted changes. (None, None) if git can't tell (e.g. no checkout)."""
+    def git(*args):
+        # --no-optional-locks: don't let `git status` refresh the index, so nothing is written
+        return subprocess.run(["git", "--no-optional-locks", *args], cwd=REPO_ROOT,
+                              capture_output=True, text=True, check=True).stdout.strip()
+    try:
+        return git("rev-parse", "HEAD"), bool(git("status", "--porcelain", "--untracked-files=no"))
+    except (OSError, subprocess.CalledProcessError):
+        return None, None
+
 def manifest_path(version):
     """Where a mod release's manifest lives: manifests/<version>.json"""
     return MANIFEST_DIR / f"{normalize_version(version)}.json"
@@ -215,9 +227,10 @@ def manifest_path(version):
 def write_manifest(version, records, extra=None):
     """Write manifests/<version>.json for this mod release.
 
-    records maps each patched file's relative path to its record: source/output SHA-256 and size,
-    "fps" (the frame rate it was patched to) and "report" (its full rescale report, see
-    patcher/swf_patcher/report.py)."""
+    records maps each patched file's relative path to its record: SHA-256 and size of the source and
+    output files, SHA-256 of the SWF in each (see patcher/redswf.py's swf_sha256), "fps" (the frame
+    rate it was patched to) and "report" (its full rescale report, see patcher/swf_patcher/report.py),
+    which includes the fps rules and include/exclude lists it was patched with."""
     manifest = {"created_mod_version": normalize_version(version)}
     if extra:
         manifest.update(extra)

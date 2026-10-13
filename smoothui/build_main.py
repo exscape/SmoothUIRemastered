@@ -19,6 +19,7 @@ from .build_common import (
     load_config,
     load_profile,
     manifest_path,
+    patcher_commit,
     pack_content,
     print_file_result,
     print_rule_problems,
@@ -29,6 +30,7 @@ from .build_common import (
     zip_tree,
 )
 from .patcher import dev_mode, patcher_core
+from .patcher.redswf import swf_sha256
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 
@@ -159,12 +161,17 @@ def main():
             records[relative_path.as_posix()] = {
                 "source_sha256": sha256_file(src),
                 "output_sha256": sha256_file(dst),
+                "source_swf_sha256": swf_sha256(src.read_bytes()),
+                "output_swf_sha256": swf_sha256(dst.read_bytes()),
                 "source_size": src.stat().st_size, # for v0.2, source_size == output_size for all files
                 "output_size": dst.stat().st_size,
                 "fps": entry["fps"],
                 "report": entry["report"],
             }
+        commit, uncommitted = patcher_commit()
         write_manifest(mod_version, records, extra={
+            "patcher_commit": commit,
+            "patcher_uncommitted_changes": uncommitted,
             "targeted_game_version": config['versions'].get('targeted_game_version'),
             "created_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
             "output_zip": str(zip_out.relative_to(REPO_ROOT)) if zip_out.is_relative_to(REPO_ROOT) else str(zip_out),

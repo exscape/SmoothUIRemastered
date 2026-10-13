@@ -4,7 +4,7 @@ import zlib
 from pathlib import Path
 
 from ..common import profile_key
-from ..swf import SWF_COMPRESSED_SIGS, SWF_HEADER_SIZE
+from ..swf import SWF_COMPRESSED_SIGS, SWF_HEADER_SIZE, SWF_UNCOMPRESSED_SIGS
 
 # Dev hooks for manually exploring and/or editing a target SWF payload
 # DEV_MODE:
@@ -64,8 +64,7 @@ def build_dev_file_bytes(header, body):
     decompressed, so the signature must be switched to FWS/GFX. The declared length is
     the total uncompressed size, which is the same for both forms."""
     header = bytes(header)
-    UNCOMPRESSED_SIG_MAP = {b"CWS": b"FWS", b"CFX": b"GFX"}
-    sig = UNCOMPRESSED_SIG_MAP[header[:3]]
+    sig = SWF_UNCOMPRESSED_SIGS[header[:3]]
     version = header[3:4]
     return sig + version + struct.pack("<I", SWF_HEADER_SIZE + len(body)) + bytes(body)
 
