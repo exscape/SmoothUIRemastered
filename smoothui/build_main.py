@@ -117,7 +117,7 @@ def main():
 
     print_step_header("Running FPS patcher")
     try:
-        patched, kept, failed, rule_problems = patcher_core.patch_files(
+        patched, kept, failed = patcher_core.patch_files(
             uncooked_files, patched_dir, profile,
             dry_run=args.dry_run, on_file=print_file_result)
     except (NotADirectoryError, ValueError) as e:
@@ -125,6 +125,7 @@ def main():
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, "
           f"{len(failed)} skipped.")
+    rule_problems = patcher_core.find_rule_problems(patched, kept)
     print_rule_problems(rule_problems)
     if args.strict:
         enforce_strict(failed, kept, rule_problems)
@@ -161,6 +162,7 @@ def main():
                 "source_size": src.stat().st_size, # for v0.2, source_size == output_size for all files
                 "output_size": dst.stat().st_size,
                 "fps": entry["fps"],
+                "report": entry["report"],
             }
         write_manifest(mod_version, records, extra={
             "targeted_game_version": config['versions'].get('targeted_game_version'),

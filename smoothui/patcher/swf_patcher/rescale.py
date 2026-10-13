@@ -54,7 +54,7 @@ def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclud
                              scale_handlers, min_motion)
     movie = SwfMovie(body)
     if target_fps <= movie.fps:
-        return RescaleResult(None, unchanged_report(movie.fps, target_fps))
+        return RescaleResult(None, unchanged_report(movie.fps, options))
 
     plan = Planner(movie, options).make_plan()
     new_body = build_body(movie, plan)

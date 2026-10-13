@@ -257,12 +257,13 @@ def main():
     print_step_header("Running FPS patcher")
 
     try:
-        patched, kept, failed, rule_problems = patcher_core.patch_files(
+        patched, kept, failed = patcher_core.patch_files(
             unbundled_dir, patched_dir, shared_profile, on_file=print_file_result)
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
+    rule_problems = patcher_core.find_rule_problems(patched, kept)
     print_rule_problems(rule_problems)
     if args.strict:
         enforce_strict(failed, kept, rule_problems)

@@ -43,10 +43,11 @@ def patch_files(src, dst, profile, *, rules=(), dry_run=False, on_file=None):
     on_file(rel, status, old_fps, new_fps, note) is called as soon as each file's result is
     known; status is "patched", "kept" or "failed".
 
-    Returns (patched, kept, failed, rule_problems): lists of relative paths, except that failed
-    holds (rel, message) tuples, and rule_problems holds messages about explicit rules that were
-    not followed (including rules that matched nothing at all). Files are still patched as well as
-    possible when a rule can't be followed, so the caller must make rule_problems very visible.
+    Returns (patched, kept, failed): patched holds {"path", "fps", "report"} dicts, kept holds
+    {"path", "report"} dicts, and failed holds (rel, message) tuples. Each report is the file's
+    rescale report (see swf_patcher/report.py); its "unmet_rules" and "rules" tell which explicit
+    rules were not followed. Files are still patched as well as possible when a rule can't be
+    followed, so the caller must check the reports and make such problems very visible.
     Raises NotADirectoryError / ValueError for invalid directories.
     """
     src, dst = Path(src).resolve(), Path(dst).resolve()
@@ -58,8 +59,7 @@ def patch_files(src, dst, profile, *, rules=(), dry_run=False, on_file=None):
     resolve_dev_target(profile)
 
     rules = make_rules(rules)
-    patched, kept, failed, rule_problems = [], [], [], []
-    matched_rules = set()   # indices into rules
+    patched, kept, failed = [], [], []
 
     def report(rel, status, old=None, new=None, note=""):
         if on_file:
@@ -86,10 +86,8 @@ def patch_files(src, dst, profile, *, rules=(), dry_run=False, on_file=None):
             continue
 
         old_fps, new_fps, note, rescale_report = result
-        rule_problems += [f"{rel}: {format_unmet_rule(unmet)}" for unmet in rescale_report["unmet_rules"]]
-        matched_rules.update(i for i, rule in enumerate(rescale_report.get("rules", [])) if rule["matched"])
         if new_fps is None:
-            kept.append(rel)
+            kept.append({"path": rel, "report": rescale_report})
             report(rel, "kept", old_fps, note=note)
             continue
 
@@ -110,13 +108,25 @@ def patch_files(src, dst, profile, *, rules=(), dry_run=False, on_file=None):
             out_data = replace_swf(orig_redswf_bytes, new_swf_bytes)
             out.write_bytes(out_data)
 
-        patched.append({"path": rel, "fps": new_fps})
+        patched.append({"path": rel, "fps": new_fps, "report": rescale_report})
         report(rel, "patched", old_fps, new_fps, note)
         print(f"********** DONE PROCESSING {rel} ************\n")
 
-    rule_problems += [f"{rule.description}: matched no sprite in any of the patched files"
-                      for i, rule in enumerate(rules) if i not in matched_rules]
-    return patched, kept, failed, rule_problems
+    return patched, kept, failed
+
+def find_rule_problems(patched, kept):
+    """Messages about explicit patching rules that were not followed, including rules that matched
+    nothing at all, from the reports in patch_files' patched and kept lists"""
+    entries = [*patched, *kept]
+    problems = [f"{entry['path']}: {format_unmet_rule(unmet)}"
+                for entry in entries for unmet in entry["report"]["unmet_rules"]]
+    # Every report lists the same rules, in the same order
+    for rule_records in zip(*(entry["report"]["rules"] for entry in entries)):
+        if not any(rule["matched"] for rule in rule_records):
+            rule = rule_records[0]
+            problems.append(f"fps rule '{rule['pattern']}' ({rule['fps']:g} fps): "
+                            "matched no sprite in any of the patched files")
+    return problems
 
 def process(redswf_bytes, settings, rel):
     """Find the SWF payload embedded in data and set its frame rate. Patches data in place.
@@ -176,7 +186,6 @@ def patch_fps(redswf_bytes, pos, settings, body_hook=None):
     def patch(body):
         """Helper that is called on the decompressed SWF bytes, and patches them in place"""
         result = rescale_body(body, settings.target_fps, rules=settings.rules, exclude=("InputFeedbackButton",))
-        print(f"\n{report_to_text(result.report)}\n")
         if result.new_fps is None:
             return False, (result.old_fps, None, None, result.report)
         body[:] = result.body

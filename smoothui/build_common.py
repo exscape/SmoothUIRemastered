@@ -213,7 +213,11 @@ def manifest_path(version):
     return MANIFEST_DIR / f"{normalize_version(version)}.json"
 
 def write_manifest(version, records, extra=None):
-    """Write manifests/<version>.json for this mod release"""
+    """Write manifests/<version>.json for this mod release.
+
+    records maps each patched file's relative path to its record: source/output SHA-256 and size,
+    "fps" (the frame rate it was patched to) and "report" (its full rescale report, see
+    patcher/swf_patcher/report.py)."""
     manifest = {"created_mod_version": normalize_version(version)}
     if extra:
         manifest.update(extra)

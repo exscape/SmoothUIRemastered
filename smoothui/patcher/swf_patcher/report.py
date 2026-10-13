@@ -25,8 +25,8 @@ so reports of two versions of a file can be matched up even if ids shift.
     }
 
 "interpolation" and "probably_safe_labels" are only present where they apply. A report for a file
-that was left unchanged only has old_fps, new_fps, target_fps and unmet_rules. A sprite's "class"
-is None if it has no linkage class.
+that was left unchanged only has old_fps, new_fps, target_fps, rules (each matching nothing) and
+unmet_rules. A sprite's "class" is None if it has no linkage class.
 """
 
 from __future__ import annotations
@@ -39,24 +39,19 @@ from .planner import RescalePlan
 from .retiming import Retiming, fps_ratio
 
 
-def unchanged_report(old_fps: float, target_fps: float) -> dict:
-    return {"old_fps": old_fps, "new_fps": None, "target_fps": target_fps, "unmet_rules": []}
+def unchanged_report(old_fps: float, options: RescaleOptions) -> dict:
+    return {"old_fps": old_fps, "new_fps": None, "target_fps": options.target_fps,
+            "rules": _rule_records(old_fps, options.rules, [[] for _ in options.rules]), "unmet_rules": []}
 
 
 def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) -> dict:
-    rules = []
-    for rule, matched in zip(options.rules, plan.rule_matches):
-        retiming = Retiming(fps_ratio(plan.source_fps, rule.fps))
-        rules.append({"pattern": rule.pattern.pattern, "fps": float(rule.fps),
-                      "ratio": str(retiming.ratio), "holds": retiming.hold_lengths(), "matched": matched})
-
     return {
         "old_fps": plan.source_fps,
         "new_fps": float(plan.target_fps),
         "target_fps": float(plan.target_fps),
         "ratio": str(plan.retiming.ratio),
         "holds": plan.retiming.hold_lengths(),
-        "rules": rules,
+        "rules": _rule_records(plan.source_fps, options.rules, plan.rule_matches),
         "unmet_rules": [{"rule": unmet.rule, "id": unmet.character_id,
                          "class": movie.class_of_sprite.get(unmet.character_id), "problem": unmet.problem}
                         for unmet in plan.unmet_rules],
@@ -72,6 +67,15 @@ def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) ->
         "unlinked_classes": sorted(plan.unlinked_classes),
         "warnings": list(plan.warnings),
     }
+
+
+def _rule_records(source_fps: float, rules, rule_matches) -> list[dict]:
+    records = []
+    for rule, matched in zip(rules, rule_matches):
+        retiming = Retiming(fps_ratio(source_fps, rule.fps))
+        records.append({"pattern": rule.pattern.pattern, "fps": float(rule.fps),
+                        "ratio": str(retiming.ratio), "holds": retiming.hold_lengths(), "matched": matched})
+    return records
 
 
 def _sprite_record(movie: SwfMovie, plan: RescalePlan, sprite) -> dict:
