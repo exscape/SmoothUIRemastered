@@ -6,6 +6,7 @@ followed by zero or more CSwfTexture chunks. Everything is stored uncompressed, 
   0      header, 40 bytes: 'CR2W' | u32 version | u32 flags | u64 timestamp | u32 build |
          u32 file_size | u32 buffer_size | u32 header_crc | u32 unknown
   40     10 table slots, 12 bytes each: u32 offset | u32 count | u32 crc32(table)
+         header_crc is the crc32 of these first 160 bytes, with header_crc itself set to 0xDEADBEEF.
   160    the tables in use, packed in slot order:
            0  strings  count = byte length (NUL separated)
            1  names    8-byte entries: u32 string offset | u32 hash
@@ -20,8 +21,8 @@ followed by zero or more CSwfTexture chunks. Everything is stored uncompressed, 
          u32 pitch | u32 data_size | u32 16), then data_size bytes of DXT data.
 
 The only absolute offsets are in the exports table, so a replacement rebuilds the SWF chunk, then
-rewrites the exports table (offsets, sizes, CRCs) and the two size fields in the header. The header
-CRC is left as is: its algorithm is unknown.
+rewrites the exports table (offsets, sizes, CRCs), the two size fields in the header, and the header
+CRC. All CRCs are the standard CRC-32 (zlib.crc32).
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ TABLES_START = SLOTS_START + SLOT_COUNT * SLOT_SIZE
 T_STRINGS, T_NAMES, T_EXPORTS = 0, 1, 4
 TABLE_ENTRY_SIZES = {T_STRINGS: 1, T_NAMES: 8, 3: 16, T_EXPORTS: 24}
 OFF_EXPORTS_CRC = SLOTS_START + T_EXPORTS * SLOT_SIZE + 8
+HEADER_CRC_PLACEHOLDER = 0xDEADBEEF
 EXPORT_ROW = struct.Struct("<HHIIIII")
 KNOWN_CLASSES = ("CSwfResource", "CSwfTexture")
 TEXTURE_HEADER_SIZE, TEXTURE_DATA_SIZE_OFFSET = 28, 20
@@ -47,6 +49,13 @@ TEXTURE_HEADER_SIZE, TEXTURE_DATA_SIZE_OFFSET = 28, 20
 
 class RedSwfError(ValueError):
     """The .redswf or the new SWF can't be handled, or the result failed verification"""
+
+
+def header_crc(data: bytes | bytearray) -> int:
+    """The CRC of the header and table slots, as stored at OFF_HEADER_CRC"""
+    header = bytearray(data[:TABLES_START])
+    struct.pack_into("<I", header, OFF_HEADER_CRC, HEADER_CRC_PLACEHOLDER)
+    return zlib.crc32(header)
 
 
 class Export(NamedTuple):
@@ -74,9 +83,11 @@ class RedSwf:
         if self.file_size != len(d):
             raise RedSwfError(f"header file size {self.file_size} != actual size {len(d)}")
 
-        # Tables/chunks whose stored CRC doesn't match their contents. Tolerated (it happens when
-        # a SWF was patched in place), but replacing the SWF must not add any.
+        # Header/tables/chunks whose stored CRC doesn't match their contents. Tolerated (it happens
+        # when a SWF was patched in place), but replacing the SWF must not add any.
         self.stale = set()
+        if struct.unpack_from("<I", d, OFF_HEADER_CRC)[0] != header_crc(d):
+            self.stale.add("header")
 
         self.tables = {}   # slot: (offset, size)
         pos = TABLES_START
@@ -214,6 +225,8 @@ class RedSwf:
         out = bytearray(d[:self.tables[T_EXPORTS][0]]) + exports + b"".join(chunks)
         struct.pack_into("<II", out, OFF_FILE_SIZE, len(out), self.buffer_size + len(out) - len(d))
         struct.pack_into("<I", out, OFF_EXPORTS_CRC, zlib.crc32(exports))
+        # Last, as it covers the fields above
+        struct.pack_into("<I", out, OFF_HEADER_CRC, header_crc(out))
         return out
 
 
@@ -288,7 +301,7 @@ def verify_replacement(old: RedSwf, out: bytearray, swf: bytes) -> list[str]:
     if old.data[TABLES_START:old.tables[T_EXPORTS][0]] != new.data[TABLES_START:new.tables[T_EXPORTS][0]]:
         problems.append("the string/name tables changed")
 
-    allowed = {*range(OFF_FILE_SIZE, OFF_HEADER_CRC), *range(OFF_EXPORTS_CRC, OFF_EXPORTS_CRC + 4)}
+    allowed = {*range(OFF_FILE_SIZE, OFF_HEADER_CRC + 4), *range(OFF_EXPORTS_CRC, OFF_EXPORTS_CRC + 4)}
     changed = {i for i in range(TABLES_START) if old.data[i] != new.data[i]}
     if changed - allowed:
         problems.append(f"unexpected header bytes changed: {sorted(changed - allowed)[:8]}")
