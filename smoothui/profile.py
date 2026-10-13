@@ -5,7 +5,10 @@ Override files (build_compat --overrides) add settings for one other mod, on top
 Smooth UI release recorded in its manifest. They use the same format without [N] sections: a file
 line refers to a file both mods contain, rather than adding one. fps replaces the recorded frame rate,
 retime lines are tried before the recorded ones, and include/exclude lines are added to them.
-Recorded settings can't be removed."""
+Recorded settings can't be removed.
+
+Override files may also mark patcher warnings that the other mod introduces as checked by hand, with
+"reviewed: <warning key>" lines under "*" (see smoothui/reviewed_warnings.py)."""
 
 import re
 from dataclasses import dataclass, field
@@ -16,7 +19,7 @@ from .common import profile_key
 from .patcher.patcher_core import PatchSettings
 from .patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
 
-SETTING = re.compile(r"(fps|include|exclude|retime (\S+)):\s*(.*)")
+SETTING = re.compile(r"(fps|include|exclude|reviewed|retime (\S+)):\s*(.*)")
 MIN_FPS, MAX_FPS = 1, 256
 
 
@@ -27,6 +30,7 @@ class Entry:
     rules: list = field(default_factory=list)
     include: list = field(default_factory=list)
     exclude: list = field(default_factory=list)
+    reviewed: list = field(default_factory=list)    # warning keys; override files only, under *
 
     def descriptions(self) -> list[str]:
         """Each retime/include/exclude, as written in the profile"""
@@ -45,7 +49,7 @@ def _parse_fps(text: str) -> float:
     return fps
 
 
-def _add_setting(entry: Entry, text: str, is_star: bool):
+def _add_setting(entry: Entry, text: str, is_star: bool, is_override: bool):
     match = SETTING.fullmatch(text)
     if not match:
         raise ValueError(f"unknown setting '{text}'")
@@ -58,6 +62,12 @@ def _add_setting(entry: Entry, text: str, is_star: bool):
         if entry.fps is not None:
             raise ValueError("fps is given twice")
         entry.fps = _parse_fps(value)
+        return
+    if key == "reviewed":
+        if not (is_override and is_star):
+            raise ValueError("reviewed: only belongs under * in compat override files "
+                             "(main builds use config/reviewed_warnings.txt)")
+        entry.reviewed.append(value)
         return
 
     pattern = parse_sprite_pattern(value)
@@ -90,7 +100,7 @@ def parse_profile(path: Path, *, sections: bool = True) -> tuple[dict[str, Entry
             if line[0].isspace():
                 if entry is None:
                     raise ValueError("indented setting without a file (or *) above it")
-                _add_setting(entry, line.strip(), entry is star)
+                _add_setting(entry, line.strip(), entry is star, not sections)
             elif line.startswith("[") and line.endswith("]"):
                 if not sections:
                     raise ValueError("[N] sections are not allowed here; use 'fps:' under a file")
@@ -134,9 +144,10 @@ def load_profile(path=None) -> tuple[dict[str, PatchSettings], list[str]]:
     return profile, star.descriptions()
 
 
-def apply_overrides(profile: dict[str, PatchSettings], path) -> tuple[dict[str, PatchSettings], list[str]]:
+def apply_overrides(profile: dict[str, PatchSettings], path) -> tuple[dict[str, PatchSettings], list[str], set[str]]:
     """Add the settings in a compat override file to profile (which holds only the files both mods
-    contain). Returns (the new profile, the override file's "*" settings as written)."""
+    contain). Returns (the new profile, the override file's "*" settings as written, the warning
+    keys it marks as reviewed)."""
     path = Path(path)
     files, star = parse_profile(path, sections=False)
     for key in files:
@@ -152,4 +163,4 @@ def apply_overrides(profile: dict[str, PatchSettings], path) -> tuple[dict[str, 
             _unique([*settings.include, *entry.include, *star.include]),
             _unique([*settings.exclude, *entry.exclude, *star.exclude]))
     print(f"Applied overrides from {path} ({len(files)} files, {len(star.descriptions())} settings under *)")
-    return merged, star.descriptions()
+    return merged, star.descriptions(), set(star.reviewed)

@@ -21,6 +21,7 @@ from .common import normalize_version, to_native, to_windows
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
+REVIEWED_WARNINGS = REPO_ROOT / "config" / "reviewed_warnings.txt"
 MANIFEST_DIR = REPO_ROOT / "manifests"
 
 REQUIRED_CONFIG_KEYS = ("working_dir", "wcc_lite")
@@ -32,6 +33,9 @@ def fail(msg):
 def print_step_header(msg):
     eq = "=" * 10
     print(f"{Back.BLACK}{Fore.YELLOW}{eq} {msg} {eq}{Style.RESET_ALL}", flush=True)
+
+def print_substep_header(msg):
+    print(f"\n{Fore.CYAN}--- {msg} ---{Style.RESET_ALL}", flush=True)
 
 # wcc_lite lines that appear on every run and are harmless
 NOISE = [re.compile(p) for p in (
@@ -116,14 +120,27 @@ def config_paths(config):
     """The config's paths, converted to Path objects usable by this Python"""
     return {k: to_native(v) for k, v in config["paths"].items()}
 
-def print_file_result(rel, status, old_fps, new_fps, note):
-    """on_file callback for patcher.patch_files"""
-    if status == "patched":
-        print(f"{rel}: {old_fps:g} -> {new_fps:g} fps ({note})", flush=True)
-    elif status == "kept":
-        print(f"KEEP {rel}: {old_fps:g} fps ({note})", flush=True)
-    else:
-        print(f"SKIP {rel}: {note}", file=sys.stderr, flush=True)
+def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None):
+    """on_file callback for patcher_core.patch_files: the result, and anything to check by hand.
+    Bind is_reviewed(rel, warning key) (see reviewed_warnings.py) to hide warnings already checked."""
+    if status == "failed":
+        print(f"{Fore.RED}SKIP {rel}: {error}{Style.RESET_ALL}", file=sys.stderr, flush=True)
+        return
+    if status == "kept":
+        print(f"KEEP {rel}: {report['old_fps']:g} fps, already at or above the target "
+              f"{report['target_fps']:g} fps", flush=True)
+        return
+
+    print(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps", flush=True)
+    if report["unmet_rules"]:
+        print(f"{Fore.RED}  {len(report['unmet_rules'])} explicit rule(s) not followed "
+              f"(listed at the end){Style.RESET_ALL}", flush=True)
+    warnings = [warning for warning in report["warnings"]
+                if not (is_reviewed and is_reviewed(rel, warning["key"]))]
+    if warnings:
+        print(f"{Fore.YELLOW}  {len(warnings)} unreviewed warning(s):{Style.RESET_ALL}", flush=True)
+        for warning in warnings:
+            print(f"{Fore.YELLOW}    [{warning['key']}] {warning['message']}{Style.RESET_ALL}", flush=True)
 
 def print_rule_issues(issues):
     """Print patcher_core.RuleIssues. The build still finishes, so these must be impossible to miss."""
@@ -140,8 +157,8 @@ def print_rule_issues(issues):
             print(f"{Fore.RED}  {error}{Style.RESET_ALL}", flush=True)
         print(flush=True)
 
-def enforce_strict(failed, kept, rule_errors):
-    """--strict: fail unless every file was patched, exactly as configured"""
+def enforce_strict(failed, kept, rule_errors, unreviewed_warnings=()):
+    """--strict: fail unless every file was patched, exactly as configured, with no unreviewed warnings"""
     problems = []
     if failed:
         problems.append(f"{len(failed)} file(s) could not be patched")
@@ -149,6 +166,8 @@ def enforce_strict(failed, kept, rule_errors):
         problems.append(f"{len(kept)} file(s) left unchanged, as they are already at or above their target frame rate")
     if rule_errors:
         problems.append(f"{len(rule_errors)} explicit rule(s) not followed")
+    if unreviewed_warnings:
+        problems.append(f"{len(unreviewed_warnings)} unreviewed warning(s)")
     if problems:
         fail("--strict: " + "; ".join(problems) + " (see above)")
 

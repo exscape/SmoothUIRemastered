@@ -8,6 +8,7 @@
 import argparse
 import datetime
 import shutil
+from functools import partial
 
 from .build_common import (
     REPO_ROOT,
@@ -31,6 +32,7 @@ from .build_common import (
 from .patcher import dev_mode, patcher_core
 from .patcher.redswf import swf_sha256
 from .profile import load_profile
+from .reviewed_warnings import WarningReview, accept_warnings, load_reviewed, print_warning_summary
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 
@@ -52,6 +54,9 @@ def parse_args():
     ap.add_argument("--strict", action="store_true",
                     help="fail unless every file is patched exactly as configured: no file failed or left "
                          "unchanged, and every explicit rule followed; intended for automation")
+    ap.add_argument("--accept-warnings", action="store_true",
+                    help="mark all current patcher warnings as reviewed (adds them to config/reviewed_warnings.txt); "
+                         "only after checking them by hand")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
     ap.add_argument("--write-manifest", action="store_true",
@@ -119,19 +124,28 @@ def main():
         output_content_path.mkdir(parents=True, exist_ok=True)
 
     print_step_header("Running FPS patcher")
+    review = WarningReview(load_reviewed())
     try:
         patched, kept, failed = patcher_core.patch_files(
             uncooked_files, patched_dir, profile,
-            dry_run=args.dry_run, on_file=print_file_result)
+            dry_run=args.dry_run, on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, "
           f"{len(failed)} skipped.")
+
+    warnings = review.summarize(patched)
+    if args.accept_warnings and warnings.unreviewed:
+        accept_warnings(warnings.unreviewed)
+        warnings = WarningReview(load_reviewed()).summarize(patched)
+    print_warnings = partial(print_warning_summary, warnings, reviewed_source="config/reviewed_warnings.txt",
+                             how_to_accept=["Once checked, run again with --accept-warnings to mark them as reviewed."])
+    print_warnings()
     rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings)
     print_rule_issues(rule_issues)
     if args.strict:
-        enforce_strict(failed, kept, rule_issues.errors)
+        enforce_strict(failed, kept, rule_issues.errors, warnings.unreviewed)
 
     if args.dry_run:
         print_step_header("DRY RUN: exiting")
@@ -183,4 +197,5 @@ def main():
     finish_work_dir(work_dir, args.keep_work)
 
     # Repeated, as the packing output has likely scrolled it away
+    print_warnings()
     print_rule_issues(rule_issues)

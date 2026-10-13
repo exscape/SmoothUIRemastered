@@ -62,6 +62,13 @@ class SpriteTweens:
     motion: float       # total change magnitude: how noticeable the interpolation is
 
 
+@dataclass(frozen=True)
+class PlanWarning:
+    """Something the patcher can't check, which may break a stretched clip"""
+    key: str        # kind and code location, stable between builds, e.g. "unresolved-goto Class.method"
+    message: str
+
+
 @dataclass
 class UnmetRule:
     """An explicit rule that was not followed for a sprite"""
@@ -91,7 +98,7 @@ class RescalePlan:
     goto_edits: int = 0
     increments: list[IncrementPatch] = field(default_factory=list)
     tweens: dict[int, SpriteTweens] = field(default_factory=dict)
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[PlanWarning] = field(default_factory=list)
     # Character ids matched by each of options.rules / include / exclude (in the same order)
     rule_matches: list[list[int]] = field(default_factory=list)
     include_matches: list[list[int]] = field(default_factory=list)
@@ -410,8 +417,14 @@ class Planner:
                 plan.increments.append(IncrementPatch(name, prop, float(step), new_step))
                 patched = True
             if not patched:
-                plan.warnings.append(f"persistent ENTER_FRAME handler {name} runs once per frame "
-                                     f"(now {float(ratio):.2f}x as often); check it for frame counting")
+                self._warn(f"enter-frame-handler {name}",
+                           f"persistent ENTER_FRAME handler {name} runs once per frame "
+                           f"(now {float(ratio):.2f}x as often); check it for frame counting")
+
+    def _warn(self, key: str, message: str):
+        warning = PlanWarning(key, message)
+        if warning not in self.plan.warnings:
+            self.plan.warnings.append(warning)
 
     def _warn_unresolved(self, unresolved_gotos, frame_property_uses):
         plan = self.plan
@@ -422,16 +435,17 @@ class Planner:
                 description = f"literal {call.call}({call.arg.value})"
             else:
                 description = f"computed {call.call}(...)"
-            warning = (f"unresolved receiver: {description} in {call.owner} -- "
+            self._warn(f"unresolved-goto {short_owner(call.owner)}",
+                       f"unresolved receiver: {description} in {call.owner} -- "
                        "if it targets a stretched clip, check by hand")
-            if warning not in plan.warnings:
-                plan.warnings.append(warning)
 
         for use, targets in frame_property_uses:
             if targets is None:
-                plan.warnings.append(f"{use.prop} used in {use.owner} on an unresolved receiver")
+                self._warn(f"unresolved-frame-property {short_owner(use.owner)}",
+                           f"{use.prop} used in {use.owner} on an unresolved receiver")
             elif targets & plan.stretched:
-                plan.warnings.append(f"{use.prop} used in {use.owner} on stretched clips {sorted(targets & plan.stretched)}")
+                self._warn(f"stretched-frame-property {short_owner(use.owner)}",
+                           f"{use.prop} used in {use.owner} on stretched clips {sorted(targets & plan.stretched)}")
 
     # --- Interpolation ---
 

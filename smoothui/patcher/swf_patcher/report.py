@@ -24,12 +24,14 @@ so reports of two versions of a file can be matched up even if ids shift.
          "probably_safe_labels": ["blue", "red"]},
       ],
       "unlinked_classes": ["..."],
-      "warnings": ["..."],
+      # Things the patcher can't check; "key" is the kind and code location, stable between builds
+      "warnings": [{"key": "unresolved-goto Class.method", "message": "..."}],
     }
 
 "interpolation" and "probably_safe_labels" are only present where they apply. A report for a file
 that was left unchanged only has old_fps, new_fps, target_fps, rules (each matching nothing),
-include, exclude and unmet_rules. A sprite's "class" is None if it has no linkage class.
+include, exclude, unmet_rules and warnings (empty). A sprite's "class" is None if it has no linkage
+class.
 """
 
 from __future__ import annotations
@@ -47,7 +49,7 @@ def unchanged_report(old_fps: float, options: RescaleOptions) -> dict:
             "rules": _rule_records(old_fps, options.rules, [[] for _ in options.rules]),
             "include": _pattern_records(options.include, [[] for _ in options.include]),
             "exclude": _pattern_records(options.exclude, [[] for _ in options.exclude]),
-            "unmet_rules": []}
+            "unmet_rules": [], "warnings": []}
 
 
 def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) -> dict:
@@ -73,7 +75,7 @@ def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) ->
         "sprites": [_sprite_record(movie, plan, sprite)
                     for sprite in sorted(movie.multi_frame_sprites(), key=lambda s: s.character_id)],
         "unlinked_classes": sorted(plan.unlinked_classes),
-        "warnings": list(plan.warnings),
+        "warnings": [{"key": warning.key, "message": warning.message} for warning in plan.warnings],
     }
 
 
@@ -196,5 +198,5 @@ def report_to_text(report: dict) -> str:
     if report["warnings"]:
         out("")
         out("REVIEW")
-        lines.extend("  " + warning for warning in report["warnings"])
+        lines.extend(f"  [{warning['key']}] {warning['message']}" for warning in report["warnings"])
     return "\n".join(lines)

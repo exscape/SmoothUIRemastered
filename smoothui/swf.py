@@ -24,9 +24,8 @@ MAX_RAW_FPS = 0xFFFF
 MIN_UNCOMPRESSED_LENGTH = 21
 
 def swf_patch(data, pos, patch, body_hook=None):
-    """Apply an arbitrary patch to the zlib-compressed SWF whose header starts
-    at data[pos], writing the result back into exactly the space the original
-    occupied (zero padded), so the file size never changes.
+    """Apply an arbitrary patch to the zlib-compressed SWF whose header starts at data[pos].
+    data itself is not modified.
 
     patch(body) receives the decompressed body (a bytearray, the data after the 8-byte
     header) and may modify it in place, including changing its length. It returns:
@@ -41,10 +40,8 @@ def swf_patch(data, pos, patch, body_hook=None):
     length), so it can be used for debugging or manual editing.
 
     Returns None if there is no complete zlib stream at pos (not an SWF payload).
-    Otherwise returns (stream_end, result, padding, new_swf_bytes): padding is the number of
-    zero pad bytes written, and new_swf_bytes the new header + compressed stream; both are None
-    if nothing was written. result is None if patch returned None.
-    Raises ValueError if the patched body no longer fits.
+    Otherwise returns (stream_end, result, new_swf_bytes): new_swf_bytes is the new header +
+    compressed stream, or None if body was not modified. result is None if patch returned None.
     """
     stream_start = pos + SWF_HEADER_SIZE
     decompressor = zlib.decompressobj()
@@ -66,33 +63,25 @@ def swf_patch(data, pos, patch, body_hook=None):
     declared_body_len = declared_total - SWF_HEADER_SIZE
     if declared_body_len < 0 or declared_body_len > len(body):
         fail(f"declared length {declared_total} doesn't match the decompressed size {SWF_HEADER_SIZE + len(body)}")
-    if declared_body_len < len(body):
-        print(f"[!] Dropping {len(body) - declared_body_len} bytes after the declared end of the SWF")
-        del body[declared_body_len:]
+    del body[declared_body_len:]
 
-    old_body_len = len(body)
     outcome = patch(body)
     if outcome is None:
-        return stream_end, None, None, None
+        return stream_end, None, None
     modified, result = outcome
     if not modified:
-        return stream_end, result, None, None
+        return stream_end, result, None
 
     # Runs before the length fix-up below, because the hook may change the body's length
     if body_hook is not None:
         body = body_hook(data[pos:stream_start], body)
 
-    if len(body) != old_body_len:
-        print(f"*** Updated body length: {old_body_len} => {len(body)} bytes ({old_body_len - len(body):+} byte delta from patch")
-        data[pos + 4:pos + 8] = (SWF_HEADER_SIZE + len(body)).to_bytes(4, "little")
+    # The header's length field is the total uncompressed length; the body's length may have changed
+    header = bytearray(data[pos:stream_start])
+    header[4:8] = (SWF_HEADER_SIZE + len(body)).to_bytes(4, "little")
+    new_swf_bytes = header + recompress(body, stream_len)
 
-    compressed = recompress(body, stream_len)
-    padding = stream_len - len(compressed)
-
-    data[stream_start:stream_end] = compressed + b"\0" * padding # TODO: not used with new patcher; change patcher OR make data read only
-    new_swf_bytes = data[pos:pos+SWF_HEADER_SIZE] + compressed
-
-    return stream_end, result, padding, new_swf_bytes
+    return stream_end, result, new_swf_bytes
 
 def recompress(body, max_len):
     """Recompress the patched data to fit in the same size as the original.
@@ -108,7 +97,6 @@ def recompress(body, max_len):
     # mem 8 often compresses slightly better(?!) and often yields the exact size
     # of the original blob, so let's start there
     for mem in (8, 9):
-        print(".")
         c = zlib.compressobj(9, zlib.DEFLATED, 15, mem)
         out = c.compress(raw) + c.flush()
         return out

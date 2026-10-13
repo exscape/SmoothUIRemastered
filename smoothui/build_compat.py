@@ -5,13 +5,14 @@
 # those patched files.
 #
 # The files to patch and their settings come from the manifest (see manifests/), selected by --smooth-version,
-# optionally with additions from an override file (--overrides; see smoothui/profile.py).
+# optionally with additions from an override file (--overrides; see config/compat_overrides_example.txt).
 # Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.2
 
 import argparse
 import json
 import shutil
 import zipfile
+from functools import partial
 from pathlib import Path
 
 import py7zr
@@ -39,6 +40,7 @@ from .patcher import dev_mode, patcher_core
 from .patcher.patcher_core import PatchSettings
 from .patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
 from .profile import apply_overrides
+from .reviewed_warnings import WarningReview, print_warning_summary
 
 
 # rarfile looks for an external unrar in PATH and in the current directory. When neither has it,
@@ -70,7 +72,7 @@ def parse_args(argv=None):
                     help="Smooth UI Remastered version that the patch targets; affects the patching process")
     ap.add_argument("--overrides", type=Path, default=None,
                     help="optional file with settings to add for this mod, on top of those the Smooth UI "
-                         "release was patched with (same format as config/profile_default.txt, minus [N] sections)")
+                         "release was patched with (see config/compat_overrides_example.txt)")
 
     ap.add_argument("--zip", default=None,
                     help="output .zip name or path; the default name is recommended over specifying this!")
@@ -274,24 +276,36 @@ def main():
     shared_keys = {rel.as_posix().lower() for rel in shared}
     shared_profile = {key: settings for key, settings in profile_from_manifest(manifest).items()
                       if key in shared_keys}
-    shared_settings = []
+    shared_settings, reviewed = [], set()
     if args.overrides:
-        shared_profile, shared_settings = apply_overrides(shared_profile, args.overrides)
+        shared_profile, shared_settings, reviewed = apply_overrides(shared_profile, args.overrides)
 
     print_step_header("Running FPS patcher")
 
+    # The release's reports; warnings it had for a file were already there in the vanilla version
+    recorded = {key: record["report"] for key, record in manifest["files"].items() if "report" in record}
+    review = WarningReview(reviewed, {key: {warning["key"] for warning in report["warnings"]}
+                                      for key, report in recorded.items()})
     try:
         patched, kept, failed = patcher_core.patch_files(
-            unbundled_dir, patched_dir, shared_profile, on_file=print_file_result)
+            unbundled_dir, patched_dir, shared_profile,
+            on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
-    recorded = {key: record["report"] for key, record in manifest["files"].items() if "report" in record}
+
+    warnings = review.summarize(patched)
+    how_to_accept = ["These come from the other mod's changes. Once checked, add these lines under * in "
+                     "the --overrides file to mark them as reviewed:",
+                     *(f"    reviewed: {key}" for key in warnings.unreviewed)]
+    print_warnings = partial(print_warning_summary, warnings, how_to_accept=how_to_accept,
+                             reviewed_source=str(args.overrides))
+    print_warnings()
     rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings, recorded)
     print_rule_issues(rule_issues)
     if args.strict:
-        enforce_strict(failed, kept, rule_issues.errors)
+        enforce_strict(failed, kept, rule_issues.errors, warnings.unreviewed)
 
     # A conflicting file missing from the patch would let our main mod's version
     # override the other mod's changes to that screen.
@@ -309,4 +323,5 @@ def main():
     finish_work_dir(work_dir, args.keep_work)
 
     # Repeated, as the packing output has likely scrolled it away
+    print_warnings()
     print_rule_issues(rule_issues)

@@ -1,0 +1,5 @@
+# Patcher warnings that have been checked by hand and found harmless: one warning key per line.
+# Keys name a code location (kind and Class.method), so one entry covers every file containing that code.
+# build-main --accept-warnings adds the current unreviewed ones; please note why each one is harmless.
+# Only used by main builds; see smoothui/reviewed_warnings.py.
+
