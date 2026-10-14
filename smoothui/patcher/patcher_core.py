@@ -159,11 +159,7 @@ def process(redswf_bytes, settings, rel):
             pos = redswf_bytes.find(sig, end)
 
     if result is None:
-        #raise ValueError("found 0 payloads (expected 1)")
-
-        # TEMP
-        from ..common import fail
-        fail("0 payloads found in process")
+        raise ValueError("found 0 payloads (expected 1); corrupt file?")
     return result, new_swf_bytes
 
 def read_and_patch_swf(redswf_bytes, pos, sig, settings, rel):

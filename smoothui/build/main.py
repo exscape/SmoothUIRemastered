@@ -138,10 +138,10 @@ def main():
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, "
           f"{len(failed)} skipped.")
 
-    warnings = review.summarize(patched)
+    warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     if args.accept_warnings and warnings.unreviewed:
         accept_warnings(warnings.unreviewed)
-        warnings = WarningReview(load_reviewed()).summarize(patched)
+        warnings = WarningReview(load_reviewed()).summarize([*patched, *kept], unchecked=len(failed))
     print_warnings = partial(print_warning_summary, warnings, reviewed_source="config/reviewed_warnings.txt",
                              how_to_accept=["Once checked, run again with --accept-warnings to mark them as reviewed."])
     print_warnings()

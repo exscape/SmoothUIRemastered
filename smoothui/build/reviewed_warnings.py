@@ -24,6 +24,7 @@ class WarningSummary(NamedTuple):
     unreviewed: dict[str, list[str]]    # warning key -> "file: message" for each occurrence
     hidden: int                         # occurrences of reviewed warnings
     stale: list[str]                    # reviewed keys that no longer occur in any file
+    unchecked: int                      # files that could not be checked, so stale may be wrong
 
 
 class WarningReview:
@@ -36,8 +37,9 @@ class WarningReview:
     def is_reviewed(self, rel, key: str) -> bool:
         return key in self.reviewed or key in self.recorded.get(profile_key(rel), ())
 
-    def summarize(self, entries) -> WarningSummary:
-        """Check the warnings in the reports of patch_files' patched (and kept) lists"""
+    def summarize(self, entries, unchecked=0) -> WarningSummary:
+        """Check the warnings in the reports of patch_files' patched (and kept) lists. unchecked: the
+        number of files that have no report (failed), whose warnings are unknown"""
         unreviewed, hidden, seen = defaultdict(list), 0, set()
         for entry in entries:
             for warning in entry["report"]["warnings"]:
@@ -46,7 +48,7 @@ class WarningReview:
                     hidden += 1
                 else:
                     unreviewed[warning["key"]].append(f"{entry['path']}: {warning['message']}")
-        return WarningSummary(dict(unreviewed), hidden, sorted(self.reviewed - seen))
+        return WarningSummary(dict(unreviewed), hidden, sorted(self.reviewed - seen), unchecked)
 
 
 def load_reviewed(path: Path = REVIEWED_WARNINGS) -> set[str]:
@@ -70,7 +72,11 @@ def print_warning_summary(summary: WarningSummary, how_to_accept: list[str], rev
     """how_to_accept: lines telling the user how to mark the unreviewed warnings as reviewed"""
     if summary.hidden:
         print(f"{summary.hidden} reviewed warning(s) hidden", flush=True)
-    if summary.stale:
+    if summary.stale and summary.unchecked:
+        # The unseen warnings may well occur in the files that failed
+        print(f"{Fore.YELLOW}Skipped the check for reviewed warnings that no longer occur, as "
+              f"{summary.unchecked} file(s) could not be patched{Style.RESET_ALL}", flush=True)
+    elif summary.stale:
         print(f"{Fore.YELLOW}{len(summary.stale)} reviewed warning(s) no longer occur; "
               f"consider removing them from {reviewed_source}:{Style.RESET_ALL}", flush=True)
         for key in summary.stale:

@@ -295,7 +295,7 @@ def main():
     print()
     print(f"Done: {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
 
-    warnings = review.summarize(patched)
+    warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     how_to_accept = [("These come from the other mod's changes. Once checked, add these lines under * in "
                       "the --overrides file to mark them as reviewed:"),
                      *(f"    reviewed: {key}" for key in warnings.unreviewed)]
