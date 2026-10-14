@@ -120,6 +120,7 @@ class MethodInfo:
 class Trait:
     name: int                   # multiname index
     kind: int
+    slot_id: int = 0            # slots/consts
     type_name: int = 0          # slots/consts: multiname index of the declared type
     value_kind: int | None = None   # slots/consts: constant kind of the default value, if any
     method: int | None = None   # methods/getters/setters
@@ -144,6 +145,7 @@ class MethodBody:
     method: int
     code: bytes
     exceptions: list[list[int]]   # [from, to, target, exception type, variable name]
+    traits: list[Trait]           # the slots of its activation object, if it has one
     # The code length field, code, and exception table occupy raw[splice_start:splice_end]
     splice_start: int
     splice_end: int
@@ -306,7 +308,7 @@ def _read_traits(r: AbcReader) -> list[Trait]:
         kind, attributes = kind_byte & 0xF, kind_byte >> 4
         trait = Trait(name, kind)
         if kind in VALUE_TRAIT_KINDS:
-            r.u30()     # slot id
+            trait.slot_id = r.u30()
             trait.type_name = r.u30()
             if r.u30():     # default value index
                 trait.value_kind = r.u8()
@@ -333,8 +335,7 @@ def _read_method_body(r: AbcReader) -> MethodBody:
     code = bytes(r.bytes(r.u30()))
     exceptions = [[r.u30() for _ in range(5)] for _ in range(r.u30())]
     splice_end = r.offset
-    _read_traits(r)
-    return MethodBody(method, code, exceptions, splice_start, splice_end)
+    return MethodBody(method, code, exceptions, _read_traits(r), splice_start, splice_end)
 
 
 def serialize_abc(abc: AbcFile, new_bodies: dict[int, tuple[bytes, list]], new_doubles=()) -> bytes:

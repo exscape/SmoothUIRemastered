@@ -16,7 +16,9 @@ raises the frame rate AND compensates, so animations keep their original speed:
     frames stay bit-identical. Shape/bitmap swaps, appear/disappear, filters etc. stay stepped.
   * clips that code addresses by a COMPUTED frame number (colour / icon selectors, progress strips)
     and "selector" clips (every frame carries a label or a frame script) are NOT stretched: that would
-    change which frame a given number selects. The report lists each exclusion and why.
+    change which frame a given number selects. Neither are "still" clips, whose content only
+    changes where a stop() halts them first (CLIK state clips, icon sets): how long their frames
+    last never shows. The report lists each exclusion and why.
 
 Frame rate independent things (GTween, scaleform.clik.motion.Tween, Timer, setTimeout, getTimer)
 need nothing. AS3 only (one DoABC tag); AS2 DoAction clips are not handled.

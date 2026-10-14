@@ -9,11 +9,13 @@ from dataclasses import dataclass
 from ..swf import FPS_FIXED_POINT_SCALE, swf_get_header_offsets
 from .abc_bytecode import NO_OP_NAMES, Instruction, disassemble, stack_effect
 from .abc_file import (
-    CONSTANT_INT,
-    CONSTANT_UINT,
     CONSTANT_UTF8,
     METHOD_TRAIT_KINDS,
+    TRAIT_CONST,
+    TRAIT_GETTER,
+    TRAIT_METHOD,
     VALUE_TRAIT_KINDS,
+    Trait,
     parse_abc,
 )
 from .place_object import PLACE_OBJECT_CODES, parse_place_object
@@ -27,6 +29,9 @@ from .swf_tags import (
     parse_tags,
     split_do_abc,
 )
+
+# Traits that a property read can give the value of (a setter's property is read through its getter)
+READABLE_TRAIT_KINDS = (*VALUE_TRAIT_KINDS, TRAIT_GETTER, TRAIT_METHOD)
 
 ROOT_TIMELINE = 0   # stands in for the main timeline's id where a sprite id is expected
 
@@ -50,6 +55,16 @@ class Sprite:
     frame_count: int            # number of ShowFrame tags
     declared_frame_count: int   # frame count in the DefineSprite header
     labels: dict[int, str]      # 0-based frame -> label
+
+    def changed_frames(self) -> set[int]:
+        """The 0-based frames on which the timeline does something (anything but a label)"""
+        frames, frame = set(), 0
+        for tag in self.tags:
+            if tag.code == TagCode.SHOW_FRAME:
+                frame += 1
+            elif tag.code not in (TagCode.FRAME_LABEL, TagCode.END) and frame < self.frame_count:
+                frames.add(frame)
+        return frames
 
 
 class SwfMovie:
@@ -127,11 +142,13 @@ class SwfMovie:
         self.method_owner = {}      # method index -> "pkg.Class.method"
         self.class_of_method = {}   # method index -> "pkg.Class"
         self.superclass = {}        # "pkg.Class" -> "pkg.Super" or None
+        self.instance_of = {}       # "pkg.Class" -> its InstanceInfo
         self.static_methods = set()  # method indices of static methods and class initializers
 
         for instance, cls in zip(abc.instances, abc.classes):
             class_name = abc.full_name_of(instance.name)
             self.superclass[class_name] = abc.full_name_of(instance.super_name) if instance.super_name else None
+            self.instance_of[class_name] = instance
             self._set_method_owner(instance.constructor, class_name, "<iinit>")
             self._set_method_owner(cls.static_init, class_name, "<cinit>")
             self.static_methods.add(cls.static_init)
@@ -149,25 +166,55 @@ class SwfMovie:
         self.class_of_method[method] = class_name
 
     def _load_string_typing(self):
-        """Find the property names that always hold a String, and the methods that return one, so
-        label (string) arguments can be told apart from frame numbers"""
+        """Find the property names that always hold a String, and the method names that always
+        return one, so label (string) arguments can be told apart from frame numbers, by name alone.
+
+        This is a guess, for properties of objects of unknown type: a property of a dynamic object
+        (such as data from the game) can hold anything. Only variables and constants count as
+        evidence for a name, but a getter or method of another type rules it out."""
         abc = self.abc
-        property_types = defaultdict(set)
-        self.string_methods = set()
+        property_types, return_types = defaultdict(set), defaultdict(set)
+        variables = set()
         for instance, cls in zip(abc.instances, abc.classes):
             for trait in instance.traits + cls.traits:
+                name = abc.name_of(trait.name)
+                if trait.kind in READABLE_TRAIT_KINDS:
+                    property_types[name].add(self.value_type(trait))
                 if trait.kind in VALUE_TRAIT_KINDS:
-                    type_name = abc.name_of(trait.type_name) if trait.type_name else "*"
-                    if trait.value_kind == CONSTANT_UTF8:
-                        type_name = "String"
-                    elif trait.value_kind in (CONSTANT_INT, CONSTANT_UINT):
-                        type_name = "int"
-                    property_types[abc.name_of(trait.name)].add(type_name)
-                elif trait.kind in METHOD_TRAIT_KINDS:
+                    variables.add(name)
+                if trait.kind == TRAIT_METHOD:
                     return_type = abc.methods[trait.method].return_type
-                    if return_type and abc.name_of(return_type) == "String":
-                        self.string_methods.add(abc.name_of(trait.name))
-        self.string_properties = {name for name, types in property_types.items() if types == {"String"}}
+                    return_types[name].add(abc.full_name_of(return_type) if return_type else None)
+        self.string_properties = {name for name, types in property_types.items()
+                                  if types == {"String"} and name in variables}
+        self.string_methods = {name for name, types in return_types.items() if types == {"String"}}
+
+    def value_type(self, trait: Trait) -> str | None:
+        """The declared type ("String", "pkg.Class", ...) of the value that reading a trait gives;
+        None if untyped or not readable"""
+        abc = self.abc
+        if trait.kind in VALUE_TRAIT_KINDS:
+            if trait.type_name:
+                return abc.full_name_of(trait.type_name)
+            if trait.kind == TRAIT_CONST and trait.value_kind == CONSTANT_UTF8:
+                return "String"     # an untyped constant with a string value
+            return None
+        if trait.kind == TRAIT_GETTER:
+            return_type = abc.methods[trait.method].return_type
+            return abc.full_name_of(return_type) if return_type else None
+        if trait.kind == TRAIT_METHOD:
+            return "Function"   # reading a method gives the method itself
+        return None
+
+    def property_type(self, class_name: str, prop: str) -> str | None:
+        """The declared type of property prop of instances of class_name, if the class or one of
+        its superclasses in this file declares it, with a single type; None otherwise"""
+        types = set()
+        while class_name in self.instance_of:
+            types.update(self.value_type(trait) for trait in self.instance_of[class_name].traits
+                         if self.abc.name_of(trait.name) == prop and trait.kind in READABLE_TRAIT_KINDS)
+            class_name = self.superclass[class_name]
+        return types.pop() if len(types) == 1 else None
 
     def _load_live_code(self):
         """Find the code that can run in this file. The whole shared class library is compiled into

@@ -23,7 +23,7 @@ from ..patcher import dev_mode, patcher_core
 from ..patcher.patcher_core import PatchSettings
 from ..patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
 from .profile import apply_overrides
-from .reviewed_warnings import WarningReview, print_warning_summary
+from .reviewed_warnings import WarningReview, print_warning_summary, review_of
 from .shared import (
     REPO_ROOT,
     config_paths,
@@ -137,15 +137,34 @@ def unpack(mod_archive, dest_dir):
     count = sum(1 for f in dest_dir.rglob("*") if f.is_file())
     print(f"Unpacked {count} files into {dest_dir}")
 
+def is_dlc_dir(rel):
+    """Whether a folder holding bundles (relative to the unpacked archive) is DLC content: anything
+    under a dlc folder, or a dlcXxx/content folder shipped without the dlc folder around it"""
+    return "dlc" in (part.lower() for part in rel.parts) or rel.parent.name.lower().startswith("dlc")
+
 def find_unbundle_root(unpacked_dir):
     """The directory to give to wcc_lite unbundle: the modXxx folder if there is one,
-    otherwise the folder that holds the bundle(s)"""
+    otherwise the folder that holds the bundle(s).
+
+    DLC bundles are skipped, like the mod's loose files: they never conflict with the files
+    Smooth UI Remastered patches, so only the bundles in a mod folder matter."""
     content_dirs = sorted({b.parent for b in unpacked_dir.rglob("*.bundle")})
     if not content_dirs:
         fail("no .bundle files found in the .zip (mods shipping loose files are not supported)")
+
+    dlc_dirs = [d for d in content_dirs if is_dlc_dir(d.relative_to(unpacked_dir))]
+    for d in dlc_dirs:
+        print(f"  ignored: {d.relative_to(unpacked_dir)} (DLC bundles can't conflict with Smooth UI Remastered)")
+    content_dirs = [d for d in content_dirs if d not in dlc_dirs]
+
+    if not content_dirs:
+        fail("only DLC bundles found, none in a mod folder. This mod does not need a compat patch.")
     if len(content_dirs) > 1:
+        # Usually a mod with optional parts. One patch covering every part would override the files
+        # of parts the user didn't install, and parts may ship different versions of the same file.
         listing = "\n".join(f"  {d.relative_to(unpacked_dir)}" for d in content_dirs)
-        fail(f"bundles found in several folders, this is not supported:\n{listing}")
+        fail(f"bundles found in several mod folders, this is not supported:\n{listing}\n"
+             "If these are optional parts, build from an archive holding only the part to support.")
     content = content_dirs[0]
     if content.name.lower() == "content" and content.parent.name.lower().startswith("mod"):
         return content.parent
@@ -282,9 +301,10 @@ def main():
 
     print_step_header("Running FPS patcher")
 
-    # The release's reports; warnings it had for a file were already there in the vanilla version
+    # The release's reports; warnings it had for a file were already there in the vanilla version.
+    # They stay hidden where the other mod's code is the same (see reviewed_warnings.py).
     recorded = {key: record["report"] for key, record in manifest["files"].items() if "report" in record}
-    review = WarningReview(reviewed, {key: {warning["key"] for warning in report["warnings"]}
+    review = WarningReview(reviewed, {key: {review_of(warning) for warning in report["warnings"]}
                                       for key, report in recorded.items()})
     try:
         patched, kept, failed = patcher_core.patch_files(
@@ -298,7 +318,7 @@ def main():
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     how_to_accept = [("These come from the other mod's changes. Once checked, add these lines under * in "
                       "the --overrides file to mark them as reviewed:"),
-                     *(f"    reviewed: {key}" for key in warnings.unreviewed)]
+                     *(f"    reviewed: {review}" for review in warnings.unreviewed)]
     print_warnings = partial(print_warning_summary, warnings, how_to_accept=how_to_accept,
                              reviewed_source=str(args.overrides))
     print_warnings()

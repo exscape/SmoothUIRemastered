@@ -17,7 +17,7 @@
 #
 #   *
 #       exclude: ^OtherMod_
-#       reviewed: unresolved-goto OtherModPanel.updateIcon
+#       reviewed: unresolved-goto OtherModPanel.updateIcon @1a2b3c4d
 #
 #   gameplay/gui_new/swf/inventory/panel_inventory.redswf
 #       fps: 60

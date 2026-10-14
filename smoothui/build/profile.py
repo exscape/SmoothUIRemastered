@@ -8,7 +8,8 @@ retime lines are tried before the recorded ones, and include/exclude lines are a
 Recorded settings can't be removed.
 
 Override files may also mark patcher warnings that the other mod introduces as checked by hand, with
-"reviewed: <warning key>" lines under "*" (see smoothui/build/reviewed_warnings.py)."""
+"reviewed: <kind> <Class.method> @<hash>" lines under "*", as the build prints them (see
+smoothui/build/reviewed_warnings.py)."""
 
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ from pathlib import Path
 from ..common import fail, profile_key
 from ..patcher.patcher_core import PatchSettings
 from ..patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
+from .reviewed_warnings import check_review
 from .shared import DEFAULT_PROFILE
 
 SETTING = re.compile(r"(fps|include|exclude|reviewed|retime (\S+)):\s*(.*)")
@@ -32,7 +34,7 @@ class Entry:
     rules: list = field(default_factory=list)
     include: list = field(default_factory=list)
     exclude: list = field(default_factory=list)
-    reviewed: list = field(default_factory=list)    # warning keys; override files only, under *
+    reviewed: list = field(default_factory=list)    # reviews; override files only, under *
 
     def descriptions(self) -> list[str]:
         """Each retime/include/exclude, as written in the profile"""
@@ -69,7 +71,7 @@ def _add_setting(entry: Entry, text: str, is_star: bool, is_override: bool):
         if not (is_override and is_star):
             raise ValueError("reviewed: only belongs under * in compat override files "
                              "(main builds use config/reviewed_warnings.txt)")
-        entry.reviewed.append(value)
+        entry.reviewed.append(check_review(value))
         return
 
     pattern = parse_sprite_pattern(value)
@@ -148,8 +150,8 @@ def load_profile(path=None) -> tuple[dict[str, PatchSettings], list[str]]:
 
 def apply_overrides(profile: dict[str, PatchSettings], path) -> tuple[dict[str, PatchSettings], list[str], set[str]]:
     """Add the settings in a compat override file to profile (which holds only the files both mods
-    contain). Returns (the new profile, the override file's "*" settings as written, the warning
-    keys it marks as reviewed)."""
+    contain). Returns (the new profile, the override file's "*" settings as written, the reviews it
+    gives)."""
     path = Path(path)
     files, star = parse_profile(path, sections=False)
     for key in files:

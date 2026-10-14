@@ -24,8 +24,9 @@ so reports of two versions of a file can be matched up even if ids shift.
          "probably_safe_labels": ["blue", "red"]},
       ],
       "unlinked_classes": ["..."],
-      # Things the patcher can't check; "key" is the kind and code location, stable between builds
-      "warnings": [{"key": "unresolved-goto Class.method", "message": "..."}],
+      # Things the patcher can't check; "key" is the kind and code location, stable between builds,
+      # and "hash" identifies the code there (it changes when the code does)
+      "warnings": [{"key": "unresolved-goto Class.method", "hash": "1a2b3c4d", "message": "..."}],
     }
 
 "interpolation" and "probably_safe_labels" are only present where they apply. A report for a file
@@ -75,7 +76,8 @@ def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) ->
         "sprites": [_sprite_record(movie, plan, sprite)
                     for sprite in sorted(movie.multi_frame_sprites(), key=lambda s: s.character_id)],
         "unlinked_classes": sorted(plan.unlinked_classes),
-        "warnings": [{"key": warning.key, "message": warning.message} for warning in plan.warnings],
+        "warnings": [{"key": warning.key, "hash": warning.code_hash, "message": warning.message}
+                     for warning in plan.warnings],
     }
 
 
@@ -198,5 +200,5 @@ def report_to_text(report: dict) -> str:
     if report["warnings"]:
         out("")
         out("REVIEW")
-        lines.extend(f"  [{warning['key']}] {warning['message']}" for warning in report["warnings"])
+        lines.extend(f"  [{warning['key']} @{warning['hash']}] {warning['message']}" for warning in report["warnings"])
     return "\n".join(lines)

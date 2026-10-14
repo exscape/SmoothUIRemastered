@@ -14,6 +14,7 @@ from fractions import Fraction
 
 from .abc_bytecode import PushDouble
 from .code_analysis import (
+    MOTION_PACKAGE,
     ArgKind,
     CodeAnalysis,
     FrameScripts,
@@ -67,6 +68,7 @@ class PlanWarning:
     """Something the patcher can't check, which may break a stretched clip"""
     key: str        # kind and code location, stable between builds, e.g. "unresolved-goto Class.method"
     message: str
+    code_hash: str  # of the code at that location (see CodeAnalysis.code_hash), so reviews can be tied to it
 
 
 @dataclass
@@ -116,6 +118,17 @@ def short_owner(owner: str) -> str:
     return ".".join(owner.split(".")[-2:])
 
 
+def _comes_to_rest(frame_count, start, changes, stops, scripted) -> bool:
+    """Does playback from frame start reach a stop() before anything else changes?"""
+    for step in range(frame_count):
+        frame = (start + step) % frame_count
+        if step and frame in changes:
+            return False
+        if frame in stops:
+            return True
+    return start not in scripted    # loops back to start, which looks the same (but runs its script again)
+
+
 class Planner:
     def __init__(self, movie: SwfMovie, options: RescaleOptions):
         self.movie = movie
@@ -133,6 +146,7 @@ class Planner:
         self._check_frame_scripts(frame_scripts)
         self._check_selectors(frame_scripts)
         self._check_goto_calls(literal_gotos, unresolved_gotos)
+        self._check_still_clips(frame_scripts, literal_gotos, unresolved_gotos)
         frame_property_uses = self._check_frame_property_uses()
         self._check_sprite_refs()
         self._apply_include_exclude()
@@ -179,8 +193,7 @@ class Planner:
         script_frames = defaultdict(set)
         for class_name, scripts in frame_scripts.items():
             for character_id in self.movie.sprites_of_class.get(class_name, []):
-                for call in scripts.calls:
-                    script_frames[character_id].update(frame for _, frame in call)
+                script_frames[character_id].update(scripts.frames)
 
         for sprite in self.movie.multi_frame_sprites():
             marked = set(sprite.labels) | script_frames[sprite.character_id]
@@ -206,11 +219,53 @@ class Planner:
             elif call.arg.value > 1:
                 literal_gotos.append((call, targets))
 
+    def _check_still_clips(self, frame_scripts, literal_gotos, unresolved_gotos):
+        """Clips that come to rest wherever their content changes: wherever playback starts, a
+        stop() comes before anything else changes, so how long each frame lasts never shows, and
+        stretching them changes nothing. Mostly CLIK state clips (each state starts at a label and
+        ends with a stop()) and icon sets. Playback starts at frame 1, at labels and at changes (as
+        gotoAndPlay(label) and stops leave it), or anywhere for clips that play() or gotoAndPlay(N)
+        may be used on."""
+        played_anywhere = self._played_anywhere(literal_gotos, unresolved_gotos)
+        for sprite in self.movie.multi_frame_sprites():
+            scripts = frame_scripts.get(self.movie.class_name(sprite.character_id))
+            if scripts and not scripts.recognised:
+                continue
+            stops = scripts.stop_frames if scripts else set()
+            scripted = (scripts.frames if scripts else set()) - stops    # scripts that do more than stop()
+            changes = sprite.changed_frames() | scripted
+            if played_anywhere is None or sprite.character_id in played_anywhere:
+                starts = range(sprite.frame_count)
+            else:
+                starts = {0, *sprite.labels, *changes}
+            if all(_comes_to_rest(sprite.frame_count, start, changes, stops, scripted) for start in starts):
+                self.reasons[sprite.character_id].append("still clip: it stops before each change, so frame timing never shows")
+
+    def _played_anywhere(self, literal_gotos, unresolved_gotos) -> set[int] | None:
+        """The clips that play() or gotoAndPlay(N) may start playing at any frame; None if that may
+        be any clip"""
+        if any(call.call == "gotoAndPlay" and self.movie.may_run(call.method) for call in unresolved_gotos):
+            return None
+        played = set().union(*(targets for call, targets in literal_gotos if call.call == "gotoAndPlay"))
+        for method, receiver in self.analysis.find_play_calls():
+            if self.movie.may_run(method):
+                targets = self._target_sprites(method, receiver)
+                if targets is None:
+                    return None
+                played |= targets
+        return played
+
     def _check_frame_property_uses(self):
         """totalFrames, currentFrame etc. change meaning when a clip is stretched"""
         uses = []
+        motion_hosts = self.analysis.find_static_motion_hosts()
         for use in self.analysis.find_frame_property_uses():
             targets = self._target_sprites(use.method, use.receiver)
+            if targets is None and motion_hosts is not None and use.owner.startswith(MOTION_PACKAGE):
+                # The motion library follows the timeline of the clips hosting the animations. As
+                # every motion lasts one frame, the frame numbers make no difference; to be sure,
+                # those clips are left unstretched (they usually have a single frame anyway).
+                targets = set().union(*(self.movie.sprites_linked_to(host) for host in motion_hosts))
             uses.append((use, targets))
             for character_id in targets or ():
                 self.reasons[character_id].append(f"{use.prop} read in {short_owner(use.owner)}")
@@ -422,44 +477,47 @@ class Planner:
             if not patched:
                 self._warn(f"enter-frame-handler {name}",
                            f"persistent ENTER_FRAME handler {name} runs once per frame "
-                           f"(now {float(ratio):.2f}x as often); check it for frame counting")
+                           f"(now {float(ratio):.2f}x as often); check it for frame counting", [handler.method])
 
-    def _warn(self, key: str, message: str):
-        warning = PlanWarning(key, message)
+    def _warn(self, key: str, message: str, methods):
+        """methods: the code the warning is about"""
+        warning = PlanWarning(key, message, self.analysis.code_hash(methods))
         if warning not in self.plan.warnings:
             self.plan.warnings.append(warning)
 
     def _warn_unresolved(self, unresolved_gotos, frame_property_uses):
         """One warning per key (kind and code location), naming everything found there"""
         stretched = self.plan.stretched
-        found = {}  # key -> (kind, {owner: None}, {what: None}, stretched clips); dicts keep the order found
+        # key -> (kind, {owner: None}, {what: None}, stretched clips, methods); dicts keep the order found
+        found = {}
 
-        def add(kind, owner, what, clips=()):
-            entry = found.setdefault(f"{kind} {short_owner(owner)}", (kind, {}, {}, set()))
+        def add(kind, method, owner, what, clips=()):
+            entry = found.setdefault(f"{kind} {short_owner(owner)}", (kind, {}, {}, set(), set()))
             entry[1][owner] = entry[2][what] = None
             entry[3].update(clips)
+            entry[4].add(method)
 
         for call in unresolved_gotos:
             if not self.movie.may_run(call.method):
                 continue    # nothing in this file can call it
             kind = "literal" if call.arg.kind == ArgKind.NUMBER else "computed"
-            add("unresolved-goto", call.owner,
+            add("unresolved-goto", call.method, call.owner,
                 f"{kind} {call.call}({call.arg.value if kind == 'literal' else '...'})")
 
         for use, targets in frame_property_uses:
             if targets is None and self.movie.may_run(use.method):
-                add("unresolved-frame-property", use.owner, use.prop)
+                add("unresolved-frame-property", use.method, use.owner, use.prop)
             elif targets and targets & stretched:
-                add("stretched-frame-property", use.owner, use.prop, targets & stretched)
+                add("stretched-frame-property", use.method, use.owner, use.prop, targets & stretched)
 
-        for key, (kind, owners, whats, clips) in found.items():
+        for key, (kind, owners, whats, clips, methods) in found.items():
             where, what = ", ".join(owners), ", ".join(whats)
             self._warn(key, {
                 "unresolved-goto": f"unresolved receiver: {what} in {where} -- "
                                    "if it targets a stretched clip, check by hand",
                 "unresolved-frame-property": f"{what} used in {where} on an unresolved receiver",
                 "stretched-frame-property": f"{what} used in {where} on stretched clips {sorted(clips)}",
-            }[kind])
+            }[kind], methods)
 
     # --- Interpolation ---
 

@@ -1,50 +1,21 @@
-# Patcher warnings that have been checked and found harmless: one warning key per line.
+# Patcher warnings that have been checked and found harmless: one per line, as "<key> @<hash>".
 # Keys name a code location (kind and Class.method), so one entry covers every file containing that code.
+# The hash identifies the code that was checked: when the code changes (e.g. in a game update), the entry
+# stops applying and the warning shows up again. A key can be listed several times, once per version of its code.
 # build-main --accept-warnings adds the current unreviewed ones; a note should be added explaining *why*
 # the warning can be safely hidden.
 # Only used by main builds; see smoothui/build/reviewed_warnings.py.
 
-# --- fl.motion.AnimatorBase: Flash-generated "motion" code. Checked in the bytecode (no source in the REDkit, of course):
-# the only users are gwint_game_fla.Fog_loop_bg_70 and PaperdollRef, whose motions all have duration = 1 and no
-# keyframes, i.e. a one-off static 3D transform. Nothing is animated, so the frame rate is irrelevant.
-unresolved-frame-property AnimatorBase.end
-unresolved-frame-property AnimatorBase.handleEnterFrame
-unresolved-frame-property AnimatorBase.processCurrentFrame
-unresolved-frame-property AnimatorBase.registerParentFrameHandler
-unresolved-frame-property AnimatorBase.removeChildren
-
-# --- totalFrames is read from the video's metadata object (meta.totalFrames, only trace()d), not from a clip
-unresolved-frame-property W3StartScreenVideoObject.handleMetaDataEvent
-unresolved-frame-property W3VideoObject.handleMetaDataEvent
-
 # --- GwintTutorial calls nextFrame() on itself; its only clip (GwintTutorials) is a selector clip that is not stretched
-unresolved-frame-property GwintTutorial.continueTutorial
-unresolved-frame-property GwintTutorial.incrementTutorial
-
-# --- Goto with a String label (labels survive stretching):
-
-# CardTemplate.tooltipIcon is declared :String
-unresolved-goto GwintBoardRenderer.updateTransactionCardTooltip
-unresolved-goto W3ChoiceDialog.updateTooltip
-
-# StaticMapPinData.type is :String
-unresolved-goto HubMapPreview.addPin
-
-# LABEL_SNAP/LABEL_NORMAL are String constants ("snap"/"normal")
-unresolved-goto MapCrosshair.capturedState
-
-# label is a String that is only used for user pins, whose clip (UserPinPointer) is a selector clip, not stretched
-unresolved-goto PinPointersManager.createPointer
-
-# color_1/color_2 are :String (SkillColor.enumToName); the target (mc_bonus_bkg) is a selector clip, not stretched
-unresolved-goto ModuleSkillsSockets.setBonusDataIndividual
-unresolved-goto ModuleSkillsSocketsDupe.setBonusDataIndividual
+unresolved-frame-property GwintTutorial.continueTutorial @09df7152
+unresolved-frame-property GwintTutorial.incrementTutorial @a343cc83    # deck_builder
+unresolved-frame-property GwintTutorial.incrementTutorial @ee636631    # gwint_game: the same, plus a trace() call
 
 # --- Goto with a number, but the target is a selector clip that is not stretched
 
 # bgArray = mcCurrentBg1..4 / mcAppearBg1..4, all McTransmogItemBg_50 (6 frames, every frame labeled)
-unresolved-goto ModuleTransmogVis.handleUpdateAppears
-unresolved-goto ModuleTransmogVis.handleUpdateEquipped
+unresolved-goto ModuleTransmogVis.handleUpdateAppears @f8b4e799
+unresolved-goto ModuleTransmogVis.handleUpdateEquipped @736904c0
 
 # _actionIcon is SlotAvatarIconRef (selector clip, not stretched), or null where that class isn't in the file
-unresolved-goto SlotDragAvatar.setActionIcon
+unresolved-goto SlotDragAvatar.setActionIcon @96b36850

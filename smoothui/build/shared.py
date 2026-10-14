@@ -111,7 +111,7 @@ def config_paths(config):
 
 def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None):
     """on_file callback for patcher_core.patch_files: the result, and anything to check by hand.
-    Bind is_reviewed(rel, warning key) (see reviewed_warnings.py) to hide warnings already checked."""
+    Bind is_reviewed(rel, warning) (see reviewed_warnings.py) to hide warnings already checked."""
     if status == "failed":
         print(f"{Style.BRIGHT}{Fore.RED}SKIP {rel}: {error}{Style.RESET_ALL}", file=sys.stderr, flush=True)
         return
@@ -125,7 +125,7 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
         print(f"{Style.BRIGHT}{Fore.RED}  {len(report['unmet_rules'])} explicit rule(s) not followed "
               f"(listed at the end){Style.RESET_ALL}", flush=True)
     warnings = [warning for warning in report["warnings"]
-                if not (is_reviewed and is_reviewed(rel, warning["key"]))]
+                if not (is_reviewed and is_reviewed(rel, warning))]
     if warnings:
         print(f"{Fore.YELLOW}  {len(warnings)} unreviewed warning(s):{Style.RESET_ALL}", flush=True)
         for warning in warnings:
