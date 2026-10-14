@@ -26,7 +26,9 @@ def raw_fps(fps: float) -> int:
 
 def stretch_sprite(sprite: Sprite, tag: Tag, retiming: Retiming, tweens: dict[int, list[TweenStep]]) -> Tag:
     """Hold every frame of the sprite for retiming.hold(frame) frames. The extra frames carry
-    interpolated moves of the tweened objects (see interpolation.find_tweens), and are otherwise empty."""
+    interpolated moves of the tweened objects (see interpolation.find_tweens), and are otherwise empty.
+    The moves restate the objects' display options (filters etc.), as Flash does on every frame of a
+    tween: Scaleform appears to drop those on moves that don't."""
     tags, frame = [], 0
     for sub in sprite.tags:
         tags.append(sub)
@@ -36,7 +38,8 @@ def stretch_sprite(sprite: Sprite, tag: Tag, retiming: Retiming, tweens: dict[in
         steps = sorted(tweens.get(frame, []), key=lambda step: step.depth)
         for tick in range(1, hold):
             for step in steps:
-                tags.append(build_move(step.depth, *interpolate(step.start, step.end, tick / hold)))
+                tags.append(build_move(step.depth, *interpolate(step.start, step.end, tick / hold),
+                                       step.start.display_options))
             tags.append(SHOW_FRAME)
         frame += 1
     return build_sprite(sprite.character_id, retiming.tick(frame), tags, long_header=tag.long_header)

@@ -533,7 +533,7 @@ class Planner:
             for frame, frame_steps in steps.items():
                 extra_ticks = retiming.hold(frame) - 1
                 for step in frame_steps:
-                    move = build_move(step.depth, *interpolate(step.start, step.end, 0.5))
+                    move = build_move(step.depth, *interpolate(step.start, step.end, 0.5), step.start.display_options)
                     added_bytes += extra_ticks * len(move.to_bytes())
                     motion += change_magnitude(step.start, step.end)
             plan.tweens[character_id] = SpriteTweens(steps, stats, added_bytes, motion)

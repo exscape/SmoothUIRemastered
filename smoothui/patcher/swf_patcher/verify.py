@@ -14,7 +14,7 @@ from .abc_file import parse_abc
 from .builder import raw_fps
 from .interpolation import simulate_timeline
 from .movie import Sprite, SwfMovie
-from .place_object import parse_place_object
+from .place_object import PLACE_OBJECT_CODES, parse_place_object
 from .planner import RescalePlan
 from .retiming import Retiming
 from .swf_tags import (
@@ -112,11 +112,13 @@ def _verify_stretched_sprite(sprite: Sprite, new: Tag, retiming: Retiming, tween
         for tick in range(1, retiming.hold(k)):
             state = new_states[start + tick]
             tick_tags = new_frames[start + tick]
-            if any(tag.code != TagCode.PLACE_OBJECT2 for tag in tick_tags) or \
+            if any(tag.code not in PLACE_OBJECT_CODES for tag in tick_tags) or \
                     {parse_place_object(tag).depth for tag in tick_tags} != set(planned):
                 problems.append(f"sprite {cid} frame {k} tick {tick}: unexpected tags")
                 continue
             for depth, step in planned.items():
+                if (state[depth].instance, state[depth].display_options) != (step.start.instance, step.start.display_options):
+                    problems.append(f"sprite {cid} f{k} tick {tick} depth {depth}: object or display options changed")
                 for field in ("matrix", "color_transform"):
                     values = zip(getattr(state[depth], field), getattr(step.start, field), getattr(step.end, field))
                     for value, a, b in values:

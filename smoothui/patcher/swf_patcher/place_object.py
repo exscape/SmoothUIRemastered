@@ -16,9 +16,22 @@ FLAG_HAS_MATRIX = 0x04
 FLAG_HAS_COLOR_TRANSFORM = 0x08
 FLAG_HAS_RATIO = 0x10
 FLAG_HAS_NAME = 0x20
+FLAG_HAS_CLIP_DEPTH = 0x40
 
 # PlaceObject3's second flag byte. (Scaleform GFX sets HasImage without a class name string.)
 FLAG3_HAS_CLASS_NAME = 0x08
+# ... and the display options it can set, with the size of each field (None: the filter list, whose
+# size varies), in the order the fields appear in the tag
+DISPLAY_OPTIONS = {
+    0x01: None,     # filter list
+    0x02: 1,        # blend mode
+    0x04: 1,        # cacheAsBitmap
+    0x20: 1,        # visible
+    0x40: 4,        # opaque background colour
+}
+
+# Sizes of the filter records by filter id (gradient and convolution filters vary, see _filter_list_end)
+FILTER_SIZES = {0: 23, 1: 9, 2: 15, 3: 27, 6: 80}
 
 PLACE_OBJECT_CODES = (TagCode.PLACE_OBJECT2, TagCode.PLACE_OBJECT3)
 
@@ -69,6 +82,8 @@ class PlaceObject:
     color_transform: ColorTransform | None
     ratio: int | None               # morph ratio
     name: str | None                # instance name
+    # PlaceObject3 display options set by the tag: ((flag, raw field bytes), ...); see DISPLAY_OPTIONS
+    display_options: tuple = ()
 
 
 def parse_place_object(tag: Tag) -> PlaceObject:
@@ -107,14 +122,41 @@ def parse_place_object(tag: Tag) -> PlaceObject:
 
     name = None
     if flags & FLAG_HAS_NAME:
-        name = read_cstring(data, offset)[0]
+        name, offset = read_cstring(data, offset)
 
-    return PlaceObject(depth, bool(flags & FLAG_MOVE), character_id, matrix, color_transform, ratio, name)
+    display_options = []
+    if flags3:
+        if flags & FLAG_HAS_CLIP_DEPTH:
+            offset += 2
+        for flag, size in DISPLAY_OPTIONS.items():
+            if flags3 & flag:
+                end = _filter_list_end(data, offset) if size is None else offset + size
+                display_options.append((flag, data[offset:end]))
+                offset = end
+
+    return PlaceObject(depth, bool(flags & FLAG_MOVE), character_id, matrix, color_transform, ratio, name,
+                       tuple(display_options))
+
+
+def _filter_list_end(data: bytes, offset: int) -> int:
+    count = data[offset]
+    offset += 1
+    for _ in range(count):
+        filter_id = data[offset]
+        offset += 1
+        if filter_id in (4, 7):     # gradient glow / bevel: colours and their ratios, then 19 bytes
+            offset += 1 + data[offset] * 5 + 19
+        elif filter_id == 5:        # convolution: the matrix size, then 4-byte values and 5 more bytes
+            offset += 2 + (2 + data[offset] * data[offset + 1]) * 4 + 5
+        else:
+            offset += FILTER_SIZES[filter_id]
+    return offset
 
 
 def build_move(depth: int, matrix: Matrix | None = None, color_transform: ColorTransform | None = None,
-               ratio: int | None = None) -> Tag:
-    """PlaceObject2 that changes the given properties of the object at `depth`"""
+               ratio: int | None = None, display_options: tuple = ()) -> Tag:
+    """PlaceObject2 that changes the given properties of the object at `depth`, or a PlaceObject3
+    if display options (see PlaceObject) are given, which it sets as well"""
     flags = FLAG_MOVE
     if matrix:
         flags |= FLAG_HAS_MATRIX
@@ -123,14 +165,16 @@ def build_move(depth: int, matrix: Matrix | None = None, color_transform: ColorT
     if ratio is not None:
         flags |= FLAG_HAS_RATIO
 
-    payload = bytes([flags]) + struct.pack("<H", depth)
+    flags3 = sum(flag for flag, _ in display_options)
+    payload = bytes([flags, flags3] if display_options else [flags]) + struct.pack("<H", depth)
     if matrix:
         payload += _encode_matrix(matrix)
     if color_transform:
         payload += _encode_color_transform(color_transform)
     if ratio is not None:
         payload += struct.pack("<H", ratio)
-    return Tag(TagCode.PLACE_OBJECT2, payload)
+    payload += b"".join(field for _, field in sorted(display_options))
+    return Tag(TagCode.PLACE_OBJECT3 if display_options else TagCode.PLACE_OBJECT2, payload)
 
 
 def _read_matrix(data: bytes, offset: int) -> tuple[Matrix, int]:

@@ -46,6 +46,7 @@ class DisplayState:
     matrix: Matrix
     color_transform: ColorTransform
     ratio: int | None
+    display_options: tuple = ()     # see PlaceObject; each option stays set until a tag changes it
 
 
 Snapshot = dict  # depth -> DisplayState, after a ShowFrame
@@ -93,9 +94,10 @@ def simulate_timeline(tags) -> list[Snapshot]:
                     place.matrix or (old.matrix if old else IDENTITY_MATRIX),
                     place.color_transform or (old.color_transform if old else IDENTITY_COLOR_TRANSFORM),
                     place.ratio if place.ratio is not None or not old else old.ratio,
+                    _merge_options(old.display_options if old else (), place.display_options),
                 )
             elif place.is_move and depth in current:
-                changes = {}
+                changes = {"display_options": _merge_options(current[depth].display_options, place.display_options)}
                 if place.matrix:
                     changes["matrix"] = place.matrix
                 if place.color_transform:
@@ -108,6 +110,10 @@ def simulate_timeline(tags) -> list[Snapshot]:
         elif tag.code == TagCode.SHOW_FRAME:
             snapshots.append(dict(current))
     return snapshots
+
+
+def _merge_options(old: tuple, new: tuple) -> tuple:
+    return tuple(sorted({**dict(old), **dict(new)}.items()))
 
 
 def change_magnitude(a: DisplayState, b: DisplayState) -> float:
