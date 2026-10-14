@@ -3,8 +3,6 @@
 import struct
 import zlib
 
-from zopfli.zlib import compress as zopfli_compress
-
 from ..common import fail
 
 # Every SWF/GFX file starts with: 3-byte signature, 1-byte version, 4-byte total length
@@ -79,46 +77,12 @@ def swf_patch(data, pos, patch, body_hook=None):
     # The header's length field is the total uncompressed length; the body's length may have changed
     header = bytearray(data[pos:stream_start])
     header[4:8] = (SWF_HEADER_SIZE + len(body)).to_bytes(4, "little")
-    new_swf_bytes = header + recompress(body, stream_len)
+
+    compressor = zlib.compressobj(9, zlib.DEFLATED, 15, 8)
+    compressed_body = compressor.compress(bytes(body)) + compressor.flush()
+    new_swf_bytes = header + compressed_body
 
     return stream_end, result, new_swf_bytes
-
-def recompress(body, max_len):
-    """Recompress the patched data to fit in the same size as the original.
-
-    We can't resize the container, so we *need* the data to fit in the original bytes.
-    However, since we've just changed one or two bytes, that's almost certainly possible,
-    especially using zopfli which compresses better than the zlib typically used by default.
-    """
-    raw = bytes(body)
-    smallest = None
-
-    # try zlib first
-    # mem 8 often compresses slightly better(?!) and often yields the exact size
-    # of the original blob, so let's start there
-    for mem in (8, 9):
-        c = zlib.compressobj(9, zlib.DEFLATED, 15, mem)
-        out = c.compress(raw) + c.flush()
-        return out
-
-
-
-
-        smallest = len(out) if smallest is None else min(smallest, len(out))
-        if len(out) <= max_len:
-            return out
-
-    # zlib failed, output too large: try zopfli with increasing effort
-    for iters in (1,):# 10, 40):
-        print("*")
-        out = zopfli_compress(raw, numiterations=iters)
-        return out
-        smallest = min(smallest, len(out))
-        if len(out) <= max_len:
-            return out
-
-    fail(f"recompressed stream doesn't fit "
-                     f"(smallest {smallest} bytes vs {max_len} allowed)")
 
 def swf_get_header_offsets(body: bytearray):
     """

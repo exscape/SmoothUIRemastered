@@ -67,9 +67,6 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
         orig = (src / rel).read_bytes()
         redswf_bytes = bytearray(orig)
 
-        # TODO: used by the temp redswf code which need refactoring to fit into the project
-        orig_redswf_bytes = redswf_bytes[:]
-
         print_substep_header(rel.as_posix())
         try:
             assert 1 <= settings.target_fps <= 256
@@ -87,7 +84,7 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
         if not dry_run:
             out = dst / rel
             out.parent.mkdir(parents=True, exist_ok=True)
-            out_data = replace_swf(orig_redswf_bytes, new_swf_bytes)
+            out_data = replace_swf(redswf_bytes, new_swf_bytes)
             out.write_bytes(out_data)
 
         patched.append({"path": rel, "fps": rescale_report["new_fps"], "report": rescale_report})
