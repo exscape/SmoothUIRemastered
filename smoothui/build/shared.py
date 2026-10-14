@@ -206,6 +206,14 @@ def manifest_path(version):
     """Where a mod release's manifest lives: manifests/<version>.json"""
     return MANIFEST_DIR / f"{normalize_version(version)}.json"
 
+def load_manifest(version_or_path):
+    """A manifest, given its version (manifests/<version>.json) or a path to it; None if it doesn't exist"""
+    path = Path(version_or_path) if str(version_or_path).endswith(".json") else manifest_path(version_or_path)
+    if not path.is_file():
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
 def write_manifest(version, records, extra=None):
     """Write manifests/<version>.json for this mod release.
 

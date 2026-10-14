@@ -64,9 +64,10 @@ Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwa
 | --- | --- |
 | `build-compat.py` | Builds a compatibility patch against another mod (zip/rar/7z) |
 | `build-main.py` | Builds the mod; mainly intended for my own use |
+| `manifest-diff.py` | Shows what changed between two releases' manifests (`manifests/`): files, and clips whose handling changed. build-main.py shows this too when it writes a manifest |
 | `smoothui/common.py` | Various shared logic |
-| `smoothui/build/` | The build process: implements `build-main.py` (`main.py`) and `build-compat.py` (`compat.py`), and reads profiles, override files and reviewed warnings (see `config/`) |
+| `smoothui/build/` | The build process: implements `build-main.py` (`main.py`), `build-compat.py` (`compat.py`) and `manifest-diff.py` (`manifest_diff.py`), and reads profiles, override files and reviewed warnings (see `config/`) |
 | `smoothui/patcher/` | Binary patcher; creates new, higher framerate `.redswf` files from a given list of files |
 | `smoothui/patcher/swf_patcher/` | Rescales a single SWF: retimes its animations for the new frame rate, and adjusts the ActionScript code that depends on frame numbers |
 
-Only build-main.py and build-compat.py can be called as scripts.
+Only build-main.py, build-compat.py and manifest-diff.py can be called as scripts.

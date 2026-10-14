@@ -9,7 +9,6 @@
 # Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.2
 
 import argparse
-import json
 import shutil
 import zipfile
 from functools import partial
@@ -31,7 +30,7 @@ from .shared import (
     finish_work_dir,
     install_and_launch,
     load_config,
-    manifest_path,
+    load_manifest,
     pack_content,
     print_file_result,
     print_rule_issues,
@@ -176,14 +175,6 @@ def unbundle(root, out_dir):
     wcc_lite("unbundle", f"-dir={to_windows(root)}", f"-outdir={to_windows(out_dir)}")
     if not any(out_dir.rglob("*.redswf")):
         fail(f"no .redswf files found after unbundling into {out_dir}")
-
-def load_manifest(version):
-    """Read manifests/<version>.json, or None if this release has none"""
-    path = manifest_path(version)
-    if not path.is_file():
-        return None
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
 
 def profile_from_manifest(manifest):
     """The settings each file was patched with in a Smooth UI release, from its manifest: a profile

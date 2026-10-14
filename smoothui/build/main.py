@@ -11,6 +11,7 @@ from functools import partial
 from ..common import fail, print_step_header
 from ..patcher import dev_mode, patcher_core
 from ..patcher.redswf import swf_sha256
+from .manifest_diff import print_changes_since_previous
 from .profile import load_profile
 from .reviewed_warnings import (
     WarningReview,
@@ -194,6 +195,7 @@ def main():
             "created_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
             "output_zip": str(zip_out.relative_to(REPO_ROOT)) if zip_out.is_relative_to(REPO_ROOT) else str(zip_out),
         })
+        print_changes_since_previous(mod_version)
 
     install_and_launch(output_dir / OUTPUT_MOD_NAME, game_path, args.install, args.launch)
 
