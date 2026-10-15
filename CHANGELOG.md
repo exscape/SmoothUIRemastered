@@ -12,6 +12,7 @@ Big changes!
 * Base game Gwent bugs fixed:
   * Fog/rain no longer draws outside of their rows, causing clouds to appear e.g. on your cards
   * Fog no longer causes flickers and other issues on other weather-affected rows
+  * Fog intro animation no longer jumps partway through
   * Frost no longer flickers slightly
 * The loading screen (loadingscreen.redswf) is no longer patched: it didn't make any difference in fluidity
 

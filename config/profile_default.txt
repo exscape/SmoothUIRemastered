@@ -61,9 +61,11 @@ gameplay/gui_new/swf/gwint/deck_builder.redswf # Default 30 fps
 gameplay/gui_new/swf/gwint/gwint_game.redswf # Default 24 fps
     # Fix bugs in the game's weather FX (as of 5.01):
     # fog draws outside its row (a hidden 3D object breaks its masks),
+    # the fog intro jumps partway through (it starts at a random point of its loop),
     # frost flickers while it loops, and
     # the falling rain stops for a frame on every loop
     fix: gwent-3d-bug-fix
+    fix: gwent-fog-intro-fix
     fix: gwent-frost-flicker-fix
     fix: gwent-rain-loop-fix
 
