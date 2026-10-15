@@ -1,3 +1,22 @@
+
+# v0.3
+
+Big changes!
+
+* New **120 fps everywhere** version, with reworked animations to improve smoothness
+  * The 120 fps version is recommended for everyone with a 120+ Hz monitor that isn't using an FPS limiter set below 120. The FPS you get while playing is not relevant.
+  * The 60 fps version is recommended for everyone else: e.g. 60/75/90/100 Hz monitors. At 100 Hz, the 120 fps version plays at 83.3% speed, with larger impact for lower refresh rates, so it works, but will likely feel slow.
+  * Neither version is recommended if you use an FPS limiter set below 60 fps; use the default UI in that case.
+* 60 fps version reworked to be 60 fps everywhere (v0.2 has 48 fps Gwent and transmog)
+* **No animation speedup**, as in the older versions
+* Base game Gwent bugs fixed:
+  * Fog/rain no longer draws outside of their rows, causing clouds to appear e.g. on your cards
+  * Fog no longer causes flickers and other issues on other weather-affected rows
+  * Frost no longer flickers slightly
+* The loading screen (loadingscreen.redswf) is no longer patched: it didn't make any difference in fluidity
+
+This version targets and requires game version 5.01, and will not work on older patches.
+
 # v0.2
 
 * Target game version 5.01
