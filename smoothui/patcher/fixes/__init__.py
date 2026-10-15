@@ -11,9 +11,10 @@ them again: don't remove or rename a fix that a manifest in manifests/ names.
 
 from __future__ import annotations
 
+from . import gwent_3d_bug_fix, gwent_frost_flicker_fix, gwent_rain_loop_fix
 from .swf_edit import AFTER_RESCALE, BEFORE_RESCALE, CantApply, FixResult, SwfEdit
 
-FIXES = {}  # name -> fix module
+FIXES = {fix.NAME: fix for fix in (gwent_3d_bug_fix, gwent_frost_flicker_fix, gwent_rain_loop_fix)}
 
 # A fix's "result" in its report record
 APPLIED, NOT_NEEDED, CANT_APPLY = "applied", "not needed", "can't apply"

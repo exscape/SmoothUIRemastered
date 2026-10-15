@@ -36,6 +36,9 @@ OUTLIER_FACTOR = 8.0
 OUTLIER_MIN_MOTION = 20
 # Rotations larger than this per frame are ambiguous to interpolate (which way round?)
 MAX_ROTATION_DEGREES = 60.0
+# The wrap from a sprite's last frame to its first is interpolated if the first frame is within this
+# fraction of the step's size of where the last tween step, repeated, would end up (see _continues)
+LOOP_TOLERANCE = 0.5
 
 
 @dataclass(frozen=True)
@@ -138,7 +141,8 @@ def _rotation(matrix: Matrix) -> float:
 def find_tweens(snapshots: list[Snapshot]) -> tuple[dict[int, list[TweenStep]], TweenStats]:
     """Find the frame transitions to interpolate.
 
-    Returns ({k: [steps for the transition from frame k to k + 1]}, stats)."""
+    Returns ({k: [steps for the transition from frame k to k + 1]}, stats); for the last frame,
+    that is the wrap back to frame 0."""
     stats = TweenStats()
 
     # (frame, depth) -> magnitude of the change from the previous frame
@@ -176,7 +180,37 @@ def find_tweens(snapshots: list[Snapshot]) -> tuple[dict[int, list[TweenStep]], 
                     continue
                 tweens.setdefault(k - 1, []).append(TweenStep(depth, a, b))
                 stats.interpolated += 1
+
+    # The wrap from the last frame back to the first, when a looping tween continues across it. Left
+    # stepped, it holds one object still for a frame while the rest keep moving; nested rotations that
+    # nearly cancel out (Gwent's fog) then visibly lurch on every wrap.
+    last = len(snapshots) - 1
+    for step in tweens.get(last - 1, []) if last >= 2 else []:
+        a, b = step.end, snapshots[0].get(step.depth)
+        if b is None or b.instance != a.instance or b == a or not _continues(step.start, a, b):
+            continue
+        stats.changes += 1
+        turn = math.degrees(_rotation(b.matrix) - _rotation(a.matrix) + math.pi) % 360 - 180
+        if change_magnitude(a, b) < MIN_MOTION:
+            stats.subpixel += 1
+        elif abs(turn) > MAX_ROTATION_DEGREES:
+            stats.rotation += 1
+        else:
+            tweens.setdefault(last, []).append(TweenStep(step.depth, a, b))
+            stats.interpolated += 1
     return tweens, stats
+
+
+def _continues(before: DisplayState, a: DisplayState, b: DisplayState) -> bool:
+    """Whether a -> b continues the motion before -> a: b is about where one more such step would
+    take a. A loop that resets instead (the end of a one-shot animation) is not interpolated."""
+    extrapolate = lambda x, y: [2 * y_ - x_ for x_, y_ in zip(x, y)]
+    ratio = 2 * a.ratio - before.ratio if a.ratio is not None and before.ratio is not None else a.ratio
+    predicted = dataclasses.replace(a, matrix=Matrix(*extrapolate(before.matrix, a.matrix)),
+                                    color_transform=ColorTransform(*extrapolate(before.color_transform,
+                                                                                a.color_transform)),
+                                    ratio=ratio)
+    return change_magnitude(predicted, b) <= LOOP_TOLERANCE * change_magnitude(a, b)
 
 
 def _consecutive_runs(sorted_values):
