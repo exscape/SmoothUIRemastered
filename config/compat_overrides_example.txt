@@ -7,8 +7,8 @@
 #   - There are no [N] sections. A file line refers to a file that both mods contain; it doesn't
 #     add one. To change a file's frame rate, use "fps:" under it.
 #   - Settings are added to the release's: fps replaces its frame rate, retime lines are tried
-#     before its retime lines, and include/exclude lines are added to its lists. Settings from the
-#     release can't be removed.
+#     before its retime lines, and include/exclude/fix lines are added to its lists. Settings from
+#     the release can't be removed.
 #   - "sprite N" refers to sprite ids in the other mod's version of the file.
 #   - Warnings that the other mod's changes introduce must be checked by hand. Once they are, mark
 #     them as reviewed under * (the build prints the lines to add).

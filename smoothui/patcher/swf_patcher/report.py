@@ -15,6 +15,9 @@ so reports of two versions of a file can be matched up even if ids shift.
       "exclude": [{"pattern": "...", "matched": []}],
       # Explicit rules (retime, include, exclude) that were NOT followed; should be empty
       "unmet_rules": [{"rule": "retime 80: ...", "id": 338, "class": "...", "problem": "..."}],
+      # Fixes for bugs in the game's file (see patcher/fixes/). Added by patcher_core, so missing from
+      # rescale_body's own report and from reports written before them
+      "fixes": [{"name": "gwent-3d-bug-fix", "result": "applied", "matched": [1007], "detail": "..."}],
       "patched": {"frame_scripts": 88, "gotos": 1, "increments": 0},
       "increments": [{"handler": "Class.method", "property": "rotation", "old": 5.0, "new": 0.92}],
       "sprites": [
@@ -95,11 +98,12 @@ def _pattern_records(tokens, matches) -> list[dict]:
 
 
 def report_settings(report: dict) -> list[tuple[str, list[int]]]:
-    """(setting as written in a profile, ids of the sprites it matched) for each retime, include and
-    exclude in a report"""
+    """(setting as written in a profile, ids of the sprites it matched) for each retime, include,
+    exclude and fix in a report. A fix matched the sprites it changed."""
     return ([(f"retime {rule['fps']:g}: {rule['pattern']}", rule["matched"]) for rule in report["rules"]]
             + [(f"include: {record['pattern']}", record["matched"]) for record in report["include"]]
-            + [(f"exclude: {record['pattern']}", record["matched"]) for record in report["exclude"]])
+            + [(f"exclude: {record['pattern']}", record["matched"]) for record in report["exclude"]]
+            + [(f"fix: {fix['name']}", fix["matched"]) for fix in report.get("fixes", [])])
 
 
 def _sprite_record(movie: SwfMovie, plan: RescalePlan, sprite) -> dict:
@@ -126,11 +130,17 @@ def format_unmet_rule(unmet: dict) -> str:
     return f"{unmet['rule']}: sprite {unmet['id']} {unmet['class'] or '(no class)'}: {unmet['problem']}"
 
 
+def format_fix(fix: dict) -> str:
+    return f"fix: {fix['name']}: {fix['result']}: {fix['detail']}"
+
+
 def report_to_text(report: dict) -> str:
     """Human-readable version of a report dict (as returned by build_report, or loaded from JSON)"""
+    fixes = [format_fix(fix) for fix in report.get("fixes", [])]
     if report["new_fps"] is None:
-        return (f"source {report['old_fps']:.3f} fps is already at or above the target "
-                f"{report['target_fps']:.3f} fps; left unchanged")
+        summary = (f"source {report['old_fps']:.3f} fps is already at or above the target "
+                   f"{report['target_fps']:.3f} fps; not rescaled")
+        return "\n".join([summary, *fixes])
 
     lines = []
     out = lines.append
@@ -141,6 +151,7 @@ def report_to_text(report: dict) -> str:
     ratio = Fraction(report["ratio"])
     out(f"source {report['old_fps']:.3f} fps -> {report['new_fps']:.3f} fps   (R = {ratio} = {float(ratio):.4f})")
     out(f"holds per source frame: {report['holds']}")
+    lines.extend(fixes)
     for rule in report["rules"]:
         rule_ratio = Fraction(rule["ratio"])
         out(f"retime {rule['fps']:g}: {rule['pattern']}   (R = {rule_ratio} = {float(rule_ratio):.4f})   "

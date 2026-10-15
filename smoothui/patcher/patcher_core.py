@@ -9,6 +9,7 @@ from typing import NamedTuple
 
 from ..common import print_substep_header, profile_key
 from .dev_mode import dev_make_body_hook, resolve_dev_target
+from .fixes import AFTER_RESCALE, BEFORE_RESCALE, apply_fixes
 from .redswf import replace_swf
 from .swf import (
     FPS_FIXED_POINT_SCALE,
@@ -34,18 +35,20 @@ class PatchSettings:
     rules: tuple = ()       # FpsRules ("retime"); the first matching one applies
     include: tuple = ()     # class name regexes and SpriteRefs
     exclude: tuple = ()
+    fixes: tuple = ()       # names of fixes for bugs in the game's file (see fixes/)
 
 def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
     """Patch the given files (paths relative to src), writing changed ones to dst with the
     same relative path. profile maps each file's profile key to its PatchSettings; files that are
-    not in it, or that are already at/above their target frame rate, are not written.
+    not in it, or that are already at/above their target frame rate and have no fixes to apply, are
+    not written.
 
     on_file(rel, status, report=None, error=None) is called as soon as each file's result is
     known: status is "patched" or "kept" (with the file's rescale report), or "failed" (with the
     error message).
 
-    Returns (patched, kept, failed): patched holds {"path", "fps", "report"} dicts, kept holds
-    {"path", "report"} dicts, and failed holds (rel, message) tuples.
+    Returns (patched, kept, failed): patched holds {"path", "fps", "report"} dicts (fps: the file's
+    frame rate now), kept holds {"path", "report"} dicts, and failed holds (rel, message) tuples.
     Raises NotADirectoryError / ValueError for invalid directories.
     """
     src, dst = Path(src).resolve(), Path(dst).resolve()
@@ -76,7 +79,7 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
             report(rel, "failed", error=str(e))
             continue
 
-        if rescale_report["new_fps"] is None:
+        if new_swf_bytes is None:
             kept.append({"path": rel, "report": rescale_report})
             report(rel, "kept", rescale_report)
             continue
@@ -87,13 +90,14 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
             out_data = replace_swf(redswf_bytes, new_swf_bytes)
             out.write_bytes(out_data)
 
-        patched.append({"path": rel, "fps": rescale_report["new_fps"], "report": rescale_report})
+        fps = rescale_report["new_fps"] or rescale_report["old_fps"]    # not rescaled: only fixed
+        patched.append({"path": rel, "fps": fps, "report": rescale_report})
         report(rel, "patched", rescale_report)
 
     return patched, kept, failed
 
 class RuleIssues(NamedTuple):
-    """Messages about explicit settings (retime, include, exclude); see find_rule_issues"""
+    """Messages about explicit settings (retime, include, exclude, ...); see find_rule_issues"""
     errors: list[str]       # settings that were not followed: the output is NOT as configured
     warnings: list[str]     # inherited settings that matched in the release but no longer match
                             # anything: the output is as configured, but may need a look
@@ -102,8 +106,8 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
     """Check explicit settings against the reports in patch_files' patched and kept lists.
 
     Errors: a setting that couldn't be followed (an unmet rule), or that matches no sprite in its
-    file. Settings in shared (a profile's "*" block, as written there) only need to match in at
-    least one file.
+    file (for a fix: that changed nothing). Settings in shared (a profile's "*" block, as written
+    there) only need to match in at least one file.
 
     For compat builds, recorded maps profile keys to the reports the Smooth UI release recorded.
     A setting from there that matches nothing in the other mod's version of a file is only a
@@ -116,6 +120,8 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
         unmet = {unmet["rule"] for unmet in report["unmet_rules"]}   # already reported
         release = (recorded or {}).get(profile_key(path))
         inherited = dict(report_settings(release)) if release else {}
+        # Why a fix changed nothing, in place of "matched no sprite"
+        fix_details = {f"fix: {fix['name']}": f"{fix['result']}: {fix['detail']}" for fix in report.get("fixes", [])}
         for setting, matched in report_settings(report):
             if matched:
                 matched_anywhere.add(setting)
@@ -123,16 +129,17 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
                 continue
             elif setting in inherited:
                 if inherited[setting]:
+                    detail = f" ({fix_details[setting]})" if setting in fix_details else ""
                     warnings.append(f"{path}: {setting}: matched sprite(s) {inherited[setting]} in the "
-                                    "Smooth UI release, but nothing in this mod's version of the file")
+                                    f"Smooth UI release, but nothing in this mod's version of the file{detail}")
             elif setting not in shared:
-                errors.append(f"{path}: {setting}: matched no sprite")
+                errors.append(f"{path}: {setting}: {fix_details.get(setting, 'matched no sprite')}")
     errors += [f"* {setting}: matched no sprite in any file" for setting in shared
                if setting not in matched_anywhere]
     return RuleIssues(errors, warnings)
 
-def process(redswf_bytes, settings, rel):
-    """Find the SWF payload embedded in redswf_bytes and rescale it.
+def process(redswf_bytes, settings, body_hook=None):
+    """Find the SWF payload embedded in redswf_bytes, apply its fixes and rescale it.
 
     Returns (report, new_swf_bytes): the rescale report, and the new SWF (None if the file was left
     unchanged). Raises ValueError if there isn't exactly one valid SWF.
@@ -142,7 +149,7 @@ def process(redswf_bytes, settings, rel):
     for sig in SWF_SIGS:
         pos = redswf_bytes.find(sig)
         while pos != -1:
-            payload = read_and_patch_swf(redswf_bytes, pos, sig, settings, rel)
+            payload = read_and_patch_swf(redswf_bytes, pos, sig, settings, body_hook)
             if payload is None:
                 pos = redswf_bytes.find(sig, pos + len(sig))
                 continue
@@ -159,7 +166,7 @@ def process(redswf_bytes, settings, rel):
         raise ValueError("found 0 payloads (expected 1); corrupt file?")
     return result, new_swf_bytes
 
-def read_and_patch_swf(redswf_bytes, pos, sig, settings, rel):
+def read_and_patch_swf(redswf_bytes, pos, sig, settings, body_hook=None):
     """Check for an SWF header at data[pos] and patch the payload if found."""
     if pos + SWF_HEADER_SIZE > len(redswf_bytes):
         return None
@@ -169,24 +176,34 @@ def read_and_patch_swf(redswf_bytes, pos, sig, settings, rel):
     if sig not in SWF_COMPRESSED_SIGS:
         raise ValueError("SWF was not compressed: please open a GitHub issue that uncompressed SWFs needs to be supported!")
 
-    return patch_fps(redswf_bytes, pos, settings, rel)
+    return patch_fps(redswf_bytes, pos, settings, body_hook)
 
 def patch_fps(redswf_bytes, pos, settings, body_hook=None):
-    """Set the frame rate of the compressed SWF at redswf_bytes[pos] and interpolate animations.
+    """Set the frame rate of the compressed SWF at redswf_bytes[pos] and interpolate animations,
+    applying its fixes before or after that (see fixes/). body_hook (see dev_mode.py) runs on the result.
 
     Returns:
     None if there is no valid SWF stream at pos, or
-    (stream_end, report, new_swf_bytes): report is the rescale report (report["new_fps"] is None if
-    the file was left unchanged, and new_swf_bytes is then None too)."""
+    (stream_end, report, new_swf_bytes): report is the rescale report, with the fixes' records under
+    "fixes" (see fixes.apply_fixes). report["new_fps"] is None if the frame rate was left unchanged;
+    new_swf_bytes is None if the file was left unchanged entirely (no fix changed it either)."""
 
     def patch(body):
         """Helper that is called on the decompressed SWF bytes, and patches them in place"""
+        # Most fixes go first, so the rescale (and its verification) works on the fixed file
+        fixed, fix_records = apply_fixes(body, settings.fixes, BEFORE_RESCALE)
+        if fixed is not None:
+            body[:] = fixed
         result = rescale_body(body, settings.target_fps, rules=settings.rules, include=settings.include,
                               exclude=settings.exclude)
-        if result.new_fps is None:
-            return False, result.report
-        body[:] = result.body
-        return True, result.report
+        if result.new_fps is not None:
+            body[:] = result.body
+        fixed_after, records_after = apply_fixes(body, settings.fixes, AFTER_RESCALE)
+        if fixed_after is not None:
+            body[:] = fixed_after
+        fix_records = sorted(fix_records + records_after, key=lambda record: settings.fixes.index(record["name"]))
+        changed = result.new_fps is not None or fixed is not None or fixed_after is not None
+        return changed, {**result.report, "fixes": fix_records}
 
     return swf_patch(redswf_bytes, pos, patch, body_hook)
 

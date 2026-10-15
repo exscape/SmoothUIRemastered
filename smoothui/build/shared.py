@@ -18,6 +18,8 @@ from pathlib import Path
 from colorama import Back, Fore, Style
 
 from ..common import fail, normalize_version, print_step_header, to_native, to_windows
+from ..patcher.fixes import APPLIED
+from ..patcher.swf_patcher import format_fix
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
@@ -118,9 +120,15 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
     if status == "kept":
         print(f"KEEP {rel}: {report['old_fps']:g} fps, already at or above the target "
               f"{report['target_fps']:g} fps", flush=True)
+        _print_fixes(report)
         return
 
-    print(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps", flush=True)
+    if report["new_fps"] is None:
+        print(f"{rel}: {report['old_fps']:g} fps, already at or above the target {report['target_fps']:g} fps; "
+              "fixed only", flush=True)
+    else:
+        print(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps", flush=True)
+    _print_fixes(report)
     if report["unmet_rules"]:
         print(f"{Style.BRIGHT}{Fore.RED}  {len(report['unmet_rules'])} explicit rule(s) not followed "
               f"(listed at the end){Style.RESET_ALL}", flush=True)
@@ -130,6 +138,12 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
         print(f"{Fore.YELLOW}  {len(warnings)} unreviewed warning(s):{Style.RESET_ALL}", flush=True)
         for warning in warnings:
             print(f"{Fore.YELLOW}    [{warning['key']}] {warning['message']}{Style.RESET_ALL}", flush=True)
+
+def _print_fixes(report):
+    """The fixes' results; those that changed nothing are listed again at the end, as rule issues"""
+    for fix in report.get("fixes", []):
+        color = "" if fix["result"] == APPLIED else Style.BRIGHT + Fore.RED
+        print(f"{color}  {format_fix(fix)}{Style.RESET_ALL}", flush=True)
 
 def print_rule_issues(issues):
     """Print patcher_core.RuleIssues. The build still finishes, so these must be impossible to miss."""

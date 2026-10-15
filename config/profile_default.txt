@@ -19,8 +19,12 @@
 #       fps: 90                         Override the section's frame rate for just this file
 #       exclude: ^SomeClass$            Never stretch
 #       exclude: sprite 412
+#       fix: gwent-3d-bug-fix           Fix a bug in the game's own file (one of the fixes in
+#                                       smoothui/patcher/fixes/; not allowed under *). The file is written
+#                                       even if it needs no rescaling
 #
-# A setting that matches no sprite (under *: if it matches in no file) or can't be followed fails --strict.
+# A setting that matches no sprite (under *: if it matches in no file), a fix that changes nothing, or a
+# setting that can't be followed fails --strict.
 #
 # Files that are not listed here are either:
 # 1. missed by me; contact me if you think something needs to be added here

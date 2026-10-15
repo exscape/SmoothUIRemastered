@@ -19,6 +19,7 @@ import rarfile
 
 from ..common import fail, normalize_version, print_step_header, to_windows
 from ..patcher import dev_mode, patcher_core
+from ..patcher.fixes import check_fix_name
 from ..patcher.patcher_core import PatchSettings
 from ..patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
 from .profile import apply_overrides
@@ -182,7 +183,7 @@ def profile_from_manifest(manifest):
 
     Sprite ids carry the class and frame count the release recorded for them, so that they aren't
     applied to a different sprite in the other mod's version of the file. Manifests from before
-    v0.3 have no reports, and only give the frame rate."""
+    v0.3 have no reports, and only give the frame rate; ones from before fixes existed have none."""
     profile = {}
     for key, record in manifest["files"].items():
         report = record.get("report")
@@ -191,8 +192,19 @@ def profile_from_manifest(manifest):
             continue
         profile[key] = PatchSettings(float(record["fps"]),
                                      tuple(FpsRule(rule["pattern"], rule["fps"]) for rule in report["rules"]),
-                                     _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"))
+                                     _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"),
+                                     _recorded_fixes(key, report))
     return profile
+
+def _recorded_fixes(key, report):
+    """The names of the fixes a release applied to a file"""
+    names = tuple(fix["name"] for fix in report.get("fixes", []))
+    for name in names:
+        try:
+            check_fix_name(name)
+        except ValueError as e:
+            fail(f"{key}: the release's manifest names {e}; this version of the patcher can't reproduce it")
+    return names
 
 def _recorded_tokens(report, kind):
     """A report's include or exclude patterns, with sprite ids expecting the class and frame count
