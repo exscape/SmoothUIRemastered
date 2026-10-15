@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 # build-main.py -- patch UI frame rates, then pack the mod with wcc_lite.
-# The files to patch and their target frame rates come from the profile file (see config/).
+# The files to patch come from the profile file (see config/). A release (--make-release) is one build
+# per release frame rate (120 and 60 fps), each with its manifest; other builds are at --fps.
 
 import argparse
 import datetime
@@ -21,6 +22,7 @@ from .reviewed_warnings import (
 )
 from .shared import (
     REPO_ROOT,
+    build_version,
     config_paths,
     enforce_strict,
     finish_work_dir,
@@ -31,27 +33,32 @@ from .shared import (
     patcher_commit,
     print_file_result,
     print_rule_issues,
-    resolve_zip_path,
     sha256_file,
     write_manifest,
     zip_tree,
 )
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
+DEFAULT_FPS = 120
 
 def parse_args():
     ap = argparse.ArgumentParser(
-        description="Patch vanilla UI frame rates, then create a release-ready mod .zip")
+        description="Patch vanilla UI frame rates, then create a mod .zip: one build at --fps (default 120), "
+                    "or every release build with --make-release")
 
+    ap.add_argument("--make-release", action="store_true",
+                    help="build the release: the 120 and 60 fps builds, each with its manifest")
+    ap.add_argument("--fps", type=int, default=None,
+                    help=f"build only at this frame rate (default: {DEFAULT_FPS}); for development, so not "
+                         "with --make-release")
     ap.add_argument("--dry-run", action="store_true",
                     help="show what would be patched, without writing or packing anything")
-    ap.add_argument("--zip", default=None,
-                    help="override output .zip name or path")
     ap.add_argument("--profile", default=None,
                     help="the profile to use (default: config/profile_default.txt); it specifies which files "
                          "to patch, and how")
     ap.add_argument("--install", action="store_true",
-                    help="install the mod into the game folder on success")
+                    help="install the mod into the game folder on success (not with --make-release: build the "
+                         "frame rate to test with --fps)")
     ap.add_argument("--launch", action="store_true",
                     help="launch the game after build and install success")
     ap.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True,
@@ -63,10 +70,9 @@ def parse_args():
                          "only after checking them by hand")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
-    ap.add_argument("--write-manifest", action="store_true",
-                    help="save a manifest of this version; only intended for actual releases")
     ap.add_argument("--force", action="store_true",
-                    help="create a release version even though this version already seems to exist")
+                    help="with --make-release: release this version even though it already seems to exist "
+                         "(overwrites its manifests)")
 
     # Dev hooks; useful for exploring the data format, etc.
     g = ap.add_mutually_exclusive_group()
@@ -80,7 +86,17 @@ def parse_args():
                    help="DEV: target a specific .redswf FILE, dump its body to {FILE}_payload.swf, "
                         "pause until you type 'continue', then use the edited file")
 
-    return ap.parse_args()
+    args = ap.parse_args()
+    if args.make_release:
+        for option, given in (("--fps", args.fps is not None), ("--install", args.install), ("--launch", args.launch),
+                              ("--dev-*", args.dev_dump or args.dev_insert or args.dev_pause)):
+            if given:
+                ap.error(f"{option} is for single builds; --make-release builds every release frame rate")
+    if args.fps is None:
+        args.fps = DEFAULT_FPS
+    if not 1 <= args.fps <= 255:
+        ap.error(f"--fps {args.fps} is outside 1-255")
+    return args
 
 def main():
     args = parse_args()
@@ -95,31 +111,45 @@ def main():
 
     config = load_config()
     paths = config_paths(config)
-    profile, shared_settings = load_profile(args.profile)
 
-    mod_version = config['versions']['created_mod_version']
-    if not mod_version or not mod_version.startswith("v"):
+    base_version = config['versions']['created_mod_version']
+    if not base_version or not base_version.startswith("v"):
         fail("Invalid created_mod_version in [versions] section of config file")
+    fps_list = (120, 60) if args.make_release else (args.fps,)
+    versions = [build_version(base_version, fps) for fps in fps_list]
 
-    if manifest_path(mod_version).exists() and args.write_manifest:
-        if args.force:
-            print(f"Overwriting previously existing mod release {mod_version}, including the manifest")
-        else:
-            fail(f"Version {mod_version} already seems to exist! Use --force to overwrite, including the manifest")
+    if args.make_release and not args.dry_run:
+        existing = [version for version in versions if manifest_path(version).exists()]
+        if existing and args.force:
+            print(f"Overwriting previously existing mod release(s) {', '.join(existing)}, including the manifests")
+        elif existing:
+            fail(f"Version(s) {', '.join(existing)} already seem to exist! Use --force to overwrite, "
+                 "including the manifests")
 
-    uncooked_files = paths['uncooked_files']
-    game_path = paths['game_path']
-    work_dir = paths['working_dir'] / "main"
+    if not paths['uncooked_files'].is_dir():
+        fail(f"not a directory: {paths['uncooked_files']}")
 
+    # The builds run one after the other; a failure stops the run, leaving the earlier builds as they are
+    issue_printers = [build(args, config, paths, version, fps) for version, fps in zip(versions, fps_list)]
+
+    # Repeated for every build, as the output of the builds has likely scrolled the issues away
+    for version, print_issues in zip(versions, issue_printers):
+        print_step_header(f"Warnings and errors: {version}")
+        print_issues()
+
+    if args.dry_run:
+        print_step_header("DRY RUN: exiting")
+
+def build(args, config, paths, version, fps):
+    """Patch, check, pack and zip one build (and for a release, write its manifest). Returns a function
+    that prints the build's warnings and rule issues."""
+    print_step_header(f"Building {version}: every file patched to {fps} fps")
+    profile, shared_settings = load_profile(args.profile, fps)
+    work_dir = paths['working_dir'] / f"main_{fps}fps"
     patched_dir = work_dir / "1_patched"
     output_dir = work_dir / "2_mod"
     output_content_path = output_dir / OUTPUT_MOD_NAME / "content"
-
-    # Path to the output .zip for distribution.
-    zip_out = resolve_zip_path(args.zip, f"SmoothUIRemastered_{mod_version}.zip")
-
-    if not uncooked_files.is_dir():
-        fail(f"not a directory: {uncooked_files}")
+    zip_out = REPO_ROOT / f"SmoothUIRemastered_{version}.zip"
 
     if not args.dry_run:
         # Clean out stale output
@@ -127,17 +157,16 @@ def main():
         shutil.rmtree(patched_dir, ignore_errors=True)
         output_content_path.mkdir(parents=True, exist_ok=True)
 
-    print_step_header("Running FPS patcher")
+    print_step_header(f"Running FPS patcher ({version})")
     review = WarningReview(load_reviewed())
     try:
         patched, kept, failed = patcher_core.patch_files(
-            uncooked_files, patched_dir, profile,
+            paths['uncooked_files'], patched_dir, profile,
             dry_run=args.dry_run, on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
     print()
-    print(f"Done: {len(patched)} patched, {len(kept)} left alone, "
-          f"{len(failed)} skipped.")
+    print(f"Done ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} skipped.")
 
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     if args.accept_warnings and warnings.unreviewed:
@@ -151,18 +180,16 @@ def main():
     if args.strict:
         enforce_strict(failed, kept, rule_issues.errors, warnings.unreviewed)
 
-    if args.dry_run:
-        print_step_header("DRY RUN: exiting")
-        return
+    def print_issues():
+        print_warnings()
+        print_rule_issues(rule_issues)
 
+    if args.dry_run:
+        return print_issues
     if not patched:
         fail("no patched files were produced, aborting.")
 
-    patched_file_list = list(patched_dir.rglob("*.redswf"))
-    if len(patched) != len(patched_file_list):
-        fail("BUG: number of output files doesn't match number of files patched")
-
-    print_step_header("Removing old bundle/metadata from output folder")
+    print_step_header(f"Removing old bundle/metadata from output folder ({version})")
     for old in [*output_content_path.glob("blob*.bundle"), output_content_path / "metadata.store"]:
         old.unlink(missing_ok=True)
 
@@ -170,8 +197,9 @@ def main():
 
     zip_tree(output_dir, zip_out)
 
-    if args.write_manifest:
-        print_step_header("Writing mod manifest")
+    if args.make_release:
+        print_step_header(f"Writing mod manifest ({version})")
+        uncooked_files = paths['uncooked_files']
         records = {}
         for entry in sorted(patched, key=lambda e: e["path"]):
             relative_path = entry["path"]
@@ -188,19 +216,17 @@ def main():
                 "report": entry["report"],
             }
         commit, uncommitted = patcher_commit()
-        write_manifest(mod_version, records, extra={
+        write_manifest(version, records, extra={
+            "fps": fps,
             "patcher_commit": commit,
             "patcher_uncommitted_changes": uncommitted,
             "targeted_game_version": config['versions'].get('targeted_game_version'),
             "created_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
             "output_zip": str(zip_out.relative_to(REPO_ROOT)) if zip_out.is_relative_to(REPO_ROOT) else str(zip_out),
         })
-        print_changes_since_previous(mod_version)
-
-    install_and_launch(output_dir / OUTPUT_MOD_NAME, game_path, args.install, args.launch)
+        print_changes_since_previous(version)
+    else:
+        install_and_launch(output_dir / OUTPUT_MOD_NAME, paths['game_path'], args.install, args.launch)
 
     finish_work_dir(work_dir, args.keep_work)
-
-    # Repeated, as the packing output has likely scrolled it away
-    print_warnings()
-    print_rule_issues(rule_issues)
+    return print_issues

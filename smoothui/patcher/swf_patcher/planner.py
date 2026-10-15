@@ -1,4 +1,4 @@
-"""Deciding what to change: which sprites to stretch (and to which frame rate), and which constants in
+"""Deciding what to change: which sprites to stretch (and at which speed), and which constants in
 the ActionScript code must change along with them.
 
 A sprite is stretched unless something suggests that doing so would break it. Every reason found is
@@ -31,7 +31,7 @@ from .interpolation import (
     simulate_timeline,
 )
 from .movie import SwfMovie
-from .options import RescaleOptions, SpriteRef
+from .options import RescaleOptions, SpriteRef, format_speed
 from .place_object import build_move
 from .retiming import Retiming, fps_ratio
 
@@ -74,7 +74,7 @@ class PlanWarning:
 @dataclass
 class UnmetRule:
     """An explicit rule that was not followed for a sprite"""
-    rule: str           # as written in a profile, e.g. "retime 80: pattern" or "include: sprite 338"
+    rule: str           # as written in a profile, e.g. "speed 1.5: pattern" or "include: sprite 338"
     character_id: int
     problem: str
 
@@ -84,8 +84,8 @@ class RescalePlan:
     source_fps: float
     target_fps: float
     retiming: Retiming                  # for the file as a whole
-    # Stretched sprites -> the frame rate they are retimed to, and how
-    sprite_fps: dict[int, float] = field(default_factory=dict)
+    # Stretched sprites -> their speed (1 = their original speed; see SpeedRule), and how they are retimed
+    sprite_speed: dict[int, Fraction] = field(default_factory=dict)
     sprite_retiming: dict[int, Retiming] = field(default_factory=dict)
     # Why each (multi-frame) sprite is not stretched; empty for stretched ones
     reasons: defaultdict = field(default_factory=lambda: defaultdict(list))
@@ -105,12 +105,24 @@ class RescalePlan:
     rule_matches: list[list[int]] = field(default_factory=list)
     include_matches: list[list[int]] = field(default_factory=list)
     exclude_matches: list[list[int]] = field(default_factory=list)
-    # Explicit rules (fps rules, include, exclude) that could not be followed, see UnmetRule
+    # Explicit rules (speed rules, include, exclude) that could not be followed, see UnmetRule
     unmet_rules: list[UnmetRule] = field(default_factory=list)
 
     @property
     def stretched(self) -> set[int]:
         return set(self.sprite_retiming)
+
+    @property
+    def max_speed(self) -> Fraction:
+        """The highest speed a sprite can get without dropping frames: target / source fps, at
+        which its frames are not repeated"""
+        return self.retiming.ratio
+
+
+def _approximate(value: Fraction) -> str:
+    """A speed for a message: exact where that is short (2, 1.5), otherwise rounded (5.45)"""
+    text = format_speed(value)
+    return text if "/" not in text else f"{float(value):.2f}"
 
 
 def short_owner(owner: str) -> str:
@@ -151,7 +163,7 @@ class Planner:
         self._check_sprite_refs()
         self._apply_include_exclude()
         self._find_probably_safe()
-        self._apply_fps_rules()
+        self._apply_speed_rules()
 
         self._choose_stretched(frame_scripts, literal_gotos)
         self._check_explicit_rules()
@@ -313,25 +325,25 @@ class Planner:
             if reasons and sprite.labels and all(reason.startswith("computed ") for reason in reasons):
                 self.plan.probably_safe[sprite.character_id] = sorted(sprite.labels.values())
 
-    def _apply_fps_rules(self):
-        """A rule at the file's original frame rate is allowed: the sprite is then "stretched" by a
-        factor of 1, i.e. left as it is, and plays target/original times as fast. Below that would
-        need frames to be dropped."""
+    def _apply_speed_rules(self):
+        """A rule at the highest speed (see RescalePlan.max_speed) is allowed: the sprite is then
+        "stretched" by a factor of 1, i.e. left as it is. Above that would need frames to be dropped."""
         plan = self.plan
         for sprite in self.movie.multi_frame_sprites():
-            rule = self.options.fps_rule_for(self.movie.class_name(sprite.character_id))
-            if rule and fps_ratio(plan.source_fps, rule.fps) < 1:
+            rule = self.options.speed_rule_for(self.movie.class_name(sprite.character_id))
+            if rule and rule.speed > plan.max_speed:
                 self.reasons[sprite.character_id].append(
-                    f"'{rule.description}' asks for {rule.fps:g} fps, below the original "
-                    f"{plan.source_fps:g} fps (that would need dropping frames, which is not supported)")
-            plan.sprite_fps[sprite.character_id] = rule.fps if rule else plan.target_fps
+                    f"'{rule.description}' asks for {format_speed(rule.speed)}x speed, but at most "
+                    f"{_approximate(plan.max_speed)}x is possible ({plan.source_fps:g} -> {plan.target_fps:g} fps) "
+                    "without dropping frames, which is not supported")
+            plan.sprite_speed[sprite.character_id] = rule.speed if rule else Fraction(1)
 
     # --- Choosing the stretched set ---
 
     def _choose_stretched(self, frame_scripts, literal_gotos):
         """Start from every clip without a reason not to stretch it. Then, until nothing changes:
-        clips sharing a frame-script class must all be stretched to the same frame rate, as must all
-        the clips that a literal gotoAndPlay(N) may refer to. Otherwise none of them are."""
+        clips sharing a frame-script class must all be stretched to the same speed, as must all the
+        clips that a literal gotoAndPlay(N) may refer to. Otherwise none of them are."""
         plan = self.plan
         stretched = {sprite.character_id for sprite in self.movie.multi_frame_sprites()
                      if not self.reasons[sprite.character_id]}
@@ -341,16 +353,16 @@ class Planner:
                 stretched.discard(character_id)
                 self.reasons[character_id].append(reason)
 
-        def unstretch_for_fps_conflict(ids, reason):
+        def unstretch_for_speed_conflict(ids, reason):
             """Clips without a rule of their own are collateral damage of the rules involved; report
             that against those rules (clips with a rule are reported by _check_explicit_rules)"""
             unstretch(ids, reason)
-            rules = {self.options.fps_rule_for(self.movie.class_name(c)) for c in ids} - {None}
+            rules = {self.options.speed_rule_for(self.movie.class_name(c)) for c in ids} - {None}
             for character_id in ids:
-                if self.options.fps_rule_for(self.movie.class_name(character_id)) is None:
+                if self.options.speed_rule_for(self.movie.class_name(character_id)) is None:
                     for rule in rules:
                         self._unmet(rule.description, character_id,
-                                    f"default-rate clip not stretched because of this rule: {reason}")
+                                    f"normal-speed clip not stretched because of this rule: {reason}")
 
         changed = True
         while changed:
@@ -362,8 +374,8 @@ class Planner:
                 if inside and len(inside) != len(ids):
                     unstretch(inside, f"shares class {class_name} with a clip that is not stretched")
                     changed = True
-                elif inside and len({plan.sprite_fps[c] for c in inside}) > 1:
-                    unstretch_for_fps_conflict(inside, f"shares class {class_name} with a clip retimed to a different frame rate")
+                elif inside and len({plan.sprite_speed[c] for c in inside}) > 1:
+                    unstretch_for_speed_conflict(inside, f"shares class {class_name} with a clip played at a different speed")
                     changed = True
             for call, targets in literal_gotos:
                 inside = targets & stretched
@@ -371,24 +383,24 @@ class Planner:
                     unstretch(inside, f"literal {call.call}({call.arg.value}) in {short_owner(call.owner)} "
                                       "may also target clips that are not stretched")
                     changed = True
-                elif inside and len({plan.sprite_fps[c] for c in inside}) > 1:
-                    unstretch_for_fps_conflict(inside, f"literal {call.call}({call.arg.value}) in {short_owner(call.owner)} "
-                                      "targets clips retimed to different frame rates")
+                elif inside and len({plan.sprite_speed[c] for c in inside}) > 1:
+                    unstretch_for_speed_conflict(inside, f"literal {call.call}({call.arg.value}) in {short_owner(call.owner)} "
+                                                 "targets clips played at different speeds")
                     changed = True
 
-        retimings = {}  # one per distinct frame rate
+        retimings = {}  # one per distinct speed
         for character_id in sorted(stretched):
-            fps = plan.sprite_fps[character_id]
-            if fps not in retimings:
-                retimings[fps] = Retiming(fps_ratio(plan.source_fps, fps))
-            plan.sprite_retiming[character_id] = retimings[fps]
-        plan.sprite_fps = {c: fps for c, fps in plan.sprite_fps.items() if c in stretched}
+            speed = plan.sprite_speed[character_id]
+            if speed not in retimings:
+                retimings[speed] = Retiming(plan.retiming.ratio / speed)
+            plan.sprite_retiming[character_id] = retimings[speed]
+        plan.sprite_speed = {c: speed for c, speed in plan.sprite_speed.items() if c in stretched}
 
     def _unmet(self, rule: str, character_id: int, problem: str):
         self.plan.unmet_rules.append(UnmetRule(rule, character_id, problem))
 
     def _check_explicit_rules(self):
-        """Every sprite a retime rule or include matches must end up as the rule says"""
+        """Every sprite a speed rule or include matches must end up as the rule says"""
         plan = self.plan
         plan.rule_matches = [[] for _ in self.options.rules]
         for character_id, sprite in sorted(self.movie.sprites.items()):
@@ -397,7 +409,7 @@ class Planner:
             for i in matching:
                 plan.rule_matches[i].append(character_id)
             if matching:
-                self._check_fps_rule(sprite, [self.options.rules[i] for i in matching])
+                self._check_speed_rule(sprite, [self.options.rules[i] for i in matching])
 
         included = {}   # character id -> the first include token that matches it
         for token, ids in zip(self.options.include, plan.include_matches):
@@ -408,22 +420,22 @@ class Planner:
                 self._unmet(f"include: {token}", character_id,
                             "not stretched: " + "; ".join(dict.fromkeys(self.reasons[character_id])))
 
-    def _check_fps_rule(self, sprite, matching_rules):
+    def _check_speed_rule(self, sprite, matching_rules):
         plan = self.plan
         cid = sprite.character_id
         rule, *shadowed = matching_rules
         for other in shadowed:
-            if other.fps != rule.fps:
+            if other.speed != rule.speed:
                 self._unmet(other.description, cid, f"overridden by the earlier rule {rule.description}")
 
         if sprite.frame_count <= 1:
             self._unmet(rule.description, cid, "the sprite has a single frame, so there is nothing to retime "
                                                "(rules don't apply to the clips inside it)")
         elif cid in plan.sprite_retiming:
-            if plan.sprite_fps[cid] != rule.fps:    # can't happen; checked to be sure
-                self._unmet(rule.description, cid, f"stretched to {plan.sprite_fps[cid]:g} fps instead")
-        elif fps_ratio(plan.source_fps, rule.fps) != 1:
-            # (At the original rate, leaving the sprite as it is *is* what the rule asks for)
+            if plan.sprite_speed[cid] != rule.speed:    # can't happen; checked to be sure
+                self._unmet(rule.description, cid, f"stretched for {format_speed(plan.sprite_speed[cid])}x speed instead")
+        elif rule.speed != plan.max_speed:
+            # (At the highest speed, leaving the sprite as it is *is* what the rule asks for)
             self._unmet(rule.description, cid,
                         "not stretched: " + "; ".join(dict.fromkeys(self.reasons[cid])))
 

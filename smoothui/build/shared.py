@@ -28,6 +28,9 @@ MANIFEST_DIR = REPO_ROOT / "manifests"
 
 REQUIRED_CONFIG_KEYS = ("working_dir", "wcc_lite")
 
+# A build's version: the base version (created_mod_version in config.toml), then the frame rate
+BUILD_VERSION = re.compile(r"(v.+?)-(\d+)fps")
+
 # wcc_lite lines that appear on every run and are harmless
 NOISE = [re.compile(p) for p in (
     r"\[Error\]\[Core\] CreateFile failed to open '.*\.(?:ini|settings)' for reading.*0x[23]",
@@ -174,17 +177,6 @@ def enforce_strict(failed, kept, rule_errors, unreviewed_warnings=()):
     if problems:
         fail("--strict: " + "; ".join(problems) + " (see above; use --no-strict to build anyway)")
 
-def resolve_zip_path(zip_arg, default_name):
-    """Output .zip for a build: bare name goes in the repo folder, .zip suffix added"""
-    zip_arg = zip_arg or default_name
-    if "/" not in zip_arg and "\\" not in zip_arg:
-        zip_out = REPO_ROOT / zip_arg
-    else:
-        zip_out = Path(zip_arg)
-    if zip_out.suffix.lower() != ".zip":
-        zip_out = zip_out.with_name(zip_out.name + ".zip")
-    return zip_out
-
 def zip_tree(src_dir, zip_out):
     """Zip every file under src_dir, keeping the tree's layout at the root of the archive"""
     print_step_header("Creating output .zip")
@@ -216,6 +208,17 @@ def patcher_commit():
     except (OSError, subprocess.CalledProcessError):
         return None, None
 
+def build_version(base_version, fps):
+    """The version of a build at fps, e.g. v0.3-60fps"""
+    return f"{normalize_version(base_version)}-{fps}fps"
+
+def split_build_version(version):
+    """(base version, fps) for a build's version (see build_version); fps is None for versions
+    without a frame rate (manifests from before the 60 and 120 fps builds)"""
+    version = normalize_version(version)
+    match = BUILD_VERSION.fullmatch(version)
+    return (match[1], int(match[2])) if match else (version, None)
+
 def manifest_path(version):
     """Where a mod release's manifest lives: manifests/<version>.json"""
     return MANIFEST_DIR / f"{normalize_version(version)}.json"
@@ -234,7 +237,8 @@ def write_manifest(version, records, extra=None):
     records maps each patched file's relative path to its record: SHA-256 and size of the source and
     output files, SHA-256 of the SWF in each (see patcher/redswf.py's swf_sha256), "fps" (the frame
     rate it was patched to) and "report" (its full rescale report, see patcher/swf_patcher/report.py),
-    which includes the fps rules and include/exclude lists it was patched with."""
+    which includes the speed rules and include/exclude lists it was patched with. extra holds the
+    top-level fields, including "fps", the build's frame rate."""
     manifest = {"created_mod_version": normalize_version(version)}
     if extra:
         manifest.update(extra)

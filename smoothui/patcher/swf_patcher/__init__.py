@@ -20,6 +20,9 @@ raises the frame rate AND compensates, so animations keep their original speed:
     changes where a stop() halts them first (CLIK state clips, icon sets): how long their frames
     last never shows. The report lists each exclusion and why.
 
+A speed rule (SpeedRule; "speed X" in profiles) makes matching sprites play X times as fast as
+they originally did, by holding their frames for R / X frames instead.
+
 Frame rate independent things (GTween, scaleform.clik.motion.Tween, Timer, setTimeout, getTimer)
 need nothing. AS3 only (one DoABC tag); AS2 DoAction clips are not handled.
 
@@ -37,9 +40,17 @@ Modules, roughly in the order the work happens:
 """
 
 from .movie import RescaleError
-from .options import FpsRule, SpriteRef, make_rules, parse_sprite_pattern
+from .options import (
+    SpeedRule,
+    SpriteRef,
+    format_speed,
+    make_rules,
+    parse_speed,
+    parse_sprite_pattern,
+)
 from .report import format_fix, format_unmet_rule, report_settings, report_to_text
 from .rescale import RescaleResult, rescale_body
 
-__all__ = ["FpsRule", "RescaleError", "RescaleResult", "SpriteRef", "format_fix", "format_unmet_rule", "make_rules",
-           "parse_sprite_pattern", "report_settings", "report_to_text", "rescale_body"]
+__all__ = ["RescaleError", "RescaleResult", "SpeedRule", "SpriteRef", "format_fix", "format_speed",
+           "format_unmet_rule", "make_rules", "parse_speed", "parse_sprite_pattern", "report_settings",
+           "report_to_text", "rescale_body"]

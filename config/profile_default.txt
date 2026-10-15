@@ -1,22 +1,24 @@
 # The files we patch, and how.
 #
-# [N] sets the frame rate of the files below it. Indented lines are settings for the file (or *)
-# above them. Patterns are case-sensitive regexes matched against sprite class names, or
-# "sprite N" for a character id (only for sprites without a class; not allowed under *).
+# Every file listed is patched to the build's frame rate (build-main.py --fps: 120 or 60 for
+# releases). Indented lines are settings for the file (or *) above them. Patterns are case-sensitive
+# regexes matched against sprite class names, or "sprite N" for a character id (only for sprites
+# without a class; not allowed under *).
 # Note that sprite IDs are likely unstable, and so likely break on game updates.
 #
 # Settings applied for every file:
 #   *
 #       exclude: ^SomeSpinner$
-#       retime 60: ^SomeGlow$
+#       speed 2: ^SomeGlow$
 #
-#   [120]
 #   gameplay/gui_new/swf/example/panel_a.redswf
 #       include: ^SomeClass$            Stretch, even if the safety checks say not to (exclude wins)
 #       include: sprite 338
-#       retime 80: ^OtherGlow$          Plays at 120/80 = 1.5x speed at 120 fps; or 60/80 = 0.75x at 60 Hz
+#       speed 1.5: ^OtherGlow$          Play 1.5x as fast as the original, in every build. Also 3/2;
+#                                       below 1 slows down. At most build fps / the file's original
+#                                       fps (2 for a 30 fps file in the 60 fps build), as frames
+#                                       can't be dropped
 #   gameplay/gui_new/swf/example/panel_b.redswf
-#       fps: 90                         Override the section's frame rate for just this file
 #       exclude: ^SomeClass$            Never stretch
 #       exclude: sprite 412
 #       fix: gwent-3d-bug-fix           Fix a bug in the game's own file (one of the fixes in
@@ -46,15 +48,9 @@
     # nextFrame() steps through the tutorial pages; incrementTutorial() compares against totalFrames
     exclude: ^GwintTutorials$
 
-[120]
-
-# Dubious: mostly affects the fade at the end of loading
-# Remove if there are mod conflicts
-gameplay/gui_new/swf/loading/loadingscreen.redswf
-
-# Speed up alchemy a bit: the default would halve the speed for 60 Hz players
+# Speed up alchemy a bit
 gameplay/gui_new/swf/alchemy/panel_alchemy.redswf
-    retime 80: panel_alchemy_fla.progressbar2_27
+    speed 1.5: panel_alchemy_fla.progressbar2_27
 
 gameplay/gui_new/swf/character/panel_character.redswf
 gameplay/gui_new/swf/character/panel_character_dupe.redswf
@@ -63,15 +59,17 @@ gameplay/gui_new/swf/glossary/panel_glossary_bestiary.redswf
 gameplay/gui_new/swf/glossary/panel_glossary_books.redswf
 gameplay/gui_new/swf/gwint/deck_builder.redswf # Default 30 fps
 gameplay/gui_new/swf/gwint/gwint_game.redswf # Default 24 fps
-    # Bugs in the game's weather FX: fog draws outside its row (a hidden 3D object breaks its masks),
-    # frost flickers while it loops, and the falling rain stops for a frame on every loop
+    # Fix bugs in the game's weather FX (as of 5.01):
+    # fog draws outside its row (a hidden 3D object breaks its masks),
+    # frost flickers while it loops, and
+    # the falling rain stops for a frame on every loop
     fix: gwent-3d-bug-fix
     fix: gwent-frost-flicker-fix
     fix: gwent-rain-loop-fix
 
-# Speed up crafting a bit: the default would halve the speed for 60 Hz players
+# Speed up crafting a bit
 gameplay/gui_new/swf/crafting/panel_crafting.redswf # Glossary > Crafting
-    retime 80: panel_crafting_fla.progressbar2_48
+    speed 1.5: panel_crafting_fla.progressbar2_48
 
 gameplay/gui_new/swf/glossary/panel_glossary_encyclopedia.redswf # Glossary > Characters
 gameplay/gui_new/swf/glossary/panel_glossary_tutorials.redswf

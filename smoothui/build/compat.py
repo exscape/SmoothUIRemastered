@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 # build-compat.py -- take an existing mod .zip/.rar/.7z, apply framerate patches to the .redswf files
-# that conflict with Smooth UI Remastered, and build a compatibility patch containing only
-# those patched files.
+# that conflict with Smooth UI Remastered, and build compatibility patches containing only those
+# patched files: one for each build of the Smooth UI release (120 and 60 fps), unless --only-fps is specified for development/testing.
 #
-# The files to patch and their settings come from the manifest (see manifests/), selected by --smooth-version,
-# optionally with additions from an override file (--overrides; see config/compat_overrides_example.txt).
-# Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.2
+# The files to patch and their settings come from the release's manifests (see manifests/), selected by
+# --smooth-version, optionally with additions from an override file (--overrides; see
+# config/compat_overrides_example.txt).
+# Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.3
 
 import argparse
 import shutil
@@ -21,11 +22,17 @@ from ..common import fail, normalize_version, print_step_header, to_windows
 from ..patcher import dev_mode, patcher_core
 from ..patcher.fixes import check_fix_name
 from ..patcher.patcher_core import PatchSettings
-from ..patcher.swf_patcher import FpsRule, SpriteRef, parse_sprite_pattern
+from ..patcher.swf_patcher import (
+    SpeedRule,
+    SpriteRef,
+    parse_speed,
+    parse_sprite_pattern,
+)
 from .profile import apply_overrides
 from .reviewed_warnings import WarningReview, print_warning_summary, review_of
 from .shared import (
     REPO_ROOT,
+    build_version,
     config_paths,
     enforce_strict,
     finish_work_dir,
@@ -35,7 +42,7 @@ from .shared import (
     pack_content,
     print_file_result,
     print_rule_issues,
-    resolve_zip_path,
+    split_build_version,
     wcc_lite,
     zip_tree,
 )
@@ -67,13 +74,15 @@ def parse_args(argv=None):
     ap.add_argument("--mod-version", required=True,
                     help="version of the other mod; only used to name the generated patch file")
     ap.add_argument("--smooth-version", required=True,
-                    help="Smooth UI Remastered version that the patch targets; affects the patching process")
+                    help="the Smooth UI Remastered release that the patches target, e.g. 0.3. A patch is built for "
+                         "each of its builds (120 and 60 fps), with the files patched as in that build")
+    ap.add_argument("--only-fps", type=int, choices=(120, 60), default=None,
+                    help="build only the patch for this build of the release; for testing (releases need both). "
+                         "Needed for --install and --launch")
     ap.add_argument("--overrides", type=Path, default=None,
                     help="optional file with settings to add for this mod, on top of those the Smooth UI "
                          "release was patched with (see config/compat_overrides_example.txt)")
 
-    ap.add_argument("--zip", default=None,
-                    help="output .zip name or path; the default name is recommended over specifying this!")
     ap.add_argument("--install", action="store_true",
                     help="install the new mod into the game folder on success")
     ap.add_argument("--launch", action="store_true",
@@ -97,7 +106,13 @@ def parse_args(argv=None):
                    help="DEV: target a specific .redswf FILE, dump its body to {FILE}_payload.swf, "
                         "pause until you type 'continue', then use the edited file")
 
-    return ap.parse_args(argv)
+    args = ap.parse_args(argv)
+    if args.only_fps is None:
+        for option, given in (("--install", args.install), ("--launch", args.launch)):
+            if given:
+                ap.error(f"{option} needs --only-fps, to pick the patch for the Smooth UI Remastered build you "
+                         "have installed")
+    return args
 
 def mod_folder_name(name):
     return f"mod000_{MAIN_MOD_NAME}_{name}_Compat"
@@ -177,28 +192,34 @@ def unbundle(root, out_dir):
     if not any(out_dir.rglob("*.redswf")):
         fail(f"no .redswf files found after unbundling into {out_dir}")
 
-def profile_from_manifest(manifest):
-    """The settings each file was patched with in a Smooth UI release, from its manifest: a profile
-    ({profile key: PatchSettings}), so compat patches match the release.
+def load_release_manifest(smooth_version, fps):
+    """The manifest of one build of a Smooth UI release (smooth_version without a frame rate); fails
+    unless it is one compat patches can be built from"""
+    version = build_version(smooth_version, fps)
+    manifest = load_manifest(version)
+    too_old = (f"Smooth UI Remastered {smooth_version} is from before the 60 and 120 fps builds, which this "
+               "patcher can't reproduce. Compat patches can be built for v0.3 and later releases")
+    if manifest is None:
+        fail(too_old if load_manifest(smooth_version) else f"no manifest exists for Smooth UI Remastered {version}")
+    if "fps" not in manifest:
+        fail(too_old)
+    return manifest
 
-    Sprite ids carry the class and frame count the release recorded for them, so that they aren't
-    applied to a different sprite in the other mod's version of the file. Manifests from before
-    v0.3 have no reports, and only give the frame rate; ones from before fixes existed have none."""
+def profile_from_manifest(manifest):
+    """The settings each file was patched with in a Smooth UI release, from its manifest (see
+    load_release_manifest): a profile ({profile key: PatchSettings}), so compat patches match the release."""
     profile = {}
     for key, record in manifest["files"].items():
-        report = record.get("report")
-        if report is None:
-            profile[key] = PatchSettings(float(record["fps"]))
-            continue
-        profile[key] = PatchSettings(float(record["fps"]),
-                                     tuple(FpsRule(rule["pattern"], rule["fps"]) for rule in report["rules"]),
+        report = record["report"]
+        profile[key] = PatchSettings(record["fps"],
+                                     tuple(SpeedRule(rule["pattern"], parse_speed(rule["speed"])) for rule in report["rules"]),
                                      _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"),
                                      _recorded_fixes(key, report))
     return profile
 
 def _recorded_fixes(key, report):
     """The names of the fixes a release applied to a file"""
-    names = tuple(fix["name"] for fix in report.get("fixes", []))
+    names = tuple(fix["name"] for fix in report["fixes"])
     for name in names:
         try:
             check_fix_name(name)
@@ -220,9 +241,6 @@ def find_shared_files(their_dir, manifest, smooth_version):
     def key(rel):
         """One comparable spelling for both sides: lowercase, slash-separated"""
         return rel.as_posix().lower() if isinstance(rel, Path) else rel.lower()
-
-    if manifest is None:
-        fail(f"no manifest exists for Smooth UI Remastered {smooth_version}")
 
     our_keys = {key(rel) for rel in manifest["files"]}
     theirs = sorted(f.relative_to(their_dir) for f in their_dir.rglob("*.redswf"))
@@ -258,16 +276,17 @@ def main():
     mod_name = mod_folder_name(args.mod_name)
     mod_version = normalize_version(args.mod_version)
     smooth_version = normalize_version(args.smooth_version)
-
-    zip_out = resolve_zip_path(args.zip, f"SmoothUIRemastered_{smooth_version}_{args.mod_name}_{mod_version}_Compat.zip")
+    if split_build_version(smooth_version)[1] is not None:
+        fail(f"--smooth-version {args.smooth_version}: give the release without a frame rate (e.g. "
+             f"{split_build_version(smooth_version)[0]}); a patch is built for each of its builds "
+             "(use --only-fps for just one)")
+    fps_list = (args.only_fps,) if args.only_fps else (120, 60)
+    # Loaded first, so that a wrong version fails before the slow steps
+    manifests = {fps: load_release_manifest(smooth_version, fps) for fps in fps_list}
 
     work_dir = paths["working_dir"] / "compat"
     unpacked_dir = work_dir / "1_unpacked"
     unbundled_dir = work_dir / "2_unbundled"
-    patched_dir = work_dir / "3_patched"
-    mod_root = work_dir / "4_mod"
-    mod_dir = mod_root / mod_name
-    content_dir = mod_dir / "content"
 
     # Perform some sanity checks, since every user that didn't change the config will likely get a very, very ugly exception tree otherwise
     if game_path and not game_path.is_dir():
@@ -278,11 +297,10 @@ def main():
         fail(f"wcc_lite setting in config/config.toml is not set to a valid wcc_lite.exe path: {paths['wcc_lite']} does not exist")
 
     print(f"Mod folder: {mod_name}")
-    print(f"Output ZIP: {zip_out.name}")
 
     print_step_header(f"Cleaning {work_dir}")
     shutil.rmtree(work_dir, ignore_errors=True)
-    content_dir.mkdir(parents=True)
+    work_dir.mkdir(parents=True)
 
     print_step_header(f"Unpacking {args.mod_archive}")
     unpack(args.mod_archive, unpacked_dir)
@@ -290,11 +308,38 @@ def main():
     print_step_header("Unbundling the other mod")
     unbundle(find_unbundle_root(unpacked_dir), unbundled_dir)
 
-    print_step_header(f"Loading manifest for Smooth UI Remastered {smooth_version}")
-    manifest = load_manifest(smooth_version)
+    # The patches are made one after the other; a failure stops the run, leaving the earlier ones as they are
+    versions = [build_version(smooth_version, fps) for fps in fps_list]
+    issue_printers = []
+    for version, fps in zip(versions, fps_list):
+        zip_out = REPO_ROOT / f"SmoothUIRemastered_{version}_{args.mod_name}_{mod_version}_Compat.zip"
+        print_step_header(f"Compat patch for Smooth UI Remastered {version}: {zip_out.name}")
+        patched_dir = work_dir / f"{fps}fps" / "3_patched"
+        mod_root = work_dir / f"{fps}fps" / "4_mod"
+        content_dir = mod_root / mod_name / "content"
+        content_dir.mkdir(parents=True)
 
-    print_step_header("Finding files in common")
-    shared = find_shared_files(unbundled_dir, manifest, smooth_version)
+        issue_printers.append(make_patch(version, manifests[fps], unbundled_dir, patched_dir, args))
+        pack_content(patched_dir, content_dir)
+        zip_tree(mod_root, zip_out)
+
+    if args.only_fps:
+        install_and_launch(mod_root / mod_name, game_path, args.install, args.launch)
+
+    finish_work_dir(work_dir, args.keep_work)
+
+    # Repeated for every patch, as the output of the builds has likely scrolled the issues away
+    for version, print_issues in zip(versions, issue_printers):
+        print_step_header(f"Warnings and errors: {version}")
+        print_issues()
+    print(f"\nCreated {len(versions)} compat patch(es): " + ", ".join(versions))
+
+def make_patch(version, manifest, unbundled_dir, patched_dir, args):
+    """Patch the files the other mod shares with one build of the release (version, e.g. v0.3-60fps) into
+    patched_dir, and check the result. Returns a function that prints the warnings and rule issues."""
+    print_step_header(f"Finding files in common with Smooth UI Remastered {version}")
+    print(f"Files are patched to {manifest['fps']} fps, as in that build")
+    shared = find_shared_files(unbundled_dir, manifest, version)
     shared_keys = {rel.as_posix().lower() for rel in shared}
     shared_profile = {key: settings for key, settings in profile_from_manifest(manifest).items()
                       if key in shared_keys}
@@ -302,11 +347,11 @@ def main():
     if args.overrides:
         shared_profile, shared_settings, reviewed = apply_overrides(shared_profile, args.overrides)
 
-    print_step_header("Running FPS patcher")
+    print_step_header(f"Running FPS patcher ({version})")
 
     # The release's reports; warnings it had for a file were already there in the vanilla version.
     # They stay hidden where the other mod's code is the same (see reviewed_warnings.py).
-    recorded = {key: record["report"] for key, record in manifest["files"].items() if "report" in record}
+    recorded = {key: record["report"] for key, record in manifest["files"].items()}
     review = WarningReview(reviewed, {key: {review_of(warning) for warning in report["warnings"]}
                                       for key, report in recorded.items()})
     try:
@@ -316,7 +361,7 @@ def main():
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
     print()
-    print(f"Done: {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
+    print(f"Done ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
 
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     how_to_accept = [("These come from the other mod's changes. Once checked, add these lines under * in "
@@ -337,14 +382,7 @@ def main():
     if not patched:
         fail("no patched files were produced, aborting.")
 
-    pack_content(patched_dir, content_dir)
-
-    zip_tree(mod_root, zip_out)
-
-    install_and_launch(mod_dir, game_path, args.install, args.launch)
-
-    finish_work_dir(work_dir, args.keep_work)
-
-    # Repeated, as the packing output has likely scrolled it away
-    print_warnings()
-    print_rule_issues(rule_issues)
+    def print_issues():
+        print_warnings()
+        print_rule_issues(rule_issues)
+    return print_issues

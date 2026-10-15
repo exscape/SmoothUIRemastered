@@ -9,19 +9,20 @@ so reports of two versions of a file can be matched up even if ids shift.
       "old_fps": 22.0, "new_fps": 120.0,    # new_fps is None if the file was left unchanged
       "target_fps": 120.0,
       "ratio": "60/11", "holds": [5, 6],    # each original frame lasts 5 or 6 new frames
-      "rules": [{"pattern": "...", "fps": 80.0, "ratio": "40/11", "holds": [3, 4], "matched": [338]}],
+      # Speeds are strings as format_speed gives them ("1.5", "4/3"), so they stay exact
+      "rules": [{"pattern": "...", "speed": "1.5", "ratio": "40/11", "holds": [3, 4], "matched": [338]}],
       # Patterns are class name regexes, or "sprite N"
       "include": [{"pattern": "sprite 338", "matched": [338]}],
       "exclude": [{"pattern": "...", "matched": []}],
-      # Explicit rules (retime, include, exclude) that were NOT followed; should be empty
-      "unmet_rules": [{"rule": "retime 80: ...", "id": 338, "class": "...", "problem": "..."}],
+      # Explicit rules (speed, include, exclude) that were NOT followed; should be empty
+      "unmet_rules": [{"rule": "speed 1.5: ...", "id": 338, "class": "...", "problem": "..."}],
       # Fixes for bugs in the game's file (see patcher/fixes/). Added by patcher_core, so missing from
       # rescale_body's own report and from reports written before them
       "fixes": [{"name": "gwent-3d-bug-fix", "result": "applied", "matched": [1007], "detail": "..."}],
       "patched": {"frame_scripts": 88, "gotos": 1, "increments": 0},
       "increments": [{"handler": "Class.method", "property": "rotation", "old": 5.0, "new": 0.92}],
       "sprites": [
-        {"id": 315, "class": "Foo", "frames": 80, "stretched": true, "fps": 120.0, "new_frames": 436,
+        {"id": 315, "class": "Foo", "frames": 80, "stretched": true, "speed": "1", "new_frames": 436,
          "interpolation": {"steps": 8, "snapped": 0, "bytes": 407, "motion": 200.0}},
         {"id": 517, "class": "Bar", "frames": 100, "stretched": false, "reasons": ["..."],
          "probably_safe_labels": ["blue", "red"]},
@@ -32,7 +33,8 @@ so reports of two versions of a file can be matched up even if ids shift.
       "warnings": [{"key": "unresolved-goto Class.method", "hash": "1a2b3c4d", "message": "..."}],
     }
 
-"interpolation" and "probably_safe_labels" are only present where they apply. A report for a file
+A stretched sprite's "speed" is 1 unless a speed rule matched it. "interpolation" and
+"probably_safe_labels" are only present where they apply. A report for a file
 that was left unchanged only has old_fps, new_fps, target_fps, rules (each matching nothing),
 include, exclude, unmet_rules and warnings (empty). A sprite's "class" is None if it has no linkage
 class.
@@ -43,14 +45,15 @@ from __future__ import annotations
 from fractions import Fraction
 
 from .movie import SwfMovie
-from .options import RescaleOptions
+from .options import RescaleOptions, format_speed, parse_speed, speed_rule_text
 from .planner import RescalePlan
 from .retiming import Retiming, fps_ratio
 
 
 def unchanged_report(old_fps: float, options: RescaleOptions) -> dict:
+    file_ratio = fps_ratio(old_fps, options.target_fps)
     return {"old_fps": old_fps, "new_fps": None, "target_fps": options.target_fps,
-            "rules": _rule_records(old_fps, options.rules, [[] for _ in options.rules]),
+            "rules": _rule_records(file_ratio, options.rules, [[] for _ in options.rules]),
             "include": _pattern_records(options.include, [[] for _ in options.include]),
             "exclude": _pattern_records(options.exclude, [[] for _ in options.exclude]),
             "unmet_rules": [], "warnings": []}
@@ -63,7 +66,7 @@ def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) ->
         "target_fps": float(plan.target_fps),
         "ratio": str(plan.retiming.ratio),
         "holds": plan.retiming.hold_lengths(),
-        "rules": _rule_records(plan.source_fps, options.rules, plan.rule_matches),
+        "rules": _rule_records(plan.retiming.ratio, options.rules, plan.rule_matches),
         "include": _pattern_records(options.include, plan.include_matches),
         "exclude": _pattern_records(options.exclude, plan.exclude_matches),
         "unmet_rules": [{"rule": unmet.rule, "id": unmet.character_id,
@@ -84,12 +87,14 @@ def build_report(movie: SwfMovie, options: RescaleOptions, plan: RescalePlan) ->
     }
 
 
-def _rule_records(source_fps: float, rules, rule_matches) -> list[dict]:
+def _rule_records(file_ratio: Fraction, rules, rule_matches) -> list[dict]:
+    """file_ratio: target / source fps. A rule's ratio and holds are what it would give (for a rule
+    that asks too much, below 1: see the unmet rules)."""
     records = []
     for rule, matched in zip(rules, rule_matches):
-        retiming = Retiming(fps_ratio(source_fps, rule.fps))
-        records.append({"pattern": rule.pattern.pattern, "fps": float(rule.fps),
-                        "ratio": str(retiming.ratio), "holds": retiming.hold_lengths(), "matched": matched})
+        ratio = file_ratio / rule.speed
+        records.append({"pattern": rule.pattern.pattern, "speed": format_speed(rule.speed), "ratio": str(ratio),
+                        "holds": Retiming(ratio).hold_lengths() if ratio >= 1 else [], "matched": matched})
     return records
 
 
@@ -98,9 +103,9 @@ def _pattern_records(tokens, matches) -> list[dict]:
 
 
 def report_settings(report: dict) -> list[tuple[str, list[int]]]:
-    """(setting as written in a profile, ids of the sprites it matched) for each retime, include,
+    """(setting as written in a profile, ids of the sprites it matched) for each speed rule, include,
     exclude and fix in a report. A fix matched the sprites it changed."""
-    return ([(f"retime {rule['fps']:g}: {rule['pattern']}", rule["matched"]) for rule in report["rules"]]
+    return ([(speed_rule_text(parse_speed(rule["speed"]), rule["pattern"]), rule["matched"]) for rule in report["rules"]]
             + [(f"include: {record['pattern']}", record["matched"]) for record in report["include"]]
             + [(f"exclude: {record['pattern']}", record["matched"]) for record in report["exclude"]]
             + [(f"fix: {fix['name']}", fix["matched"]) for fix in report.get("fixes", [])])
@@ -118,7 +123,7 @@ def _sprite_record(movie: SwfMovie, plan: RescalePlan, sprite) -> dict:
             record["probably_safe_labels"] = plan.probably_safe[cid]
         return record
 
-    record.update(stretched=True, fps=float(plan.sprite_fps[cid]), new_frames=retiming.tick(sprite.frame_count))
+    record.update(stretched=True, speed=format_speed(plan.sprite_speed[cid]), new_frames=retiming.tick(sprite.frame_count))
     tweens = plan.tweens.get(cid)
     if tweens:
         record["interpolation"] = {"steps": tweens.stats.interpolated, "snapped": tweens.stats.snapped,
@@ -154,7 +159,7 @@ def report_to_text(report: dict) -> str:
     lines.extend(fixes)
     for rule in report["rules"]:
         rule_ratio = Fraction(rule["ratio"])
-        out(f"retime {rule['fps']:g}: {rule['pattern']}   (R = {rule_ratio} = {float(rule_ratio):.4f})   "
+        out(f"speed {rule['speed']}: {rule['pattern']}   (R = {rule_ratio} = {float(rule_ratio):.4f})   "
             f"holds per source frame: {rule['holds']}   matched sprites: {rule['matched'] or 'none'}")
     for kind in ("include", "exclude"):
         for record in report[kind]:
@@ -174,8 +179,8 @@ def report_to_text(report: dict) -> str:
     out("")
     out("STRETCHED")
     for s in sorted(stretched, key=by_size):
-        fps_note = f"   @ {s['fps']:g} fps" if s["fps"] != report["new_fps"] else ""
-        out(f"  {s['id']:>4}  nf={s['frames']:<4} -> {s['new_frames']:<4} {s['class'] or ''}{fps_note}")
+        speed_note = f"   @ {s['speed']}x speed" if s["speed"] != "1" else ""
+        out(f"  {s['id']:>4}  nf={s['frames']:<4} -> {s['new_frames']:<4} {s['class'] or ''}{speed_note}")
 
     out("")
     out("NOT STRETCHED (multi-frame)")

@@ -40,12 +40,12 @@ def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclud
     body is the decompressed SWF after the 8-byte signature/version/length header. The new body
     usually has a different length, so the header's length field must be updated to match.
 
-    rules is a sequence of FpsRules or (class name regex, fps) pairs, to retime matching sprites to
-    a different frame rate than the rest of the file; see FpsRule. For the other arguments, see
+    rules is a sequence of SpeedRules or (class name regex, speed) pairs, to play matching sprites
+    faster or slower than their original speed; see SpeedRule. For the other arguments, see
     RescaleOptions.
 
     Files already at or above target_fps are left unchanged (new_fps and body are None).
-    Rules that can't be followed (e.g. a sprite matching an FpsRule is not safe to stretch) don't
+    Rules that can't be followed (e.g. a sprite matching a SpeedRule is not safe to stretch) don't
     raise; they are listed in result.unmet_rules, which callers must check.
     Raises RescaleError if the file is not supported, or if the result fails verification.
     """

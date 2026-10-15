@@ -34,25 +34,34 @@ from my own machine, so they most likely need to be changed to work for you.
 
 # Usage
 
+Smooth UI Remastered comes in two builds: 120 fps, and 60 fps: intended for displays (or frame limiters) below 120 Hz (including e.g. 75 Hz or 90 Hz). Their versions name the frame rate, e.g. `v0.3-120fps` and `v0.3-60fps`.
+
+build-compat.py builds **two compatibility patches**, one for each build (`..._v0.3-120fps_..._Compat.zip` and `..._v0.3-60fps_..._Compat.zip`).  
+Please release both:  
+A 120 fps patch plays at 1/2 speed for 60 fps players (60 Hz monitor, or FPS limiter).  
+A 60 fps patch works for everyone, but is less smooth, and may look off to 120 fps Smooth UI users, since only screens in your mod will be 60 fps.
+
+
 Example:
 
-    python build-compat.py --mod-name SortEverything --mod-version 1.53 --smooth-version 0.2 \
+    python build-compat.py --mod-name SortEverything --mod-version 1.53 --smooth-version 0.3 \
     '/mnt/e/Downloads/Sort Everything 1710 1.53 2026-10-08T18-32Z Jy2BxkOYp.zip'
 
 This will:
 
 * Unpack the mod to the work directory (work/compat/1_unpacked)
 * Unbundle the mod (work/compat/2_unbundled)
-* Figure out the conflicting files between Smooth UI Remastered (v0.2, as specified) and the other mod
-* Create FPS-patched versions of the conflicting files, based on the other mod's .redswf files (work/compat/3_patched)
-* Bundle the FPS-patched files .redswf files *only* (work/compat/4_mod)
-* Zip the mod to a release-ready file next to the script (which is the only time the --mod-name and --mod-version arguments are used)
+* For each build of Smooth UI Remastered v0.3 (120 and 60 fps):
+  * Figure out the conflicting files between that build and the other mod
+  * Create FPS-patched versions of the conflicting files, based on the other mod's .redswf files (work/compat/120fps/3_patched)
+  * Bundle the FPS-patched files .redswf files *only* (work/compat/120fps/4_mod)
+  * Zip the mod to a release-ready file next to the script (which is the only time the --mod-name and --mod-version arguments are used)
 * Delete work/compat entirely (use `--keep-work` to keep the files)
 
-Optionally, you can add `--install --launch` to copy the mod to the game folder and launch the game for testing.  
+Optionally, you can add `--install --launch` to copy the mod to the game folder and launch the game for testing. This needs `--only-fps 120` or `--only-fps 60` to pick the patch matching the build of Smooth UI Remastered you have installed; `--only-fps` builds only that patch.  
 Make sure that Smooth UI Remastered and the target mod, both of the correct version, are both already present in the mods folder! build-compat.py will only build the compatibility patch mod required to make the mods work together.
 
-The conflicting files are patched with the same settings as in the specified Smooth UI Remastered release (`--smooth-version`), which should work for most mods.  
+The conflicting files are patched with the same settings (and frame rate) as in the specified Smooth UI Remastered release (`--smooth-version`), which should work for most mods.
 If a mod changes identifiers in an incompatible way, or needs more control, `--overrides FILE` adds settings on top; see `config/compat_overrides_example.txt` for the format.
 
 Run `python3 build-compat.py --help` for basic help. I'm considering making a simple (and optional) GUI to streamline things further, and a binary release (likely PyInstaller-based) to go with it.  

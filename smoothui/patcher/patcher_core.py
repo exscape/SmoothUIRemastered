@@ -32,7 +32,7 @@ from .swf_patcher import (
 class PatchSettings:
     """How to patch one file; see config/profile_default.txt"""
     target_fps: float
-    rules: tuple = ()       # FpsRules ("retime"); the first matching one applies
+    rules: tuple = ()       # SpeedRules ("speed"); the first matching one applies
     include: tuple = ()     # class name regexes and SpriteRefs
     exclude: tuple = ()
     fixes: tuple = ()       # names of fixes for bugs in the game's file (see fixes/)
@@ -97,7 +97,7 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
     return patched, kept, failed
 
 class RuleIssues(NamedTuple):
-    """Messages about explicit settings (retime, include, exclude, ...); see find_rule_issues"""
+    """Messages about explicit settings (speed, include, exclude, ...); see find_rule_issues"""
     errors: list[str]       # settings that were not followed: the output is NOT as configured
     warnings: list[str]     # inherited settings that matched in the release but no longer match
                             # anything: the output is as configured, but may need a look

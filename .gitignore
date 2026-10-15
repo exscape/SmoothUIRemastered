@@ -8,3 +8,4 @@ dev-tools/
 *.log
 config/profile_dev*.txt
 requirements_dev.txt
+manifests/*dev*.json
