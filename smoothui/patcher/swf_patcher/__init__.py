@@ -12,8 +12,11 @@ raises the frame rate AND compensates, so animations keep their original speed:
   * literal gotoAndPlay(2) / gotoAndStop(3) calls on stretched clips are remapped.
   * persistent ENTER_FRAME handlers of the form `obj.prop += K` (rotation, x, y, alpha, ...) get K / R.
   * tweened objects (consecutive moves of matrix / colour transform / morph ratio) get
-    interpolated moves on the extra frames, so they animate at the full frame rate. The original
-    frames stay bit-identical. Shape/bitmap swaps, appear/disappear, filters etc. stay stepped.
+    interpolated moves on the extra frames, so they animate at the full frame rate, at an even pace
+    when the holds differ in length. The original frames' tags stay bit-identical, and so do their
+    states, except for tweened objects passing through them; where playback can start, stop or jump
+    to (labels, frame scripts, goto targets), those are exact too. Shape/bitmap swaps,
+    appear/disappear, filters etc. stay stepped.
   * clips that code addresses by a COMPUTED frame number (colour / icon selectors, progress strips)
     and "selector" clips (every frame carries a label or a frame script) are NOT stretched: that would
     change which frame a given number selects. Neither are "still" clips, whose content only

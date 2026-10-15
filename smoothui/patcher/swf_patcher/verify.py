@@ -6,16 +6,17 @@ that the planned changes came out as intended.
 
 from __future__ import annotations
 
+import dataclasses
 import struct
 
 from ..swf import swf_get_header_offsets
 from .abc_bytecode import INTEGER_PUSH_NAMES, PushDouble, disassemble
 from .abc_file import parse_abc
 from .builder import raw_fps
-from .interpolation import simulate_timeline
+from .interpolation import change_magnitude, interpolate, simulate_timeline
 from .movie import Sprite, SwfMovie
 from .place_object import PLACE_OBJECT_CODES, parse_place_object
-from .planner import RescalePlan
+from .planner import RescalePlan, SpriteTweens
 from .retiming import Retiming
 from .swf_tags import (
     Tag,
@@ -27,6 +28,9 @@ from .swf_tags import (
 )
 
 MAX_SPRITE_PROBLEMS = 12
+# How much further (see change_magnitude) an interpolated state may be from either of its keyframes
+# than they are from each other: about a pixel, for rounding
+MAX_INTERPOLATION_OVERSHOOT = 1.0
 
 
 def verify(movie: SwfMovie, plan: RescalePlan, new_body: bytes) -> list[str]:
@@ -55,9 +59,8 @@ def verify(movie: SwfMovie, plan: RescalePlan, new_body: bytes) -> list[str]:
             character_id = parse_sprite_header(old)[0]
             retiming = plan.sprite_retiming.get(character_id)
             if retiming:
-                tweens = plan.tweens.get(character_id)
                 problems += _verify_stretched_sprite(movie.sprites[character_id], new, retiming,
-                                                     tweens.steps if tweens else {})
+                                                     plan.tweens.get(character_id))
             elif old.payload != new.payload:
                 problems.append(f"unstretched sprite {character_id} changed")
         elif old.code == TagCode.DO_ABC:
@@ -83,12 +86,13 @@ def _split_frames(tags) -> tuple[list[list[Tag]], list[Tag]]:
     return frames, current
 
 
-def _verify_stretched_sprite(sprite: Sprite, new: Tag, retiming: Retiming, tweens) -> list[str]:
+def _verify_stretched_sprite(sprite: Sprite, new: Tag, retiming: Retiming, tweens: SpriteTweens | None) -> list[str]:
     """(a) the tags of original frame k (labels included) are unchanged, on new frame
-       retiming.tick(k), and the frames in between contain only the planned interpolated moves
-       (none, for objects that aren't tweened);
-    (b) a display list simulation of the new timeline matches the original exactly on every original
-       frame, and on the frames in between, tweened objects stay between their two keyframe states"""
+       retiming.tick(k), followed only by the planned interpolated moves; the frames in between
+       contain only the planned moves;
+    (b) a display list simulation of the new timeline matches the original frame's exactly on every
+       new frame, except for the planned samples of tweened objects: those are the same objects, with
+       the same display options, at their interpolated states, which lie between their two keyframes"""
     cid = sprite.character_id
     new_sprite_tags = parse_sprite_tags(new)
     old_frames, old_trailing = _split_frames(sprite.tags)
@@ -98,36 +102,38 @@ def _verify_stretched_sprite(sprite: Sprite, new: Tag, retiming: Retiming, tween
     if new_trailing != old_trailing:
         return [f"sprite {cid}: tags after the last frame changed"]
 
+    samples, moves = (tweens.samples, tweens.moves) if tweens else ({}, {})
     old_states, new_states = simulate_timeline(sprite.tags), simulate_timeline(new_sprite_tags)
     as_pairs = lambda tags: [(tag.code, tag.payload) for tag in tags]
     problems = []
     for k in range(len(old_frames)):
         start = retiming.tick(k)
-        if as_pairs(new_frames[start]) != as_pairs(old_frames[k]):
-            problems.append(f"sprite {cid} frame {k} tags changed")
-        if new_states[start] != old_states[k]:
-            problems.append(f"sprite {cid} frame {k} state differs from original")
+        for tick in range(start, start + retiming.hold(k)):
+            where = f"sprite {cid} f{k} tick {tick - start}"
+            original = old_frames[k] if tick == start else []
+            planned = moves.get(tick, [])
+            if as_pairs(new_frames[tick]) != as_pairs(original + planned):
+                problems.append(f"{where}: tags differ from the original frame's and the planned moves")
+            if any(tag.code not in PLACE_OBJECT_CODES or not parse_place_object(tag).is_move
+                   or parse_place_object(tag).character_id is not None for tag in planned):
+                problems.append(f"{where}: a planned move is not a plain move")
 
-        planned = {step.depth: step for step in tweens.get(k, [])}
-        for tick in range(1, retiming.hold(k)):
-            state = new_states[start + tick]
-            tick_tags = new_frames[start + tick]
-            if any(tag.code not in PLACE_OBJECT_CODES for tag in tick_tags) or \
-                    {parse_place_object(tag).depth for tag in tick_tags} != set(planned):
-                problems.append(f"sprite {cid} frame {k} tick {tick}: unexpected tags")
-                continue
-            for depth, step in planned.items():
-                if (state[depth].instance, state[depth].display_options) != (step.start.instance, step.start.display_options):
-                    problems.append(f"sprite {cid} f{k} tick {tick} depth {depth}: object or display options changed")
-                for field in ("matrix", "color_transform"):
-                    values = zip(getattr(state[depth], field), getattr(step.start, field), getattr(step.end, field))
-                    for value, a, b in values:
-                        if not min(a, b) - 1 <= value <= max(a, b) + 1:
-                            problems.append(f"sprite {cid} f{k} tick {tick} {field} out of range")
-            # Everything else on stage must be exactly as on the keyframe
-            for depth, obj in state.items():
-                if depth not in planned and obj != old_states[k].get(depth):
-                    problems.append(f"sprite {cid} f{k} tick {tick} depth {depth} drifted")
+            expected = dict(old_states[k])
+            for sample in samples.get(tick, []):
+                step, obj = sample.step, expected.get(sample.depth)
+                if obj is None or obj.instance != step.start.instance or not 0 <= sample.t < 1:
+                    problems.append(f"{where} depth {sample.depth}: sample doesn't fit the original")
+                    continue
+                state = interpolate(step.start, step.end, float(sample.t))
+                if max(change_magnitude(step.start, state), change_magnitude(state, step.end)) > \
+                        change_magnitude(step.start, step.end) + MAX_INTERPOLATION_OVERSHOOT:
+                    problems.append(f"{where} depth {sample.depth}: interpolated state outside its step")
+                expected[sample.depth] = dataclasses.replace(obj, matrix=state.matrix, ratio=state.ratio,
+                                                             color_transform=state.color_transform)
+            if new_states[tick] != expected:
+                drifted = sorted(depth for depth in expected.keys() | new_states[tick].keys()
+                                 if expected.get(depth) != new_states[tick].get(depth))
+                problems.append(f"{where}: state differs from the plan at depths {drifted}")
         if len(problems) > MAX_SPRITE_PROBLEMS:
             break
     return problems

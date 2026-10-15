@@ -23,17 +23,19 @@ from .code_analysis import (
     ReceiverKind,
 )
 from .interpolation import (
+    TweenSample,
     TweenStats,
     TweenStep,
     change_magnitude,
     find_tweens,
-    interpolate,
+    sample_tweens,
     simulate_timeline,
+    tween_moves,
 )
 from .movie import SwfMovie
 from .options import RescaleOptions, SpriteRef, format_speed
-from .place_object import build_move
 from .retiming import Retiming, fps_ratio
+from .swf_tags import Tag
 
 # Display properties for which a per-frame `obj.prop += K` is an animation that should keep its speed
 ANIMATED_PROPERTIES = frozenset({
@@ -57,9 +59,11 @@ class IncrementPatch:
 
 @dataclass
 class SpriteTweens:
-    steps: dict[int, list[TweenStep]]   # see interpolation.find_tweens
+    steps: dict[int, list[TweenStep]]       # see interpolation.find_tweens
+    samples: dict[int, list[TweenSample]]   # see interpolation.sample_tweens
+    moves: dict[int, list[Tag]]             # see interpolation.tween_moves
     stats: TweenStats
-    added_bytes: int    # estimated size of the interpolated moves
+    added_bytes: int    # size of the interpolated moves
     motion: float       # total change magnitude: how noticeable the interpolation is
 
 
@@ -171,7 +175,7 @@ class Planner:
         self._patch_literal_gotos(literal_gotos)
         self._patch_frame_handlers()
         self._warn_unresolved(unresolved_gotos, frame_property_uses)
-        self._plan_interpolation()
+        self._plan_interpolation(frame_scripts, literal_gotos)
         return self.plan
 
     def _target_sprites(self, method: int, receiver: Receiver) -> set[int] | None:
@@ -533,19 +537,27 @@ class Planner:
 
     # --- Interpolation ---
 
-    def _plan_interpolation(self):
+    def _plan_interpolation(self, frame_scripts, literal_gotos):
         plan = self.plan
         for character_id, retiming in sorted(plan.sprite_retiming.items()):
             if retiming.ratio == 1:
                 continue    # no frames in between to interpolate
-            steps, stats = find_tweens(simulate_timeline(self.movie.sprites[character_id].tags))
+            sprite = self.movie.sprites[character_id]
+            steps, stats = find_tweens(simulate_timeline(sprite.tags))
             if not steps:
                 continue
-            added_bytes, motion = 0, 0.0
-            for frame, frame_steps in steps.items():
-                extra_ticks = retiming.hold(frame) - 1
-                for step in frame_steps:
-                    move = build_move(step.depth, *interpolate(step.start, step.end, 0.5), step.start.display_options)
-                    added_bytes += extra_ticks * len(move.to_bytes())
-                    motion += change_magnitude(step.start, step.end)
-            plan.tweens[character_id] = SpriteTweens(steps, stats, added_bytes, motion)
+            samples = sample_tweens(steps, retiming, self._anchors(sprite, frame_scripts, literal_gotos))
+            moves = tween_moves(sprite.tags, samples, retiming)
+            added_bytes = sum(len(move.to_bytes()) for tick_moves in moves.values() for move in tick_moves)
+            motion = sum(change_magnitude(step.start, step.end) for frame_steps in steps.values() for step in frame_steps)
+            plan.tweens[character_id] = SpriteTweens(steps, samples, moves, stats, added_bytes, motion)
+
+    def _anchors(self, sprite, frame_scripts, literal_gotos) -> set[int]:
+        """The frames where playback may start, stop or jump to, which tweens must show exactly: labels,
+        frame scripts (stop() and others) and the targets of literal gotos"""
+        scripts = frame_scripts.get(self.movie.class_name(sprite.character_id))
+        anchors = set(sprite.labels) | (scripts.frames if scripts else set())
+        for call, targets in literal_gotos:
+            if sprite.character_id in targets:
+                anchors.add(int(call.arg.value) - 1)
+        return anchors

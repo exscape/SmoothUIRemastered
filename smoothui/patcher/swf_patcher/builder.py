@@ -7,9 +7,7 @@ import struct
 from ..swf import FPS_FIXED_POINT_SCALE, MAX_RAW_FPS
 from .abc_bytecode import assemble
 from .abc_file import serialize_abc
-from .interpolation import TweenStep, interpolate
 from .movie import RescaleError, Sprite, SwfMovie
-from .place_object import build_move
 from .planner import RescalePlan
 from .retiming import Retiming
 from .swf_tags import Tag, TagCode, build_sprite, serialize_tags
@@ -24,23 +22,19 @@ def raw_fps(fps: float) -> int:
     return raw
 
 
-def stretch_sprite(sprite: Sprite, tag: Tag, retiming: Retiming, tweens: dict[int, list[TweenStep]]) -> Tag:
-    """Hold every frame of the sprite for retiming.hold(frame) frames. The extra frames carry
-    interpolated moves of the tweened objects (see interpolation.find_tweens), and are otherwise empty.
-    The moves restate the objects' display options (filters etc.), as Flash does on every frame of a
-    tween: Scaleform appears to drop those on moves that don't."""
+def stretch_sprite(sprite: Sprite, tag: Tag, retiming: Retiming, moves: dict[int, list[Tag]]) -> Tag:
+    """Hold every frame of the sprite for retiming.hold(frame) frames. The interpolated moves of the
+    tweened objects (see interpolation.tween_moves) go on the frames they are planned for: after the
+    original tags, on a keyframe's own frame. The extra frames are otherwise empty."""
     tags, frame = [], 0
     for sub in sprite.tags:
-        tags.append(sub)
         if sub.code != TagCode.SHOW_FRAME:
+            tags.append(sub)
             continue
-        hold = retiming.hold(frame)
-        steps = sorted(tweens.get(frame, []), key=lambda step: step.depth)
-        for tick in range(1, hold):
-            for step in steps:
-                tags.append(build_move(step.depth, *interpolate(step.start, step.end, tick / hold),
-                                       step.start.display_options))
-            tags.append(SHOW_FRAME)
+        start = retiming.tick(frame)
+        for tick in range(start, start + retiming.hold(frame)):
+            tags += moves.get(tick, [])
+            tags.append(sub if tick == start else SHOW_FRAME)
         frame += 1
     return build_sprite(sprite.character_id, retiming.tick(frame), tags, long_header=tag.long_header)
 
@@ -52,7 +46,7 @@ def build_body(movie: SwfMovie, plan: RescalePlan) -> bytes:
         sprite = movie.sprites[character_id]
         tweens = plan.tweens.get(character_id)
         tags[sprite.tag_index] = stretch_sprite(sprite, tags[sprite.tag_index], retiming,
-                                                tweens.steps if tweens else {})
+                                                tweens.moves if tweens else {})
 
     if plan.code_edits:
         new_bodies = {}

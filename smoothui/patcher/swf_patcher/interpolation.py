@@ -3,14 +3,18 @@
 A timeline is simulated (display list per frame); runs of consecutive frames where the same object
 changes its matrix / colour transform / morph ratio are taken to be tweens. When such a sprite is
 stretched, the extra ticks between two of its keyframes can then carry interpolated moves rather
-than just holding the old state. Jumps, swaps, appear/disappear etc. stay stepped.
+than just holding the old state. Jumps, swaps, appear/disappear etc. stay stepped. Over a run of
+tween steps, objects move at an even pace (see sample_tweens), so keyframes whose holds differ in
+length may be shown slightly before or after their exact states.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import math
+from collections import defaultdict
 from dataclasses import dataclass
+from fractions import Fraction
 
 from .place_object import (
     FIXED_ONE,
@@ -19,9 +23,11 @@ from .place_object import (
     PLACE_OBJECT_CODES,
     ColorTransform,
     Matrix,
+    build_move,
     parse_place_object,
 )
-from .swf_tags import TagCode, parse_remove_object_depth
+from .retiming import Retiming
+from .swf_tags import Tag, TagCode, parse_remove_object_depth
 
 MAX_RATIO = 0xFFFF
 
@@ -78,21 +84,35 @@ class TweenStats:
         return self.single_step + self.outlier + self.rotation
 
 
-def simulate_timeline(tags) -> list[Snapshot]:
-    """Simulate the display list of a timeline; returns its state at every ShowFrame"""
-    current: Snapshot = {}
-    snapshots = []
-    placements = 0
-    for tag in tags:
+@dataclass(frozen=True)
+class TweenSample:
+    """A tweened object on a new frame (tick) between keyframes: t (0..1) of the way through step"""
+    step: TweenStep
+    t: Fraction
+
+    @property
+    def depth(self) -> int:
+        return self.step.depth
+
+
+class DisplayList:
+    """A timeline's display list, as its tags are applied one by one"""
+
+    def __init__(self):
+        self.objects: Snapshot = {}
+        self.placements = 0
+
+    def apply(self, tag):
+        current = self.objects
         if tag.code in PLACE_OBJECT_CODES:
             place = parse_place_object(tag)
             depth = place.depth
             if place.character_id is not None:
                 # New object, or (when moving) a character swap; both count as a new instance
-                placements += 1
+                self.placements += 1
                 old = current.get(depth) if place.is_move else None
                 current[depth] = DisplayState(
-                    placements,
+                    self.placements,
                     place.character_id,
                     place.matrix or (old.matrix if old else IDENTITY_MATRIX),
                     place.color_transform or (old.color_transform if old else IDENTITY_COLOR_TRANSFORM),
@@ -110,8 +130,16 @@ def simulate_timeline(tags) -> list[Snapshot]:
                 current[depth] = dataclasses.replace(current[depth], **changes)
         elif tag.code in (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2):
             current.pop(parse_remove_object_depth(tag), None)
-        elif tag.code == TagCode.SHOW_FRAME:
-            snapshots.append(dict(current))
+
+
+def simulate_timeline(tags) -> list[Snapshot]:
+    """Simulate the display list of a timeline; returns its state at every ShowFrame"""
+    display, snapshots = DisplayList(), []
+    for tag in tags:
+        if tag.code == TagCode.SHOW_FRAME:
+            snapshots.append(dict(display.objects))
+        else:
+            display.apply(tag)
     return snapshots
 
 
@@ -227,12 +255,104 @@ def _consecutive_runs(sorted_values):
     return runs
 
 
-def interpolate(a: DisplayState, b: DisplayState, t: float):
-    """The state t (0..1) of the way from a to b, as (matrix, color transform, ratio).
-    Properties that don't change are None, so they can be left out of the PlaceObject."""
+def interpolate(a: DisplayState, b: DisplayState, t: float) -> DisplayState:
+    """The state t (0..1) of the way from a to b: a, with b's matrix, colour transform and morph ratio
+    blended in"""
+    if t == 0:
+        return a
     lerp = lambda x, y: round(x + (y - x) * t)
-    matrix = Matrix(*map(lerp, a.matrix, b.matrix)) if a.matrix != b.matrix else None
-    cxform = ColorTransform(*map(lerp, a.color_transform, b.color_transform)) \
-        if a.color_transform != b.color_transform else None
-    ratio = lerp(a.ratio, b.ratio) if a.ratio is not None and b.ratio is not None and a.ratio != b.ratio else None
-    return matrix, cxform, ratio
+    ratio = lerp(a.ratio, b.ratio) if a.ratio is not None and b.ratio is not None else a.ratio
+    return dataclasses.replace(a, matrix=_interpolate_matrix(a.matrix, b.matrix, t),
+                               color_transform=ColorTransform(*map(lerp, a.color_transform, b.color_transform)),
+                               ratio=ratio)
+
+
+def _interpolate_matrix(a: Matrix, b: Matrix, t: float) -> Matrix:
+    """Turns and scales each axis (the images of the x and y axes) along an arc, rather than moving
+    it in a straight line: blending two rotations linearly shrinks the object in between (by 0.2%
+    at 7.5 degrees per frame), which makes rotating objects pulse at the keyframe rate. Large turns,
+    such as flips, are blended linearly, as Flash does."""
+    if a == b:
+        return a
+    lerp = lambda x, y: round(x + (y - x) * t)
+    axes = []
+    for (ax, ay), (bx, by) in (((a.scale_x, a.rotate_skew0), (b.scale_x, b.rotate_skew0)),
+                               ((a.rotate_skew1, a.scale_y), (b.rotate_skew1, b.scale_y))):
+        start, turn = math.atan2(ay, ax), math.atan2(by, bx) - math.atan2(ay, ax)
+        turn = (turn + math.pi) % (2 * math.pi) - math.pi
+        if (ax, ay) == (bx, by) or not (ax or ay) or not (bx or by) or abs(math.degrees(turn)) > MAX_ROTATION_DEGREES:
+            axes.append((lerp(ax, bx), lerp(ay, by)))
+            continue
+        length = math.hypot(ax, ay) + (math.hypot(bx, by) - math.hypot(ax, ay)) * t
+        angle = start + turn * t
+        axes.append((round(length * math.cos(angle)), round(length * math.sin(angle))))
+    (scale_x, skew0), (skew1, scale_y) = axes
+    return Matrix(scale_x, scale_y, skew0, skew1, lerp(a.translate_x, b.translate_x), lerp(a.translate_y, b.translate_y))
+
+
+def sample_tweens(steps: dict[int, list[TweenStep]], retiming: Retiming,
+                  anchors: set[int]) -> dict[int, list[TweenSample]]:
+    """Where each tweened object is on each new frame (tick) between keyframes, as {tick: samples}.
+
+    When the frames are held for different numbers of ticks (2, 3, 2, 3, ... at 24 -> 60 fps),
+    interpolating each step over its own hold makes an object move faster on the short holds than on
+    the long ones. That alone is a slight judder, but nested clips that turn opposite ways (Gwent's
+    fog: +7.7 and -8 degrees per frame) fall out of step with each other as they loop, and their
+    small net turn then lurches back and forth by ten times its size. So over a run of steps the
+    object moves at an even pace, tick by tick, and passes its keyframe states in between ticks
+    rather than on them. Runs end at anchor frames (where playback may start, stop or jump to), and at
+    the wrap back to frame 0, whose states are shown exactly: ticks there get no sample."""
+    steps_by_depth = defaultdict(dict)  # depth -> {frame: step from that frame to the next}
+    for frame, frame_steps in steps.items():
+        for step in frame_steps:
+            steps_by_depth[step.depth][frame] = step
+
+    samples = defaultdict(list)
+    for depth, depth_steps in sorted(steps_by_depth.items()):
+        for start, end in _runs(sorted(depth_steps), anchors):
+            first_tick, last_tick = retiming.tick(start), retiming.tick(end)
+            for tick in range(first_tick + 1, last_tick):
+                time = start + Fraction((tick - first_tick) * (end - start), last_tick - first_tick)
+                frame = math.floor(time)
+                samples[tick].append(TweenSample(depth_steps[frame], time - frame))
+    return dict(samples)
+
+
+def _runs(frames: list[int], anchors: set[int]) -> list[tuple[int, int]]:
+    """(start, end) frames of each run of consecutive steps (from frame k to k + 1, for each k in
+    frames), split at anchor frames"""
+    runs = []
+    for frame in frames:
+        if runs and runs[-1][1] == frame and frame not in anchors:
+            runs[-1] = (runs[-1][0], frame + 1)
+        else:
+            runs.append((frame, frame + 1))
+    return runs
+
+
+def tween_moves(tags, samples: dict[int, list[TweenSample]], retiming: Retiming) -> dict[int, list[Tag]]:
+    """The moves that put the tweened objects where samples says, as {tick: PlaceObject tags}. On a
+    keyframe's tick, they come after its own tags. They only set what differs from the object's
+    state at that point, and restate its display options (filters etc.), as Flash does on every
+    frame of a tween: Scaleform appears to drop those on moves that don't."""
+    display, moves, frame = DisplayList(), defaultdict(list), 0
+
+    def place(tick):
+        for sample in sorted(samples.get(tick, ()), key=lambda sample: sample.depth):
+            current = display.objects[sample.depth]
+            target = interpolate(sample.step.start, sample.step.end, float(sample.t))
+            matrix, cxform, ratio = (getattr(target, field) if getattr(target, field) != getattr(current, field)
+                                     else None for field in ("matrix", "color_transform", "ratio"))
+            if matrix or cxform or ratio is not None:
+                move = build_move(sample.depth, matrix, cxform, ratio, current.display_options)
+                display.apply(move)
+                moves[tick].append(move)
+
+    for tag in tags:
+        if tag.code != TagCode.SHOW_FRAME:
+            display.apply(tag)
+            continue
+        for tick in range(retiming.tick(frame), retiming.tick(frame + 1)):
+            place(tick)
+        frame += 1
+    return dict(moves)
