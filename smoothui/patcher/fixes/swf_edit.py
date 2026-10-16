@@ -6,7 +6,7 @@ import re
 from typing import NamedTuple
 
 from ..swf import swf_get_header_offsets
-from ..swf_patcher.abc_file import AbcFile, parse_abc, serialize_abc
+from ..swf_patcher.abc_file import AbcFile, PoolAdditions, parse_abc, serialize_abc
 from ..swf_patcher.swf_tags import (
     Tag,
     TagCode,
@@ -45,15 +45,20 @@ class SwfEdit:
         self.header = bytes(body[:first_tag])
         self.tags = parse_tags(body, first_tag)
         self.changed = False
+        self._added_abc = []        # DoABC tags added by insert_abc (not the file's own ActionScript)
+        self._abc = None            # the parsed ActionScript, once asked for
+        self._index_tags()
+
+    def _index_tags(self):
         self._sprite_index = {}     # character id -> index in self.tags
         self._sprites_of_class = {}
-        self._abc_indices = []      # indices in self.tags of the DoABC tags
-        self._abc = None            # the parsed ActionScript, once asked for
+        self._abc_indices = []      # indices in self.tags of the file's own DoABC tags
         for index, tag in enumerate(self.tags):
             if tag.code == TagCode.DEFINE_SPRITE:
                 self._sprite_index[parse_sprite_header(tag)[0]] = index
             elif tag.code == TagCode.DO_ABC:
-                self._abc_indices.append(index)
+                if not any(tag is added for added in self._added_abc):
+                    self._abc_indices.append(index)
             elif tag.code == TagCode.SYMBOL_CLASS:
                 for character_id, class_name in parse_symbol_class(tag):
                     self._sprites_of_class.setdefault(class_name, []).append(character_id)
@@ -111,12 +116,27 @@ class SwfEdit:
 
     def replace_method_code(self, method: int, code: bytes, exceptions: list):
         """Give a method (by its index in the ABC file) new bytecode and exception table"""
+        self.replace_methods({method: (code, exceptions)})
+
+    def replace_methods(self, bodies: dict[int, tuple[bytes, list]], additions: PoolAdditions | None = None):
+        """Give methods (by their index in the ABC file) new bytecode and exception tables, with the
+        constants their code names that the file didn't have (made with PoolAdditions(self.abc))"""
         index = self._abc_indices[0]
         old = self.tags[index]
         prefix, _ = split_do_abc(old)
-        self.tags[index] = Tag(TagCode.DO_ABC, prefix + serialize_abc(self.abc, {method: (code, exceptions)}),
+        self.tags[index] = Tag(TagCode.DO_ABC, prefix + serialize_abc(self.abc, bodies, additions=additions),
                                old.long_header)
         self._abc = None
+        self.changed = True
+
+    def insert_abc(self, tag: Tag):
+        """Add a DoABC tag (classes of our own) right after the file's own, so that its classes are
+        defined before anything runs. It is not part of self.abc."""
+        if tag.code != TagCode.DO_ABC or len(self._abc_indices) != 1:
+            raise CantApply(f"expected 1 DoABC tag, found {len(self._abc_indices)}")
+        self.tags.insert(self._abc_indices[0] + 1, tag)
+        self._added_abc.append(tag)
+        self._index_tags()
         self.changed = True
 
     def body(self) -> bytes:

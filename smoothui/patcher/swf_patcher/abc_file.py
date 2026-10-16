@@ -1,8 +1,9 @@
 """ActionScript 3 bytecode files (the "ABC" inside a DoABC tag): parsing, and splicing changes back in.
 
 Only the parts the patcher reads are kept; everything else is skipped over. Byte positions are
-recorded for the double constant pool and the method bodies, so that changed versions can be
-spliced into the original bytes with everything else left untouched.
+recorded for the constant pools that can be extended (doubles, strings, namespaces, multinames) and
+the method bodies, so that changed versions can be spliced into the original bytes with everything
+else left untouched.
 
 Reference: the "ActionScript Virtual Machine 2 (AVM2) Overview", chapter 4.
 """
@@ -10,7 +11,7 @@ Reference: the "ActionScript Virtual Machine 2 (AVM2) Overview", chapter 4.
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Multiname kinds
 QNAME, QNAME_A = 0x07, 0x0D
@@ -29,6 +30,9 @@ METHOD_HAS_PARAM_NAMES = 0x80
 
 # instance_info flags
 INSTANCE_PROTECTED_NS = 0x08
+
+# Namespace kinds
+PACKAGE_NAMESPACE = 0x16    # a package's public namespace; "" is the top level ("public")
 
 # Trait kinds, and the trait attribute bit for attached metadata
 TRAIT_SLOT, TRAIT_METHOD, TRAIT_GETTER, TRAIT_SETTER, TRAIT_CLASS, TRAIT_FUNCTION, TRAIT_CONST = range(7)
@@ -151,6 +155,15 @@ class MethodBody:
     splice_end: int
 
 
+@dataclass(frozen=True)
+class PoolSpan:
+    """Where a constant pool lives in AbcFile.raw: its count at start, its entries from values_start
+    to end. Entry 0 is implicit, so a pool with n entries stores the count n + 1 (or 0 if it's empty)."""
+    start: int = 0
+    values_start: int = 0
+    end: int = 0
+
+
 @dataclass
 class AbcFile:
     raw: bytes
@@ -169,6 +182,10 @@ class AbcFile:
     double_values_start: int = 0
     double_pool_end: int = 0
     double_count: int = 0           # the stored count; entry 0 is implicit, so this is len(doubles) when > 0
+    # Where the string, namespace and multiname pools live in raw, so they can be extended
+    string_pool: PoolSpan = PoolSpan()
+    namespace_pool: PoolSpan = PoolSpan()
+    multiname_pool: PoolSpan = PoolSpan()
 
     def name_of(self, index: int) -> str:
         """The unqualified name of a multiname; "<rt>"/"<rtns>" for names only known at runtime"""
@@ -211,6 +228,14 @@ def parse_abc(data: bytes) -> AbcFile:
         """Constant pools store count+1, and entry 0 is implicit"""
         return [read_entry() for _ in range(max(r.u30() - 1, 0))]
 
+    def located_pool(read_entry):
+        """pool(read_entry), and its PoolSpan"""
+        start = r.offset
+        count = r.u30()
+        values_start = r.offset
+        entries = [read_entry() for _ in range(max(count - 1, 0))]
+        return entries, PoolSpan(start, values_start, r.offset)
+
     ints = [0] + pool(r.s32)
     uints = [0] + pool(r.u30)
 
@@ -220,10 +245,11 @@ def parse_abc(data: bytes) -> AbcFile:
     doubles = [0.0] + [struct.unpack("<d", r.bytes(8))[0] for _ in range(max(double_count - 1, 0))]
     double_pool_end = r.offset
 
-    strings = [""] + pool(lambda: r.bytes(r.u30()).decode("utf8", "replace"))
-    namespaces = [(0, 0)] + pool(lambda: (r.u8(), r.u30()))
+    strings, string_pool = located_pool(lambda: r.bytes(r.u30()).decode("utf8", "replace"))
+    namespaces, namespace_pool = located_pool(lambda: (r.u8(), r.u30()))
     pool(lambda: [r.u30() for _ in range(r.u30())])     # namespace sets
-    multinames = [None] + pool(lambda: _read_multiname(r))
+    multinames, multiname_pool = located_pool(lambda: _read_multiname(r))
+    strings, namespaces, multinames = [""] + strings, [(0, 0)] + namespaces, [None] + multinames
 
     methods = [_read_method_info(r) for _ in range(r.u30())]
 
@@ -249,7 +275,8 @@ def parse_abc(data: bytes) -> AbcFile:
         raise ValueError("ABC parse did not consume all bytes")
 
     return AbcFile(data, ints, uints, doubles, strings, namespaces, multinames, methods, instances, classes,
-                   bodies, double_pool_start, double_values_start, double_pool_end, double_count)
+                   bodies, double_pool_start, double_values_start, double_pool_end, double_count,
+                   string_pool, namespace_pool, multiname_pool)
 
 
 def _read_multiname(r: AbcReader) -> Multiname:
@@ -338,12 +365,72 @@ def _read_method_body(r: AbcReader) -> MethodBody:
     return MethodBody(method, code, exceptions, _read_traits(r), splice_start, splice_end)
 
 
-def serialize_abc(abc: AbcFile, new_bodies: dict[int, tuple[bytes, list]], new_doubles=()) -> bytes:
-    """The ABC bytes with the given method bodies replaced and doubles appended to the pool.
+@dataclass
+class PoolAdditions:
+    """Strings, namespaces and multinames to append to an ABC file's constant pools (see serialize_abc),
+    for code that names things the file doesn't (yet) name. Each method returns the index to use in
+    code: an existing entry's if there is an equal one, or else the one a new entry gets. Existing
+    indices stay valid."""
+    abc: AbcFile
+    strings: list[str] = field(default_factory=list)
+    namespaces: list[tuple[int, int]] = field(default_factory=list)    # (kind, name string index)
+    multinames: list[Multiname] = field(default_factory=list)
+
+    def string(self, text: str) -> int:
+        return self._index(self.abc.strings, self.strings, text)
+
+    def namespace(self, kind: int, name: str) -> int:
+        return self._index(self.abc.namespaces, self.namespaces, (kind, self.string(name)))
+
+    def qname(self, namespace: int, name: str) -> int:
+        """A QName multiname: name in the namespace with that index (see namespace())"""
+        return self._index(self.abc.multinames, self.multinames,
+                           Multiname(QNAME, name=self.string(name), namespace=namespace))
+
+    @staticmethod
+    def _index(existing: list, added: list, entry) -> int:
+        # Entry 0 is the implicit one ("any name", no namespace...), never an actual constant
+        for index in range(1, len(existing)):
+            if existing[index] == entry:
+                return index
+        if entry not in added:
+            added.append(entry)
+        return len(existing) + added.index(entry)
+
+
+def _encode_multiname(multiname: Multiname) -> bytes:
+    if multiname.kind not in (QNAME, QNAME_A):
+        raise ValueError(f"can't add a multiname of kind {multiname.kind:#x}")
+    return bytes([multiname.kind]) + encode_u30(multiname.namespace) + encode_u30(multiname.name)
+
+
+def _extend_pool(abc: AbcFile, span: PoolSpan, existing_count: int, new_entries: list[bytes]) -> tuple[int, int, bytes]:
+    """The splice that appends new_entries (encoded) to the pool at span, which has existing_count
+    entries counting the implicit entry 0"""
+    return (span.start, span.end,
+            encode_u30(existing_count + len(new_entries)) + abc.raw[span.values_start:span.end] + b"".join(new_entries))
+
+
+def serialize_abc(abc: AbcFile, new_bodies: dict[int, tuple[bytes, list]], new_doubles=(),
+                  additions: PoolAdditions | None = None) -> bytes:
+    """The ABC bytes with the given method bodies replaced, and doubles and other constants (additions)
+    appended to their pools.
 
     new_bodies maps method index -> (code, exception table). Appended doubles get the indices
     following the existing pool entries; existing indices stay valid."""
     splices = []    # (start, end, replacement) in abc.raw
+    if additions is not None:
+        if additions.abc is not abc:
+            raise ValueError("BUG: pool additions made for a different ABC file")
+        if additions.strings:
+            splices.append(_extend_pool(abc, abc.string_pool, len(abc.strings), [
+                encode_u30(len(data)) + data for data in (text.encode("utf8") for text in additions.strings)]))
+        if additions.namespaces:
+            splices.append(_extend_pool(abc, abc.namespace_pool, len(abc.namespaces), [
+                bytes([kind]) + encode_u30(name) for kind, name in additions.namespaces]))
+        if additions.multinames:
+            splices.append(_extend_pool(abc, abc.multiname_pool, len(abc.multinames),
+                                        [_encode_multiname(multiname) for multiname in additions.multinames]))
     if new_doubles:
         first_new_index = max(abc.double_count, 1)
         old_values = abc.raw[abc.double_values_start:abc.double_pool_end] if abc.double_count >= 1 else b""
