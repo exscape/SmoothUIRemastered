@@ -140,9 +140,11 @@ def disassemble(code: bytes) -> list[Instruction]:
 
 
 def assemble(code: bytes, instructions: list[Instruction], edits: dict, exceptions: list) -> tuple[bytes, list]:
-    """Re-assemble a method with some push instructions replaced.
+    """Re-assemble a method with some instructions replaced.
 
-    edits maps instruction index -> new value: an int (becomes pushbyte/pushshort) or PushDouble.
+    edits maps instruction index -> new value: an int (becomes pushbyte/pushshort), PushDouble, or the
+    raw bytes of whatever replaces it (b"" to drop the instruction; nothing may branch into the middle
+    of the instructions that are replaced together).
     Untouched instructions keep their original bytes, except that branch and lookupswitch offsets
     are recomputed, since the edits can change instruction sizes. Exception ranges are remapped
     too. Returns (new code, new exception table)."""
@@ -184,6 +186,8 @@ def assemble(code: bytes, instructions: list[Instruction], edits: dict, exceptio
 
 
 def _encode_push(value) -> bytes:
+    if isinstance(value, bytes):
+        return value
     if isinstance(value, PushDouble):
         return bytes([OP_PUSHDOUBLE]) + encode_u30(value.pool_index)
     if -128 <= value <= 127:

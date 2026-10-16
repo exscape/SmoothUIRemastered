@@ -9,11 +9,12 @@ Big changes!
   * Neither version is recommended if you use an FPS limiter set below 60 fps; use the default UI in that case.
 * 60 fps version reworked to be 60 fps everywhere (v0.2 has 48 fps Gwent and transmog)
 * **No animation speedup**, as in the older versions
-* Base game Gwent bugs fixed:
-  * Fog/rain no longer draws outside of their rows, causing clouds to appear e.g. on your cards
-  * Fog no longer causes flickers and other issues on other weather-affected rows
-  * Fog intro animation no longer jumps partway through
-  * Frost no longer flickers slightly
+* Base game bugs fixed:
+  * UI: multiple tabs no longer show as selected/hovered simultaneously (e.g. the last three tabs on the blacksmith screen)
+  * Gwent: fog/rain no longer draws outside of their rows, causing clouds to appear e.g. on your cards
+  * Gwent: fog no longer causes flickers and other issues on other weather-affected rows
+  * Gwent: fog intro animation no longer jumps partway through
+  * Gwent: frost no longer flickers slightly
 * The loading screen (loadingscreen.redswf) is no longer patched: it didn't make any difference in fluidity
 
 This version targets and requires game version 5.01, and will not work on older patches.

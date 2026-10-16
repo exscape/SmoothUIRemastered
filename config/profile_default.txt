@@ -52,6 +52,9 @@
 gameplay/gui_new/swf/alchemy/panel_alchemy.redswf
     speed 1.5: panel_alchemy_fla.progressbar2_27
 
+gameplay/gui_new/swf/common/panel_common.redswf
+    fix: hub-tab-hover-fix
+
 gameplay/gui_new/swf/character/panel_character.redswf
 gameplay/gui_new/swf/character/panel_character_dupe.redswf
 gameplay/gui_new/swf/glossary/panel_glossary_main.redswf # Glossary root screen + tabs
