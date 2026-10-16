@@ -25,6 +25,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
 REVIEWED_WARNINGS = REPO_ROOT / "config" / "reviewed_warnings.txt"
 MANIFEST_DIR = REPO_ROOT / "manifests"
+# Files the main mod ships as they are (scripts, the settings menu), laid out as in its zip:
+# mods/<the mod's folder>/, and bin/ (for the game's bin/ folder)
+MOD_FILES = REPO_ROOT / "mod_files"
 
 REQUIRED_CONFIG_KEYS = ("working_dir", "wcc_lite")
 
@@ -177,6 +180,28 @@ def enforce_strict(failed, kept, rule_errors, unreviewed_warnings=()):
     if problems:
         fail("--strict: " + "; ".join(problems) + " (see above; use --no-strict to build anyway)")
 
+def copy_files(src_dir, dst_dir):
+    """Copy the files under src_dir into dst_dir (merging folders), without their metadata: copying
+    a folder's permissions fails on Windows drives in WSL. Returns the copied files' paths, relative."""
+    copied = []
+    for f in sorted(Path(src_dir).rglob("*")):
+        if f.is_file():
+            target = Path(dst_dir) / f.relative_to(src_dir)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(f, target)
+            copied.append(f.relative_to(src_dir))
+    return copied
+
+def add_mod_files(output_dir, mod_name):
+    """Copy MOD_FILES into the mod's output tree (mods/mod_name/, bin/)"""
+    print_step_header("Adding scripts and settings menu")
+    unexpected = [p.relative_to(MOD_FILES).as_posix() for p in [*MOD_FILES.iterdir(), *(MOD_FILES / "mods").iterdir()]
+                  if p.relative_to(MOD_FILES).as_posix() not in ("mods", "bin", f"mods/{mod_name}")]
+    if unexpected:
+        fail(f"{MOD_FILES} should only hold mods/{mod_name}/ and bin/, not {', '.join(unexpected)}")
+    for path in copy_files(MOD_FILES, output_dir):
+        print(f"Added {path.as_posix()}")
+
 def zip_tree(src_dir, zip_out):
     """Zip every file under src_dir, keeping the tree's layout at the root of the archive"""
     print_step_header("Creating output .zip")
@@ -254,8 +279,9 @@ def write_manifest(version, records, extra=None):
     print(f"Wrote manifest {path} ({len(records)} files)")
     return path
 
-def install_mod(mod_dir, game_path):
-    """Copy <mod_dir> (a directory whose name is the mod's name) into <game_path>/mods"""
+def install_mod(mod_dir, game_path, bin_dir=None):
+    """Copy <mod_dir> (a directory whose name is the mod's name) into <game_path>/mods, and the files
+    in bin_dir (the settings menu), if given, into <game_path>/bin"""
     print_step_header("Installing mod to game folder")
     if not game_path.is_dir():
         fail(f"game path not found: {game_path}")
@@ -263,6 +289,9 @@ def install_mod(mod_dir, game_path):
     shutil.rmtree(dest, ignore_errors=True)
     shutil.copytree(mod_dir, dest)
     print(f"Installed mod into {dest}")
+    if bin_dir is not None and Path(bin_dir).is_dir():
+        for path in copy_files(bin_dir, game_path / "bin"):
+            print(f"Installed {game_path / 'bin' / path}")
 
 def launch_game(game_path):
     """Attempt to launch the game executable"""
@@ -270,9 +299,9 @@ def launch_game(game_path):
     exe_path = game_path / "bin/x64_dx12/witcher3.exe"
     run_command([exe_path], cwd=exe_path.parent, detach=True)
 
-def install_and_launch(mod_dir, game_path: Path, install, launch):
-    """Copy the built mod into the game folder, then launch the game if asked.
-    A missing game_path (None) means nothing can be installed or launched"""
+def install_and_launch(mod_dir, game_path: Path, install, launch, bin_dir=None):
+    """Copy the built mod (and the files in bin_dir, if given) into the game folder, then launch the
+    game if asked. A missing game_path (None) means nothing can be installed or launched"""
     if not game_path and (install or launch):
         print("Warning: game_path not set in config.toml; will ignore --install/--launch")
         return
@@ -280,7 +309,7 @@ def install_and_launch(mod_dir, game_path: Path, install, launch):
         print("Warning: game_path set in config.toml does not exist! Will ignore --install/--launch")
         return
     if install:
-        install_mod(mod_dir, game_path)
+        install_mod(mod_dir, game_path, bin_dir)
         if launch:
             launch_game(game_path)
     elif launch:

@@ -22,6 +22,7 @@ from .reviewed_warnings import (
 )
 from .shared import (
     REPO_ROOT,
+    add_mod_files,
     build_version,
     config_paths,
     enforce_strict,
@@ -147,8 +148,9 @@ def build(args, config, paths, version, fps):
     profile, shared_settings = load_profile(args.profile, fps)
     work_dir = paths['working_dir'] / f"main_{fps}fps"
     patched_dir = work_dir / "1_patched"
-    output_dir = work_dir / "2_mod"
-    output_content_path = output_dir / OUTPUT_MOD_NAME / "content"
+    output_dir = work_dir / "2_mod"     # laid out as the zip: mods/<the mod>/, bin/
+    output_mod_dir = output_dir / "mods" / OUTPUT_MOD_NAME
+    output_content_path = output_mod_dir / "content"
     zip_out = REPO_ROOT / f"SmoothUIRemastered_{version}.zip"
 
     if not args.dry_run:
@@ -189,11 +191,14 @@ def build(args, config, paths, version, fps):
     if not patched:
         fail("no patched files were produced, aborting.")
 
-    print_step_header(f"Removing old bundle/metadata from output folder ({version})")
-    for old in [*output_content_path.glob("blob*.bundle"), output_content_path / "metadata.store"]:
-        old.unlink(missing_ok=True)
+    print_step_header(f"Removing the old output folder ({version})")
+    shutil.rmtree(output_dir, ignore_errors=True)
+    if output_dir.exists():
+        fail(f"could not remove the old output folder {output_dir}")
+    output_content_path.mkdir(parents=True)
 
     pack_content(patched_dir, output_content_path)
+    add_mod_files(output_dir, OUTPUT_MOD_NAME)
 
     zip_tree(output_dir, zip_out)
 
@@ -226,7 +231,8 @@ def build(args, config, paths, version, fps):
         })
         print_changes_since_previous(version)
     else:
-        install_and_launch(output_dir / OUTPUT_MOD_NAME, paths['game_path'], args.install, args.launch)
+        install_and_launch(output_mod_dir, paths['game_path'], args.install, args.launch,
+                           bin_dir=output_dir / "bin")
 
     finish_work_dir(work_dir, args.keep_work)
     return print_issues
