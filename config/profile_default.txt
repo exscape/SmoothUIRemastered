@@ -69,6 +69,11 @@ gameplay/gui_new/swf/gwint/gwint_game.redswf # Default 24 fps
     fix: gwent-frost-flicker-fix
     fix: gwent-rain-loop-fix
 
+    # The coin toss's shadow is a flipbook of shapes, which can't be interpolated; without a fix it
+    # steps at 24 fps while the coin moves smoothly.
+    # The "fix" hides the shadow; it looks pretty okay still.
+    fix: gwent-coin-shadow-fix
+
 # Speed up crafting a bit
 gameplay/gui_new/swf/crafting/panel_crafting.redswf # Glossary > Crafting
     speed 1.5: panel_crafting_fla.progressbar2_48
