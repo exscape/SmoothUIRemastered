@@ -2,7 +2,7 @@
 <!-- Smooth UI Remastered's options. Read by content/scripts/local/smoothui_gwent.ws.
      Each option's value is in its displayName (the script reads it from there): the setting's prefix, then
      the value with _ for the decimal point (smoothui_gwent_banner_hold_0_75: 0.75 s), or "default" for the
-     game's own. Allowed: card speed 50-1000 (%), times 0 or more (s; banners can be held longer than the
+     game's own. Allowed: card speed 50-1000 (%) or instant, times 0 or more (s; banners can be held longer than the
      game's 2.3 s too; with 0, they don't show at all).
      The default option (..._default) doesn't have to be the first: the script gives every setting its default option
      the first time (see SmoothUI_InitOptions). A setting added later starts out at its first option. -->
@@ -46,7 +46,7 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="3"/>	<!-- 0.75 s -->
 			</Preset>
 			<Preset id="4" displayName="smoothui_gwent_preset_hyperspeed">
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="5"/>	<!-- 300% -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="6"/>	<!-- Instant -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOpponentCardTime" value="5"/>	<!-- Off -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentTurnBannerHold"   value="6"/>	<!-- Off -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="6"/>	<!-- Off -->
@@ -55,7 +55,7 @@
 			</Preset>
 		</PresetsArray>
 		<VisibleVars>
-			<!-- Percent of the game's card speed (2000 px per second) -->
+			<!-- Percent of the game's card speed (2000 px per second), or instant (cards show where they go at once) -->
 			<Var id="GwentCardSpeed" displayName="smoothui_gwent_card_speed" displayType="OPTIONS">
 				<OptionsArray>
 					<Option id="0" displayName="smoothui_gwent_card_speed_80"><Entry varId="GwentCardSpeed" value="0"/></Option>
@@ -64,6 +64,7 @@
 					<Option id="3" displayName="smoothui_gwent_card_speed_150"><Entry varId="GwentCardSpeed" value="3"/></Option>
 					<Option id="4" displayName="smoothui_gwent_card_speed_200"><Entry varId="GwentCardSpeed" value="4"/></Option>
 					<Option id="5" displayName="smoothui_gwent_card_speed_300"><Entry varId="GwentCardSpeed" value="5"/></Option>
+					<Option id="6" displayName="smoothui_gwent_card_speed_instant"><Entry varId="GwentCardSpeed" value="6"/></Option>
 				</OptionsArray>
 			</Var>
 			<!-- Seconds the opponent's card is showed before it's placed on the board -->

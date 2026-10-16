@@ -6,14 +6,15 @@ package smoothui.gwent
 	import flash.utils.getTimer;
 
 	/**
-	 * Smooth UI's Gwent speed options: faster card moves, a shorter look at the card the opponent plays,
-	 * and shorter banners ("Your turn" and the like). The options come from the game's settings menu; the
-	 * mod's WitcherScript wrapper sends them when a match starts (see smoothui_gwent.ws).
+	 * Smooth UI's Gwent speed options: faster (or instant) card moves, a shorter look at the card the
+	 * opponent plays, and shorter banners ("Your turn" and the like). The options come from the game's
+	 * settings menu; the mod's WitcherScript sends them when a match starts (see smoothui_gwent.ws).
 	 *
-	 * The patcher adds this class to gwint_game.redswf as a DoABC tag of its own, and changes four of
+	 * The patcher adds this class to gwint_game.redswf as a DoABC tag of its own, and changes five of
 	 * the file's methods to use it (see gwent_speed_options.py):
 	 * - GwintGameMenu.configUI calls install(this), before it tells the game script that it is ready
 	 * - CardTweenManager.calcTweenDuration divides by cardSpeed rather than its MOVE_TWEEN_SPEED (2000)
+	 * - CardTweenManager.tweenTo calls onCardTween(the move it starts)
 	 * - AIPlayerController.state_begin_DelayAction waits opponentCardDelay rather than 1200 ms before the
 	 *   opponent plays the card it shows on screen
 	 * - AIPlayerController.state_begin_SendingCard calls onOpponentCardSent(this) after it starts moving
@@ -34,7 +35,11 @@ package smoothui.gwent
 		public static const DEFAULT_OPPONENT_CARD_DELAY:Number = 1200;     // ms, as in AIPlayerController
 		private static const MIN_CARD_SPEED_PERCENT:Number = 50;
 		private static const MAX_CARD_SPEED_PERCENT:Number = 1000;
-
+		// "Instant" card moves (a cardSpeed option of 0): this fast, a move takes no time, but it isn't 0, so that
+		// GTween ends it on its next tick (the next frame, without a frame in between), as usual. With a duration of
+		// 0, it would end within its constructor, before CardTweenManager even records the move, and call back the
+		// game's code in an order it isn't written for (and CardTweenManager.flipTo would get stuck).
+		private static const INSTANT_CARD_SPEED:Number = 1e9;
 		// Timer delays below this are not something to rely on
 		private static const MIN_TIMER_DELAY:Number = 1;
 
@@ -118,6 +123,26 @@ package smoothui.gwent
 			}
 		}
 
+		/** tween: the GTween that CardTweenManager.tweenTo just made to move a card */
+		public static function onCardTween(tween:Object):void
+		{
+			if (cardSpeed != INSTANT_CARD_SPEED || tween == null)
+				return;
+			// Put the card where it goes now: the move only ends on GTween's next tick, and the frame may be drawn
+			// before that (with the card in its new state, e.g. large, where it was). The tween takes its start
+			// from the card when it first updates, so it then goes nowhere, and ends (and calls back) as usual.
+			try
+			{
+				var card:Object = tween.target;
+				card.x = tween.getValue("x");
+				card.y = tween.getValue("y");
+			}
+			catch (error:Error)
+			{
+				trace("GFX [SmoothUI] GwentSpeed.onCardTween failed: " + error);
+			}
+		}
+
 		/** controller: the AIPlayerController, which has just started moving the card it plays into view */
 		public static function onOpponentCardSent(controller:Object):void
 		{
@@ -148,7 +173,7 @@ package smoothui.gwent
 			}
 		}
 
-		/** The options from the game script: cardSpeed (percent); opponentCardDelay, turnBannerHold,
+		/** The options from the game script: cardSpeed (percent; 0: instant); opponentCardDelay, turnBannerHold,
 		 * firstBannerHold, resultBannerHold and otherBannerHold (seconds; below 0: the game's own) */
 		public static function onConfig(config:Object):void
 		{
@@ -156,9 +181,11 @@ package smoothui.gwent
 				return;
 			// A value far off (a bug in the script) would make the game unplayable
 			var percent:Number = Number(config.cardSpeed);
-			cardSpeed = percent >= MIN_CARD_SPEED_PERCENT && percent <= MAX_CARD_SPEED_PERCENT
-				? DEFAULT_CARD_SPEED * percent / 100 : DEFAULT_CARD_SPEED;
-
+			if (percent == 0)
+				cardSpeed = INSTANT_CARD_SPEED;
+			else
+				cardSpeed = percent >= MIN_CARD_SPEED_PERCENT && percent <= MAX_CARD_SPEED_PERCENT
+					? DEFAULT_CARD_SPEED * percent / 100 : DEFAULT_CARD_SPEED;
 			var delay:Number = secondsOption(config.opponentCardDelay);
 			opponentCardDelay = delay >= 0 ? Math.max(delay * 1000, MIN_TIMER_DELAY) : DEFAULT_OPPONENT_CARD_DELAY;
 			opponentCardHidden = delay == 0;

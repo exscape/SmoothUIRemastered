@@ -95,8 +95,7 @@ function SmoothUI_SendGwentOptions(storage : CScriptedFlashValueStorage)
 
 	SmoothUI_InitOptions();
 	options = storage.CreateTempFlashObject();
-
-	// Percent of the game's card speed (2000 px per second)
+	// Percent of the game's card speed (2000 px per second); 0: instant
 	options.SetMemberFlashNumber("cardSpeed", SmoothUI_GwentOption('GwentCardSpeed', "smoothui_gwent_card_speed_", 100));
 
 	// Seconds; -1: the game's own (1.2 s for the opponent's card, 2.3 s for banners); 0: not shown at all
@@ -109,7 +108,8 @@ function SmoothUI_SendGwentOptions(storage : CScriptedFlashValueStorage)
 }
 
 // An option's value, from the name (displayName) of the chosen option in the XML: prefix, then the value
-// with _ for the decimal point (smoothui_gwent_banner_hold_0_75: 0.75), or "default" for defaultValue.
+// with _ for the decimal point (smoothui_gwent_banner_hold_0_75: 0.75), "default" for defaultValue, or
+// "instant" for 0 (no time: for card speed).
 // For an OPTIONS setting, the game stores the index of the chosen option.
 function SmoothUI_GwentOption(varName : name, prefix : string, defaultValue : float) : float
 {
@@ -126,6 +126,10 @@ function SmoothUI_GwentOption(varName : name, prefix : string, defaultValue : fl
 	if (option == "" || option == "default")
 	{
 		return defaultValue;
+	}
+	if (option == "instant")
+	{
+		return 0;
 	}
 	return StringToFloat(StrReplaceAll(option, "_", "."), defaultValue);
 }

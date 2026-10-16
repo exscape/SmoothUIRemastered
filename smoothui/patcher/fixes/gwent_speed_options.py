@@ -1,13 +1,15 @@
 """In-game options to speed up Gwent.
 
 Adds the class smoothui.gwent.GwentSpeed (gwent_speed_as3/, compiled into gwent_speed.abc with
-dev-tools/build-as3.py) as a DoABC tag of its own, and changes four of the file's methods to use it:
+dev-tools/build-as3.py) as a DoABC tag of its own, and changes five of the file's methods to use it:
 
 - GwintGameMenu.configUI calls GwentSpeed.install(this) right before it tells the game script that
   the menu is ready (the OnConfigUI call), so that the binding for the options is registered by the
   time the script sends them (see smoothui_gwent.ws)
 - CardTweenManager.calcTweenDuration divides the distance a card moves by GwentSpeed.cardSpeed rather
   than by MOVE_TWEEN_SPEED (2000 px per second)
+- CardTweenManager.tweenTo, which starts a card's move, then calls GwentSpeed.onCardTween(the move)
+  (which puts the card where it goes at once, if moves are instant)
 - AIPlayerController.state_begin_DelayAction waits GwentSpeed.opponentCardDelay rather than 1200 ms
   (with the card the opponent plays shown on screen) before the opponent plays it
 - AIPlayerController.state_begin_SendingCard, which starts moving that card into view, then calls
@@ -67,9 +69,11 @@ def apply(swf: SwfEdit) -> FixResult:
     card_speed = additions.qname(public, "cardSpeed")
     opponent_card_delay = additions.qname(public, "opponentCardDelay")
     on_card_sent = additions.qname(public, "onOpponentCardSent")
+    on_card_tween = additions.qname(public, "onCardTween")
 
     config_ui = _method(abc, MENU_CLASS, "configUI")
     tween_duration = _method(abc, TWEEN_CLASS, "calcTweenDuration")
+    tween_to = _method(abc, TWEEN_CLASS, "tweenTo")
     ai_delay = _method(abc, AI_CLASS, "state_begin_DelayAction")
     ai_sending = _method(abc, AI_CLASS, "state_begin_SendingCard")
     bodies = {
@@ -80,6 +84,11 @@ def apply(swf: SwfEdit) -> FixResult:
         # ... / GwentSpeed.cardSpeed
         tween_duration: _replace_speed(abc, tween_duration, bytes([OP_GETLEX]) + encode_u30(speed_class)
                                        + bytes([OP_GETPROPERTY]) + encode_u30(card_speed)),
+        # ...; GwentSpeed.onCardTween(curTween); return curTween (its earlier returns make no move)
+        tween_to: _insert_before_return(abc, tween_to, f"{TWEEN_CLASS}.tweenTo", _returned_local,
+                                        lambda local: bytes([OP_GETLEX]) + encode_u30(speed_class)
+                                        + _getlocal(local) + bytes([OP_CALLPROPVOID])
+                                        + encode_u30(on_card_tween) + encode_u30(1), only_return=False),
         # new Timer(GwentSpeed.opponentCardDelay, 1)
         ai_delay: _replace_ai_delay(abc, ai_delay, bytes([OP_GETLEX]) + encode_u30(speed_class)
                                     + bytes([OP_GETPROPERTY]) + encode_u30(opponent_card_delay)),
@@ -94,6 +103,7 @@ def apply(swf: SwfEdit) -> FixResult:
                        long_header=True))
     return FixResult(banners, f"added {PACKAGE}.{CLASS}; GwintGameMenu.configUI installs it, "
                               "CardTweenManager.calcTweenDuration uses its card speed, "
+                              "CardTweenManager.tweenTo tells it about card moves, "
                               "AIPlayerController.state_begin_DelayAction its opponent card delay, "
                               "AIPlayerController.state_begin_SendingCard tells it about the card")
 
@@ -144,16 +154,17 @@ def _replace_speed(abc: AbcFile, method: int, code: bytes) -> tuple[bytes, list]
     return assemble(body.code, instructions, {found[0]: code}, body.exceptions)
 
 
-def _insert_before_return(abc: AbcFile, method: int, description: str, find_local, code) -> tuple[bytes, list]:
-    """The method with code(local) inserted before its final statement: its only return, at its end, either
-    a plain return or `return <local variable>`. find_local(abc, instructions, description) picks the local
-    variable (register) code reads. Only adds what code pushes to the stack: it must fit the method's
-    max_stack, which stays as it is."""
+def _insert_before_return(abc: AbcFile, method: int, description: str, find_local, code,
+                          only_return: bool = True) -> tuple[bytes, list]:
+    """The method with code(local) inserted before its final statement: a return at its end (its only one,
+    unless only_return is false), either a plain return or `return <local variable>`. find_local(abc,
+    instructions, description) picks the local variable (register) code reads. Only adds what code pushes
+    to the stack: it must fit the method's max_stack, which stays as it is."""
     body = abc.bodies[method]
     instructions = disassemble(body.code)
     returns = [i for i, ins in enumerate(instructions) if ins.name in ("returnvoid", "returnvalue")]
-    if returns != [len(instructions) - 1]:
-        raise CantApply(f"{description}: expected 1 return, at its end")
+    if not returns or returns[-1] != len(instructions) - 1 or (only_return and len(returns) > 1):
+        raise CantApply(f"{description}: expected {'1 return' if only_return else 'a return'}, at its end")
     at = len(instructions) - 1
     if instructions[at].name == "returnvalue":
         # Before the statement, not between the value it pushes and the return
@@ -168,6 +179,14 @@ def _insert_before_return(abc: AbcFile, method: int, description: str, find_loca
 def _this(abc: AbcFile, instructions: list[Instruction], description: str) -> int:
     """Local variable 0: the object a method is called on"""
     return 0
+
+
+def _returned_local(abc: AbcFile, instructions: list[Instruction], description: str) -> int:
+    """The local variable a method's final `return <local variable>` returns"""
+    local = _local_of(instructions[-2]) if len(instructions) >= 2 and instructions[-1].name == "returnvalue" else None
+    if local is None:
+        raise CantApply(f"{description}: expected it to end with return <local variable>")
+    return local
 
 
 def _local_of(ins: Instruction) -> int | None:

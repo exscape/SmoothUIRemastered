@@ -18,6 +18,7 @@
 2113526004||preset_value_smoothui_gwent_card_speed_150|150%
 2113526005||preset_value_smoothui_gwent_card_speed_200|200%
 2113526006||preset_value_smoothui_gwent_card_speed_300|300%
+2113526044||preset_value_smoothui_gwent_card_speed_instant|Instant
 2113526016||option_smoothui_gwent_opponent_card_time|Gwent: opponent's card preview time
 2113526039||option_smoothui_gwent_opponent_card_time_description|How long the card your opponent plays is shown before it goes onto the board. Off: it goes straight onto the board.
 2113526030||preset_value_smoothui_gwent_opponent_card_time_3|3 s
