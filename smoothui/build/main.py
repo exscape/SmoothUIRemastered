@@ -38,6 +38,7 @@ from .shared import (
     write_manifest,
     zip_tree,
 )
+from .strings import build_strings, check_tool
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 DEFAULT_FPS = 120
@@ -129,6 +130,11 @@ def main():
 
     if not paths['uncooked_files'].is_dir():
         fail(f"not a directory: {paths['uncooked_files']}")
+
+    # The settings menu's strings, which every build ships (from mod_files/; see strings.py)
+    if not args.dry_run:
+        check_tool(paths.get('w3stringsr'))
+    build_strings(paths.get('w3stringsr'), paths['working_dir'] / "strings", OUTPUT_MOD_NAME, dry_run=args.dry_run)
 
     # The builds run one after the other; a failure stops the run, leaving the earlier builds as they are
     issue_printers = [build(args, config, paths, version, fps) for version, fps in zip(versions, fps_list)]
