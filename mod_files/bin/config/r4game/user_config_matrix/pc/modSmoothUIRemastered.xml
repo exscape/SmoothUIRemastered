@@ -8,6 +8,52 @@
      the first time (see SmoothUI_InitOptions). A setting added later starts out at its first option. -->
 <UserConfig>
 	<Group id="SmoothUIRemastered" displayName="Mods.smoothui_remastered">
+		<!-- Shown as a row of buttons above the settings: applying one sets the settings it lists, by option id
+		     (as the game's graphics presets do). No more than 5: the game script cuts a group with 6 presets
+		     down to 4 on PCs without ray tracing (IngameMenu_FillSubMenuOptionsList, for its own graphics
+		     presets). Their title is preset_mods_smoothui_remastered. -->
+		<PresetsArray>
+			<Preset id="0" displayName="smoothui_gwent_preset_default">
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="1"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOpponentCardTime" value="2"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentTurnBannerHold"   value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="0"/>	<!-- Default -->
+			</Preset>
+			<Preset id="1" displayName="smoothui_gwent_preset_fast">
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="3"/>	<!-- 150% -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOpponentCardTime" value="3"/>	<!-- 0.8 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentTurnBannerHold"   value="1"/>	<!-- 1.5 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="1"/>	<!-- 1.5 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="1"/>	<!-- 1.5 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="1"/>	<!-- 1.5 s -->
+			</Preset>
+			<Preset id="2" displayName="smoothui_gwent_preset_faster">
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="4"/>	<!-- 200% -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOpponentCardTime" value="4"/>	<!-- 0.4 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentTurnBannerHold"   value="4"/>	<!-- 0.5 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="3"/>	<!-- 0.75 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="2"/>	<!-- 1 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="3"/>	<!-- 0.75 s -->
+			</Preset>
+			<Preset id="3" displayName="smoothui_gwent_preset_insane">
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="5"/>	<!-- 300% -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOpponentCardTime" value="5"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentTurnBannerHold"   value="6"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="3"/>	<!-- 0.75 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="2"/>	<!-- 1 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="3"/>	<!-- 0.75 s -->
+			</Preset>
+			<Preset id="4" displayName="smoothui_gwent_preset_hyperspeed">
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="5"/>	<!-- 300% -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOpponentCardTime" value="5"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentTurnBannerHold"   value="6"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="6"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="4"/>	<!-- 0.5 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="6"/>	<!-- Off -->
+			</Preset>
+		</PresetsArray>
 		<VisibleVars>
 			<!-- Percent of the game's card speed (2000 px per second) -->
 			<Var id="GwentCardSpeed" displayName="smoothui_gwent_card_speed" displayType="OPTIONS">

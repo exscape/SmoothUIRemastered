@@ -16,6 +16,28 @@ function showOptionsPanel() : void
 	wrappedMethod();
 }
 
+// The settings menu shows the description of the selected setting, which the game only gives two of its own
+// settings: give Smooth UI's theirs, from the string option_<displayName>_description (if there is one).
+// (Called for every setting of every group, as the menu lists them; optionName is a setting's id.)
+// (A global function: @wrapMethod takes no class then.)
+@wrapMethod
+function SetDescriptionText(optionObject : CScriptedFlashObject, optionName : name, optionValue : string)
+{
+	var displayName : string;
+	var description : string;
+
+	wrappedMethod(optionObject, optionName, optionValue);
+	displayName = theGame.GetInGameConfigWrapper().GetVarDisplayName('SmoothUIRemastered', optionName);
+	if (StrBeginsWith(displayName, "smoothui_"))
+	{
+		description = GetLocStringByKeyExt("option_" + displayName + "_description");
+		if (description != "")
+		{
+			optionObject.SetMemberFlashString("description", description);
+		}
+	}
+}
+
 @wrapMethod(CR4GwintGameMenu)
 function SendCardValues() : void
 {
