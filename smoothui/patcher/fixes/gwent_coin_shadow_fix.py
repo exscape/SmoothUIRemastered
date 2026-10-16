@@ -17,15 +17,15 @@ from ..swf_patcher.swf_tags import TagCode, parse_remove_object_depth
 from .swf_edit import CantApply, FixResult, SwfEdit
 
 NAME = "gwent-coin-shadow-fix"
-COIN_CLASSES = ("gwint_game_fla.COINA_113", "gwint_game_fla.COINB_116")
+COIN_CLASSES = (r"gwint_game_fla\.COINA_\d+", r"gwint_game_fla\.COINB_\d+")
 SHADOW_DEPTH = 1
 REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
 
 
 def apply(swf: SwfEdit) -> FixResult:
     sprites, details = [], []
-    for class_name in COIN_CLASSES:
-        sprite_id, tags = swf.linked_sprite(class_name)
+    for pattern in COIN_CLASSES:
+        sprite_id, class_name, tags = swf.linked_sprite_matching(pattern)
         shadow = [tag for tag in tags
                   if (tag.code in PLACE_OBJECT_CODES and parse_place_object(tag).depth == SHADOW_DEPTH)
                   or (tag.code in REMOVE_CODES and parse_remove_object_depth(tag) == SHADOW_DEPTH)]

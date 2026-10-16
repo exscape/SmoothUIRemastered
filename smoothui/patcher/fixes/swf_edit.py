@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import NamedTuple
 
 from ..swf import swf_get_header_offsets
@@ -63,6 +64,18 @@ class SwfEdit:
         if len(ids) != 1:
             raise CantApply(f"expected 1 sprite linked to {class_name}, found {len(ids)}")
         return ids[0], parse_sprite_tags(self.tags[self._sprite_index[ids[0]]])
+
+    def linked_sprite_matching(self, class_pattern: str) -> tuple[int, str, list[Tag]]:
+        """(character id, class name, timeline) of the sprite linked to a class whose whole name matches the
+        regular expression class_pattern; CantApply unless exactly one sprite is linked to such a class.
+
+        For classes that other mods rename, such as Flash's numbered library names (COINA_113 vs COINA_116)"""
+        found = {i: name for name, ids in self._sprites_of_class.items() if re.fullmatch(class_pattern, name)
+                 for i in ids if i in self._sprite_index}
+        if len(found) != 1:
+            raise CantApply(f"expected 1 sprite linked to a class matching {class_pattern}, found {len(found)}")
+        (character_id, class_name), = found.items()
+        return character_id, class_name, parse_sprite_tags(self.tags[self._sprite_index[character_id]])
 
     def sprite_tags(self, character_id: int) -> list[Tag] | None:
         """A sprite's timeline; None if there is no such sprite"""
