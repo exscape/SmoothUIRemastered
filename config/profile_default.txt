@@ -77,6 +77,9 @@ gameplay/gui_new/swf/gwint/gwint_game.redswf # Default 24 fps
     # The "fix" hides the shadow; it looks pretty okay still.
     fix: gwent-coin-shadow-fix
 
+    # Inject data from the Gwent speed options in the game's settings menu; see mod_files/
+    fix: gwent-speed-options
+
 # Speed up crafting a bit
 gameplay/gui_new/swf/crafting/panel_crafting.redswf # Glossary > Crafting
     speed 1.5: panel_crafting_fla.progressbar2_48

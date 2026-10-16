@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Smooth UI Remastered's options. Read by content/scripts/local/smoothui_gwent.ws.
+     Each option's value is in its displayName (the script reads it from there): the setting's prefix, then
+     the value with _ for the decimal point (smoothui_gwent_banner_hold_0_75: 0.75 s), or "default" for the
+     game's own. Allowed: card speed 50-1000 (%), times 0 or more (s; banners can be held longer than the
+     game's 2.3 s too; with 0, they don't show at all).
+     The default option (..._default) doesn't have to be the first: the script gives every setting its default option
+     the first time (see SmoothUI_InitOptions). A setting added later starts out at its first option. -->
+<UserConfig>
+	<Group id="SmoothUIRemastered" displayName="Mods.smoothui_remastered">
+		<VisibleVars>
+			<!-- Percent of the game's card speed (2000 px per second) -->
+			<Var id="GwentCardSpeed" displayName="smoothui_gwent_card_speed" displayType="OPTIONS">
+				<OptionsArray>
+					<Option id="0" displayName="smoothui_gwent_card_speed_80"><Entry varId="GwentCardSpeed" value="0"/></Option>
+					<Option id="1" displayName="smoothui_gwent_card_speed_default"><Entry varId="GwentCardSpeed" value="1"/></Option>
+					<Option id="2" displayName="smoothui_gwent_card_speed_125"><Entry varId="GwentCardSpeed" value="2"/></Option>
+					<Option id="3" displayName="smoothui_gwent_card_speed_150"><Entry varId="GwentCardSpeed" value="3"/></Option>
+					<Option id="4" displayName="smoothui_gwent_card_speed_200"><Entry varId="GwentCardSpeed" value="4"/></Option>
+					<Option id="5" displayName="smoothui_gwent_card_speed_300"><Entry varId="GwentCardSpeed" value="5"/></Option>
+				</OptionsArray>
+			</Var>
+			<!-- Seconds the opponent's card is showed before it's placed on the board -->
+			<Var id="GwentOpponentCardTime" displayName="smoothui_gwent_opponent_card_time" displayType="OPTIONS">
+				<OptionsArray>
+					<Option id="0" displayName="smoothui_gwent_opponent_card_time_3"><Entry varId="GwentOpponentCardTime" value="0"/></Option>
+					<Option id="1" displayName="smoothui_gwent_opponent_card_time_2"><Entry varId="GwentOpponentCardTime" value="1"/></Option>
+					<Option id="2" displayName="smoothui_gwent_opponent_card_time_default"><Entry varId="GwentOpponentCardTime" value="2"/></Option>
+					<Option id="3" displayName="smoothui_gwent_opponent_card_time_0_8"><Entry varId="GwentOpponentCardTime" value="3"/></Option>
+					<Option id="4" displayName="smoothui_gwent_opponent_card_time_0_4"><Entry varId="GwentOpponentCardTime" value="4"/></Option>
+					<Option id="5" displayName="smoothui_gwent_opponent_card_time_0"><Entry varId="GwentOpponentCardTime" value="5"/></Option>
+				</OptionsArray>
+			</Var>
+			<!-- Seconds the "Your turn", "Opponent's turn" and the player's own "Passed" banners stay fully shown (game default: 2.3 s).
+			     Their fade in and out (0.25 s each) comes on top; with 0, they don't show at all (no fades either). -->
+			<Var id="GwentTurnBannerHold" displayName="smoothui_gwent_turn_banner_hold" displayType="OPTIONS">
+				<OptionsArray>
+					<Option id="0" displayName="smoothui_gwent_banner_hold_default"><Entry varId="GwentTurnBannerHold" value="0"/></Option>
+					<Option id="1" displayName="smoothui_gwent_banner_hold_1_5"><Entry varId="GwentTurnBannerHold" value="1"/></Option>
+					<Option id="2" displayName="smoothui_gwent_banner_hold_1_0"><Entry varId="GwentTurnBannerHold" value="2"/></Option>
+					<Option id="3" displayName="smoothui_gwent_banner_hold_0_75"><Entry varId="GwentTurnBannerHold" value="3"/></Option>
+					<Option id="4" displayName="smoothui_gwent_banner_hold_0_5"><Entry varId="GwentTurnBannerHold" value="4"/></Option>
+					<Option id="5" displayName="smoothui_gwent_banner_hold_0_25"><Entry varId="GwentTurnBannerHold" value="5"/></Option>
+					<Option id="6" displayName="smoothui_gwent_banner_hold_0"><Entry varId="GwentTurnBannerHold" value="6"/></Option>
+				</OptionsArray>
+			</Var>
+			<!-- The same, for the banner saying who goes first (after the coin toss, or a Scoia'tael player's choice) -->
+			<Var id="GwentFirstBannerHold" displayName="smoothui_gwent_first_banner_hold" displayType="OPTIONS">
+				<OptionsArray>
+					<Option id="0" displayName="smoothui_gwent_banner_hold_default"><Entry varId="GwentFirstBannerHold" value="0"/></Option>
+					<Option id="1" displayName="smoothui_gwent_banner_hold_1_5"><Entry varId="GwentFirstBannerHold" value="1"/></Option>
+					<Option id="2" displayName="smoothui_gwent_banner_hold_1_0"><Entry varId="GwentFirstBannerHold" value="2"/></Option>
+					<Option id="3" displayName="smoothui_gwent_banner_hold_0_75"><Entry varId="GwentFirstBannerHold" value="3"/></Option>
+					<Option id="4" displayName="smoothui_gwent_banner_hold_0_5"><Entry varId="GwentFirstBannerHold" value="4"/></Option>
+					<Option id="5" displayName="smoothui_gwent_banner_hold_0_25"><Entry varId="GwentFirstBannerHold" value="5"/></Option>
+					<Option id="6" displayName="smoothui_gwent_banner_hold_0"><Entry varId="GwentFirstBannerHold" value="6"/></Option>
+				</OptionsArray>
+			</Var>
+			<!-- The same, for the banners saying who won a round, and the opponent's "Passed" -->
+			<Var id="GwentResultBannerHold" displayName="smoothui_gwent_result_banner_hold" displayType="OPTIONS">
+				<OptionsArray>
+					<Option id="0" displayName="smoothui_gwent_banner_hold_default"><Entry varId="GwentResultBannerHold" value="0"/></Option>
+					<Option id="1" displayName="smoothui_gwent_banner_hold_1_5"><Entry varId="GwentResultBannerHold" value="1"/></Option>
+					<Option id="2" displayName="smoothui_gwent_banner_hold_1_0"><Entry varId="GwentResultBannerHold" value="2"/></Option>
+					<Option id="3" displayName="smoothui_gwent_banner_hold_0_75"><Entry varId="GwentResultBannerHold" value="3"/></Option>
+					<Option id="4" displayName="smoothui_gwent_banner_hold_0_5"><Entry varId="GwentResultBannerHold" value="4"/></Option>
+					<Option id="5" displayName="smoothui_gwent_banner_hold_0_25"><Entry varId="GwentResultBannerHold" value="5"/></Option>
+					<Option id="6" displayName="smoothui_gwent_banner_hold_0"><Entry varId="GwentResultBannerHold" value="6"/></Option>
+				</OptionsArray>
+			</Var>
+			<!-- The same, for every other banner: round start, faction abilities, etc. -->
+			<Var id="GwentOtherBannerHold" displayName="smoothui_gwent_other_banner_hold" displayType="OPTIONS">
+				<OptionsArray>
+					<Option id="0" displayName="smoothui_gwent_banner_hold_default"><Entry varId="GwentOtherBannerHold" value="0"/></Option>
+					<Option id="1" displayName="smoothui_gwent_banner_hold_1_5"><Entry varId="GwentOtherBannerHold" value="1"/></Option>
+					<Option id="2" displayName="smoothui_gwent_banner_hold_1_0"><Entry varId="GwentOtherBannerHold" value="2"/></Option>
+					<Option id="3" displayName="smoothui_gwent_banner_hold_0_75"><Entry varId="GwentOtherBannerHold" value="3"/></Option>
+					<Option id="4" displayName="smoothui_gwent_banner_hold_0_5"><Entry varId="GwentOtherBannerHold" value="4"/></Option>
+					<Option id="5" displayName="smoothui_gwent_banner_hold_0_25"><Entry varId="GwentOtherBannerHold" value="5"/></Option>
+					<Option id="6" displayName="smoothui_gwent_banner_hold_0"><Entry varId="GwentOtherBannerHold" value="6"/></Option>
+				</OptionsArray>
+			</Var>
+			<!-- Hidden: true once the script gave every setting its default option (see SmoothUI_InitOptions) -->
+			<Var id="DefaultsSet" displayName="smoothui_defaults_set" displayType="TOGGLE" visibilityCondition="hideAlways"/>
+		</VisibleVars>
+	</Group>
+</UserConfig>

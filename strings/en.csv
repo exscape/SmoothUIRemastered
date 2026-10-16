@@ -1,0 +1,31 @@
+;meta[language=en]
+; id      |key(hex)|key(str)| text
+; Smooth UI Remastered's strings: the settings menu (mod_files/bin/.../modSmoothUIRemastered.xml).
+; Encoded into mod_files/mods/modSmoothUIRemastered/content/<language>.w3strings (English text for every
+; language) by the build scripts. Ids: 2113526000-2113526999 (id space 13526, the mod's Nexus Mods id).
+2113526000||panel_smoothui_remastered|Smooth UI Remastered
+2113526001||option_smoothui_gwent_card_speed|Gwent: card movement speed
+2113526029||preset_value_smoothui_gwent_card_speed_80|80%
+2113526002||preset_value_smoothui_gwent_card_speed_default|Default
+2113526003||preset_value_smoothui_gwent_card_speed_125|125%
+2113526004||preset_value_smoothui_gwent_card_speed_150|150%
+2113526005||preset_value_smoothui_gwent_card_speed_200|200%
+2113526006||preset_value_smoothui_gwent_card_speed_300|300%
+2113526016||option_smoothui_gwent_opponent_card_time|Gwent: opponent's card preview time
+2113526030||preset_value_smoothui_gwent_opponent_card_time_3|3 s
+2113526031||preset_value_smoothui_gwent_opponent_card_time_2|2 s
+2113526017||preset_value_smoothui_gwent_opponent_card_time_default|Default (1.2 s)
+2113526019||preset_value_smoothui_gwent_opponent_card_time_0_8|0.8 s
+2113526021||preset_value_smoothui_gwent_opponent_card_time_0_4|0.4 s
+2113526023||preset_value_smoothui_gwent_opponent_card_time_0|Off
+2113526007||option_smoothui_gwent_turn_banner_hold|Gwent: turn banner time
+2113526024||option_smoothui_gwent_first_banner_hold|Gwent: coin toss banner time
+2113526028||option_smoothui_gwent_result_banner_hold|Gwent: round result and opponent pass banner time
+2113526008||option_smoothui_gwent_other_banner_hold|Gwent: round start and ability banner time
+2113526009||preset_value_smoothui_gwent_banner_hold_default|Default (2.3 s)
+2113526010||preset_value_smoothui_gwent_banner_hold_1_5|1.5 s
+2113526011||preset_value_smoothui_gwent_banner_hold_1_0|1 s
+2113526012||preset_value_smoothui_gwent_banner_hold_0_75|0.75 s
+2113526013||preset_value_smoothui_gwent_banner_hold_0_5|0.5 s
+2113526014||preset_value_smoothui_gwent_banner_hold_0_25|0.25 s
+2113526015||preset_value_smoothui_gwent_banner_hold_0|Off
