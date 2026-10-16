@@ -104,6 +104,10 @@ function SmoothUI_SendGwentOptions(storage : CScriptedFlashValueStorage)
 	options.SetMemberFlashNumber("firstBannerHold", SmoothUI_GwentOption('GwentFirstBannerHold', "smoothui_gwent_banner_hold_", -1));
 	options.SetMemberFlashNumber("resultBannerHold", SmoothUI_GwentOption('GwentResultBannerHold', "smoothui_gwent_banner_hold_", -1));
 	options.SetMemberFlashNumber("otherBannerHold", SmoothUI_GwentOption('GwentOtherBannerHold', "smoothui_gwent_banner_hold_", -1));
+	// 1: card effects play (as in the game); 0: skipped
+	options.SetMemberFlashNumber("landingEffects", SmoothUI_GwentOption('GwentLandingEffects', "smoothui_gwent_effect_", 1));
+	options.SetMemberFlashNumber("cardEffects", SmoothUI_GwentOption('GwentCardEffects', "smoothui_gwent_effect_", 1));
+	options.SetMemberFlashNumber("weatherIntros", SmoothUI_GwentOption('GwentWeatherIntros', "smoothui_gwent_effect_", 1));
 	storage.SetFlashObject("smoothui.gwent.config", options);
 }
 

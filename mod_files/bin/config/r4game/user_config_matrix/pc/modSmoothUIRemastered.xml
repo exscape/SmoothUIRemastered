@@ -20,6 +20,9 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="0"/>	<!-- Default -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="0"/>	<!-- Default -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="0"/>	<!-- Default -->
 			</Preset>
 			<Preset id="1" displayName="smoothui_gwent_preset_fast">
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="3"/>	<!-- 150% -->
@@ -28,6 +31,9 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="1"/>	<!-- 1.5 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="1"/>	<!-- 1.5 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="1"/>	<!-- 1.5 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="0"/>	<!-- Default -->
 			</Preset>
 			<Preset id="2" displayName="smoothui_gwent_preset_faster">
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="4"/>	<!-- 200% -->
@@ -36,6 +42,9 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="3"/>	<!-- 0.75 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="2"/>	<!-- 1 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="3"/>	<!-- 0.75 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="0"/>	<!-- Default -->
 			</Preset>
 			<Preset id="3" displayName="smoothui_gwent_preset_insane">
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="5"/>	<!-- 300% -->
@@ -44,6 +53,9 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="3"/>	<!-- 0.75 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="2"/>	<!-- 1 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="3"/>	<!-- 0.75 s -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="1"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="1"/>	<!-- Off -->
 			</Preset>
 			<Preset id="4" displayName="smoothui_gwent_preset_hyperspeed">
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="6"/>	<!-- Instant -->
@@ -52,6 +64,9 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="6"/>	<!-- Off -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="4"/>	<!-- 0.5 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="6"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="1"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="1"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="1"/>	<!-- Off -->
 			</Preset>
 		</PresetsArray>
 		<VisibleVars>
@@ -78,8 +93,31 @@
 					<Option id="5" displayName="smoothui_gwent_opponent_card_time_0"><Entry varId="GwentOpponentCardTime" value="5"/></Option>
 				</OptionsArray>
 			</Var>
-			<!-- Seconds the "Your turn", "Opponent's turn" and the player's own "Passed" banners stay fully shown (game default: 2.3 s).
-			     Their fade in and out (0.25 s each) comes on top; with 0, they don't show at all (no fades either). -->
+			<!-- Card effects (animations the game waits for) play as in the game (default), or are skipped (0):
+			     a unit card landing on the board (longer for heroes and spies) -->
+			<Var id="GwentLandingEffects" displayName="smoothui_gwent_landing_effects" displayType="OPTIONS">
+				<OptionsArray>
+					<Option id="0" displayName="smoothui_gwent_effect_default"><Entry varId="GwentLandingEffects" value="0"/></Option>
+					<Option id="1" displayName="smoothui_gwent_effect_0"><Entry varId="GwentLandingEffects" value="1"/></Option>
+				</OptionsArray>
+			</Var>
+			<!-- The same, for special cards and abilities: Decoy, Horn, Scorch, Mardroeme, Medic, Muster, Tight Bond... -->
+			<Var id="GwentCardEffects" displayName="smoothui_gwent_card_effects" displayType="OPTIONS">
+				<OptionsArray>
+					<Option id="0" displayName="smoothui_gwent_effect_default"><Entry varId="GwentCardEffects" value="0"/></Option>
+					<Option id="1" displayName="smoothui_gwent_effect_0"><Entry varId="GwentCardEffects" value="1"/></Option>
+				</OptionsArray>
+			</Var>
+			<!-- The same, for a weather card's intro (its ongoing effect on the rows still shows) -->
+			<Var id="GwentWeatherIntros" displayName="smoothui_gwent_weather_intros" displayType="OPTIONS">
+				<OptionsArray>
+					<Option id="0" displayName="smoothui_gwent_effect_default"><Entry varId="GwentWeatherIntros" value="0"/></Option>
+					<Option id="1" displayName="smoothui_gwent_effect_0"><Entry varId="GwentWeatherIntros" value="1"/></Option>
+				</OptionsArray>
+			</Var>
+			<!-- Seconds the "Your turn", "Opponent's turn" and the player's own "Passed" banners stay fully shown (the
+			     game's own: 2.3 s). Their fade in and out (0.25 s each) comes on top; with 0, they don't show at all
+			     (no fades either). -->
 			<Var id="GwentTurnBannerHold" displayName="smoothui_gwent_turn_banner_hold" displayType="OPTIONS">
 				<OptionsArray>
 					<Option id="0" displayName="smoothui_gwent_banner_hold_default"><Entry varId="GwentTurnBannerHold" value="0"/></Option>

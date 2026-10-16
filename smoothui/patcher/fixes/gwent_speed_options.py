@@ -1,7 +1,7 @@
 """In-game options to speed up Gwent.
 
 Adds the class smoothui.gwent.GwentSpeed (gwent_speed_as3/, compiled into gwent_speed.abc with
-dev-tools/build-as3.py) as a DoABC tag of its own, and changes five of the file's methods to use it:
+dev-tools/build-as3.py) as a DoABC tag of its own, and changes eight of the file's methods to use it:
 
 - GwintGameMenu.configUI calls GwentSpeed.install(this) right before it tells the game script that
   the menu is ready (the OnConfigUI call), so that the binding for the options is registered by the
@@ -14,6 +14,8 @@ dev-tools/build-as3.py) as a DoABC tag of its own, and changes five of the file'
   (with the card the opponent plays shown on screen) before the opponent plays it
 - AIPlayerController.state_begin_SendingCard, which starts moving that card into view, then calls
   GwentSpeed.onOpponentCardSent(this) (which stops it if the card isn't to be shown at all)
+- CardFXManager.spawnFX, playRowEffect and spawnFX_Location, which start a card effect (an animation the
+  game waits for), then call GwentSpeed.onCardFX(the effect) (which skips it, if it is to be skipped)
 
 GwentSpeed shortens the banners itself, at runtime (see GwentSpeed.as). It is injected after
 the rescale, so the rescaler never sees this code.
@@ -43,6 +45,8 @@ PACKAGE, CLASS = "smoothui.gwent", "GwentSpeed"
 MENU_CLASS = "red.game.witcher3.menus.gwint.GwintGameMenu"
 TWEEN_CLASS = "red.game.witcher3.menus.gwint.CardTweenManager"
 AI_CLASS = "red.game.witcher3.menus.gwint.AIPlayerController"
+FX_CLASS = "red.game.witcher3.menus.gwint.CardFXManager"
+FX_SPAWNERS = ("spawnFX", "playRowEffect", "spawnFX_Location")
 AI_DELAY = 1200     # ms, in AIPlayerController.state_begin_DelayAction
 BANNER_CLASS = "mcStateMessage"     # the banners' W3MessageQueue, for the report
 # DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
@@ -70,6 +74,7 @@ def apply(swf: SwfEdit) -> FixResult:
     opponent_card_delay = additions.qname(public, "opponentCardDelay")
     on_card_sent = additions.qname(public, "onOpponentCardSent")
     on_card_tween = additions.qname(public, "onCardTween")
+    on_card_fx = additions.qname(public, "onCardFX")
 
     config_ui = _method(abc, MENU_CLASS, "configUI")
     tween_duration = _method(abc, TWEEN_CLASS, "calcTweenDuration")
@@ -98,12 +103,20 @@ def apply(swf: SwfEdit) -> FixResult:
                                           + _getlocal(this) + bytes([OP_CALLPROPVOID])
                                           + encode_u30(on_card_sent) + encode_u30(1)),
     }
+    for spawner in FX_SPAWNERS:
+        method = _method(abc, FX_CLASS, spawner)
+        # ...; GwentSpeed.onCardFX(newCardFX); return ...
+        bodies[method] = _insert_before_return(abc, method, f"{FX_CLASS}.{spawner}", _card_fx_local,
+                                               lambda local: bytes([OP_GETLEX]) + encode_u30(speed_class)
+                                               + _getlocal(local) + bytes([OP_CALLPROPVOID])
+                                               + encode_u30(on_card_fx) + encode_u30(1))
     swf.replace_methods(bodies, additions)
     swf.insert_abc(Tag(TagCode.DO_ABC, struct.pack("<I", DO_ABC_LAZY) + PACKAGE.encode() + b"\0" + our_abc,
                        long_header=True))
     return FixResult(banners, f"added {PACKAGE}.{CLASS}; GwintGameMenu.configUI installs it, "
                               "CardTweenManager.calcTweenDuration uses its card speed, "
                               "CardTweenManager.tweenTo tells it about card moves, "
+                              f"CardFXManager.{'/'.join(FX_SPAWNERS)} about card effects, "
                               "AIPlayerController.state_begin_DelayAction its opponent card delay, "
                               "AIPlayerController.state_begin_SendingCard tells it about the card")
 
@@ -187,6 +200,16 @@ def _returned_local(abc: AbcFile, instructions: list[Instruction], description: 
     if local is None:
         raise CantApply(f"{description}: expected it to end with return <local variable>")
     return local
+
+
+def _card_fx_local(abc: AbcFile, instructions: list[Instruction], description: str) -> int:
+    """The local variable a method stores the card effect it makes in (its only `new ...` coerced to CardFX)"""
+    made = [instructions[i + 2] for i in range(len(instructions) - 2)
+            if instructions[i].name == "construct" and _matches(abc, instructions[i + 1], "coerce", "CardFX")
+            and instructions[i + 2].name == "setlocal"]
+    if len(made) != 1:
+        raise CantApply(f"{description}: expected 1 new card effect stored in a variable, found {len(made)}")
+    return made[0].args[0]
 
 
 def _local_of(ins: Instruction) -> int | None:

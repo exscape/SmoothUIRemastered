@@ -3,18 +3,21 @@ package smoothui.gwent
 	import flash.display.MovieClip;
 	import flash.events.Event;
 	import flash.utils.getDefinitionByName;
+	import flash.utils.getQualifiedClassName;
 	import flash.utils.getTimer;
 
 	/**
 	 * Smooth UI's Gwent speed options: faster (or instant) card moves, a shorter look at the card the
-	 * opponent plays, and shorter banners ("Your turn" and the like). The options come from the game's
-	 * settings menu; the mod's WitcherScript sends them when a match starts (see smoothui_gwent.ws).
+	 * opponent plays, skipped card effects, and shorter banners ("Your turn" and the like). The options
+	 * come from the game's settings menu; the mod's WitcherScript sends them when a match starts (see
+	 * smoothui_gwent.ws).
 	 *
-	 * The patcher adds this class to gwint_game.redswf as a DoABC tag of its own, and changes five of
+	 * The patcher adds this class to gwint_game.redswf as a DoABC tag of its own, and changes eight of
 	 * the file's methods to use it (see gwent_speed_options.py):
 	 * - GwintGameMenu.configUI calls install(this), before it tells the game script that it is ready
 	 * - CardTweenManager.calcTweenDuration divides by cardSpeed rather than its MOVE_TWEEN_SPEED (2000)
 	 * - CardTweenManager.tweenTo calls onCardTween(the move it starts)
+	 * - CardFXManager.spawnFX, playRowEffect and spawnFX_Location call onCardFX(the card effect they start)
 	 * - AIPlayerController.state_begin_DelayAction waits opponentCardDelay rather than 1200 ms before the
 	 *   opponent plays the card it shows on screen
 	 * - AIPlayerController.state_begin_SendingCard calls onOpponentCardSent(this) after it starts moving
@@ -24,6 +27,9 @@ package smoothui.gwent
 	 * stopped while it shows the banner, which doesn't move then), and then skip the rest, as clicking
 	 * them does. They still fade in and out as usual. With a hold of 0, they don't show at all (no fades
 	 * either). Times are in seconds, so the 60 and 120 fps builds behave the same.
+	 *
+	 * Card effects (animations the game waits for: see onCardFX) can be skipped, by kind. A skipped one is
+	 * hidden at once, and ended on the next frame, as its timeline would end it.
 	 *
 	 * If the game runs Gwent matches in one ActionScript domain, this class (and its static state) is
 	 * the one from the first match, so install() starts afresh every time.
@@ -59,6 +65,10 @@ package smoothui.gwent
 		public static var firstBannerHold:Number = -1;
 		public static var resultBannerHold:Number = -1;
 		public static var otherBannerHold:Number = -1;
+		// Do card effects play (or are they skipped)? See onCardFX for which is which.
+		public static var landingEffects:Boolean = true;
+		public static var cardEffects:Boolean = true;
+		public static var weatherIntros:Boolean = true;
 
 		// The banners (labels of W3MessageQueue.mcImages) that turnBannerHold and resultBannerHold are for
 		private static const TURN_BANNERS:Object = { your_turn: true, Opponents_turn: true };
@@ -79,7 +89,12 @@ package smoothui.gwent
 		// ability, a match restarting), so that mcImages still shows an earlier banner's image (at first,
 		// battle_won): these are for otherBannerHold. (So is a Scoia'tael player's choice, in FIRST_BANNER_STATE.)
 		private static const IMAGELESS_BANNER_STATES:Object = { SpawnLeaders: true, Reset: true };
-
+		// Card effects (their classes, as CardFXManager's settings in GwintGameMenu name them): a unit card landing on
+		// the board (for landingEffects), and a weather card's (or a leader's clear weather) intro, before its
+		// ongoing effect on the rows (for weatherIntros; the ongoing effect isn't one of these). Every other one,
+		// from special cards and abilities (Decoy, Horn, Scorch, Medic, Muster...), is for cardEffects.
+		private static const LANDING_FX:Object = { CardFXDeploy: true, CardFXHero: true, CardFXSpy: true };
+		private static const WEATHER_FX:Object = { CardFXFrost: true, CardFXFog: true, CardFXRain: true, CardFXClearSky: true };
 		// W3MessageQueue (mcStateMessage) labels: idle, fading in, fully shown (then Hiding: fading out)
 		private static const IDLE_LABEL:String = "Idle";
 		private static const SHOW_LABEL:String = "Show";
@@ -101,6 +116,9 @@ package smoothui.gwent
 			firstBannerHold = -1;
 			resultBannerHold = -1;
 			otherBannerHold = -1;
+			landingEffects = true;
+			cardEffects = true;
+			weatherIntros = true;
 			lastLabel = null;
 			hold = -1;
 			shownSince = -1;
@@ -143,6 +161,38 @@ package smoothui.gwent
 			}
 		}
 
+		/** fx: the CardFX that CardFXManager has just started (spawnFX, playRowEffect, spawnFX_Location) */
+		public static function onCardFX(fx:MovieClip):void
+		{
+			if (fx == null)
+				return;
+			var name:String = getQualifiedClassName(fx);
+			if (LANDING_FX[name] == true ? landingEffects : WEATHER_FX[name] == true ? weatherIntros : cardEffects)
+				return;
+			// Skip it: hidden now, ended on the next frame. Not now: its callbacks are set by whoever started it,
+			// after it started (e.g. Mardroeme's and the berserkers' midFXPointCallback, which transforms cards).
+			// (Its sound has played already: CardFXManager plays it before it starts the effect.)
+			fx.stop();
+			fx.visible = false;
+			fx.addEventListener(Event.ENTER_FRAME, onSkippedFXFrame);
+		}
+
+		private static function onSkippedFXFrame(event:Event):void
+		{
+			var fx:Object = event.currentTarget;
+			fx.removeEventListener(Event.ENTER_FRAME, onSkippedFXFrame);
+			try
+			{
+				// What its timeline does, in order: midFXPoint (for some) on a frame halfway, fxEnded on its last
+				fx.midFXPoint();
+				fx.fxEnded();
+			}
+			catch (error:Error)
+			{
+				trace("GFX [SmoothUI] GwentSpeed.onSkippedFXFrame failed: " + error);
+			}
+		}
+
 		/** controller: the AIPlayerController, which has just started moving the card it plays into view */
 		public static function onOpponentCardSent(controller:Object):void
 		{
@@ -174,7 +224,8 @@ package smoothui.gwent
 		}
 
 		/** The options from the game script: cardSpeed (percent; 0: instant); opponentCardDelay, turnBannerHold,
-		 * firstBannerHold, resultBannerHold and otherBannerHold (seconds; below 0: the game's own) */
+		 * firstBannerHold, resultBannerHold and otherBannerHold (seconds; below 0: the game's own);
+		 * landingEffects, cardEffects and weatherIntros (0: skipped; otherwise played) */
 		public static function onConfig(config:Object):void
 		{
 			if (config == null)
@@ -193,10 +244,20 @@ package smoothui.gwent
 			firstBannerHold = secondsOption(config.firstBannerHold);
 			resultBannerHold = secondsOption(config.resultBannerHold);
 			otherBannerHold = secondsOption(config.otherBannerHold);
+			landingEffects = playOption(config.landingEffects);
+			cardEffects = playOption(config.cardEffects);
+			weatherIntros = playOption(config.weatherIntros);
 			trace("GFX [SmoothUI] Gwent options: cardSpeed " + cardSpeed + ", opponentCardDelay " + opponentCardDelay
 				+ ", opponentCardHidden " + opponentCardHidden
 				+ ", turnBannerHold " + turnBannerHold + ", firstBannerHold " + firstBannerHold
-				+ ", resultBannerHold " + resultBannerHold + ", otherBannerHold " + otherBannerHold);
+				+ ", resultBannerHold " + resultBannerHold + ", otherBannerHold " + otherBannerHold
+				+ ", landingEffects " + landingEffects + ", cardEffects " + cardEffects + ", weatherIntros " + weatherIntros);
+		}
+
+		/** An option to play (rather than skip) something: anything but 0, or missing */
+		private static function playOption(value:*):Boolean
+		{
+			return value == undefined || Number(value) != 0;
 		}
 
 		/** An option in seconds; -1 (the game's own) if it is missing */
