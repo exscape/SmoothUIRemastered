@@ -7,9 +7,12 @@
 # The files to patch and their settings come from the release's manifests (see manifests/), selected by
 # --smooth-version, optionally with additions from an override file (--overrides; see
 # config/compat_overrides_example.txt).
+# Unless --only-fps or a dev hook is given, each patch also gets a manifest in manifests/compat/.
+# This is used by build-main.py to tell which compat patches become outdated by a new release.
 # Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.3
 
 import argparse
+import datetime
 import shutil
 import zipfile
 from functools import partial
@@ -17,22 +20,27 @@ from pathlib import Path
 
 import py7zr
 import rarfile
+from colorama import Fore, Style
 
-from ..common import fail, normalize_version, print_step_header, to_windows
+from ..common import fail, normalize_version, print_step_header, profile_key, to_windows
 from ..patcher import dev_mode, patcher_core
 from ..patcher.fixes import check_fix_name
 from ..patcher.patcher_core import PatchSettings
+from ..patcher.redswf import swf_sha256
 from ..patcher.swf_patcher import (
     SpeedRule,
     SpriteRef,
     parse_speed,
     parse_sprite_pattern,
 )
+from .manifest_diff import SUFFIXES, version_key
 from .profile import apply_overrides
 from .reviewed_warnings import WarningReview, print_warning_summary, review_of
 from .shared import (
+    MANIFEST_DIR,
     REPO_ROOT,
     build_version,
+    compat_manifest_path,
     config_paths,
     enforce_strict,
     finish_work_dir,
@@ -40,10 +48,12 @@ from .shared import (
     load_config,
     load_manifest,
     pack_content,
+    patcher_commit,
     print_file_result,
     print_rule_issues,
     split_build_version,
     wcc_lite,
+    write_json,
     zip_tree,
 )
 
@@ -93,6 +103,8 @@ def parse_args(argv=None):
                          "use --no-strict to build anyway, e.g. while experimenting)")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
+    ap.add_argument("--force", action="store_true",
+                    help="build for a --smooth-version older than the most recent release in manifests/")
 
     # Dev hooks; useful for exploring the data format, etc.
     g = ap.add_mutually_exclusive_group()
@@ -205,6 +217,21 @@ def load_release_manifest(smooth_version, fps):
         fail(too_old)
     return manifest
 
+def check_not_outdated(smooth_version, force):
+    """Fail if smooth_version (without a frame rate specified) is older than the most recent release with a
+    manifest, unless force. Dev versions (e.g. v0.4dev) don't count as releases."""
+    releases = {split_build_version(path.stem)[0] for path in MANIFEST_DIR.glob("*.json")}
+    releases = [version for version in releases
+                if (key := version_key(version)) is not None and key[1] != SUFFIXES.index("dev")]
+    newest = max(releases, key=version_key, default=None)
+    if newest is None or version_key(smooth_version) is None or version_key(smooth_version) >= version_key(newest):
+        return
+    if not force:
+        fail(f"--smooth-version {smooth_version} is older than {newest}, the most recent release in "
+             f"{MANIFEST_DIR}. Use --force to build for it anyway")
+    print(f"{Style.BRIGHT}{Fore.YELLOW}Warning: building for {smooth_version}, which is older than {newest}, "
+          f"the most recent release (--force){Style.RESET_ALL}")
+
 def profile_from_manifest(manifest):
     """The settings each file was patched with in a Smooth UI release, from its manifest (see
     load_release_manifest): a profile ({profile key: PatchSettings}), so compat patches match the release."""
@@ -281,7 +308,8 @@ def main():
              f"{split_build_version(smooth_version)[0]}); a patch is built for each of its builds "
              "(use --only-fps for just one)")
     fps_list = (args.only_fps,) if args.only_fps else (120, 60)
-    # Loaded first, so that a wrong version fails before the slow steps
+    # Checked first, so that a wrong version fails before the slow steps
+    check_not_outdated(smooth_version, args.force)
     manifests = {fps: load_release_manifest(smooth_version, fps) for fps in fps_list}
 
     work_dir = paths["working_dir"] / "compat"
@@ -319,9 +347,14 @@ def main():
         content_dir = mod_root / mod_name / "content"
         content_dir.mkdir(parents=True)
 
-        issue_printers.append(make_patch(version, manifests[fps], unbundled_dir, patched_dir, args))
+        print_issues, patched = make_patch(version, manifests[fps], unbundled_dir, patched_dir, args)
+        issue_printers.append(print_issues)
         pack_content(patched_dir, content_dir)
         zip_tree(mod_root, zip_out)
+        # Builds of one frame rate are for testing, and dev hooks change the files by hand
+        if not (args.only_fps or args.dev_dump or args.dev_insert or args.dev_pause):
+            write_patch_manifest(version, manifests[fps], args, mod_version, zip_out,
+                                 unbundled_dir, patched_dir, patched)
 
     if args.only_fps:
         install_and_launch(mod_root / mod_name, game_path, args.install, args.launch)
@@ -385,4 +418,40 @@ def make_patch(version, manifest, unbundled_dir, patched_dir, args):
     def print_issues():
         print_warnings()
         print_rule_issues(rule_issues)
-    return print_issues
+    return print_issues, patched
+
+def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundled_dir, patched_dir, patched):
+    """Write manifests/compat/<version>_<mod>_<mod version>.json for a patch built for one build of the
+    release (version, e.g. v0.3-60fps; manifest is its manifest), replacing any earlier one: what the
+    patch holds, and the release's own output for each of those files. A later release that patches a
+    file differently (other settings, fixes or patcher code) makes the patch outdated; so does one that
+    starts patching a file the other mod ships. See manifest_diff.py's compat_patch_problems."""
+    print_step_header(f"Writing compat patch manifest ({version})")
+    release_files = {profile_key(key): record for key, record in manifest["files"].items()}
+    files = {}
+    for entry in sorted(patched, key=lambda e: e["path"]):
+        rel = entry["path"]
+        files[rel.as_posix()] = {
+            "source_swf_sha256": swf_sha256((unbundled_dir / rel).read_bytes()),
+            "output_swf_sha256": swf_sha256((patched_dir / rel).read_bytes()),
+            "release_output_swf_sha256": release_files[profile_key(rel)]["output_swf_sha256"],
+        }
+    commit, uncommitted = patcher_commit()
+    path = compat_manifest_path(version, args.mod_name, mod_version)
+    write_json(path, {
+        "mod_name": args.mod_name,
+        "mod_version": mod_version,
+        "smooth_version": version,
+        "fps": manifest["fps"],
+        # The release's manifest is rewritten when it is rebuilt; this tells which build the patch is from
+        "release_created_at": manifest.get("created_at"),
+        "overrides": str(args.overrides) if args.overrides else None,
+        "patcher_commit": commit,
+        "patcher_uncommitted_changes": uncommitted,
+        "created_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+        "output_zip": str(zip_out.relative_to(REPO_ROOT)) if zip_out.is_relative_to(REPO_ROOT) else str(zip_out),
+        # Every .redswf the other mod ships, patched or not
+        "other_mod_files": sorted(f.relative_to(unbundled_dir).as_posix() for f in unbundled_dir.rglob("*.redswf")),
+        "files": files,
+    })
+    print(f"Wrote compat patch manifest {path} ({len(files)} files)")

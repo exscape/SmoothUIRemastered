@@ -2,7 +2,8 @@
 
 # build-main.py -- patch UI frame rates, then pack the mod with wcc_lite.
 # The files to patch come from the profile file (see config/). A release (--make-release) is one build
-# per release frame rate (120 and 60 fps), each with its manifest; other builds are at --fps.
+# per release frame rate (120 and 60 fps), each with its manifest, and ends by listing the compat patches
+# it makes outdated (see manifest_diff.py); other builds are at --fps.
 
 import argparse
 import datetime
@@ -12,7 +13,7 @@ from functools import partial
 from ..common import fail, print_step_header
 from ..patcher import dev_mode, patcher_core
 from ..patcher.redswf import swf_sha256
-from .manifest_diff import print_changes_since_previous
+from .manifest_diff import print_changes_since_previous, print_compat_status
 from .profile import load_profile
 from .reviewed_warnings import (
     WarningReview,
@@ -143,6 +144,10 @@ def main():
     for version, print_issues in zip(versions, issue_printers):
         print_step_header(f"Warnings and errors: {version}")
         print_issues()
+
+    if args.make_release and not args.dry_run:
+        for version in versions:
+            print_compat_status(version)
 
     if args.dry_run:
         print_step_header("DRY RUN: exiting")

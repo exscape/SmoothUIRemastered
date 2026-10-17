@@ -25,6 +25,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
 REVIEWED_WARNINGS = REPO_ROOT / "config" / "reviewed_warnings.txt"
 MANIFEST_DIR = REPO_ROOT / "manifests"
+# Manifests of the compat patches built with build-compat.py (see compat.py's write_patch_manifest)
+COMPAT_MANIFEST_DIR = MANIFEST_DIR / "compat"
 # Files the main mod ships as they are (scripts, the settings menu), laid out as in its zip:
 # mods/<the mod's folder>/, and bin/ (for the game's bin/ folder)
 MOD_FILES = REPO_ROOT / "mod_files"
@@ -270,14 +272,23 @@ def write_manifest(version, records, extra=None):
     manifest["files"] = records
 
     path = manifest_path(version)
+    write_json(path, manifest)
+    print(f"Wrote manifest {path} ({len(records)} files)")
+    return path
+
+def compat_manifest_path(version, mod_name, mod_version):
+    """Where the manifest of a compat patch for one build of a release (version, e.g. v0.3-60fps) lives;
+    named like the patch's .zip"""
+    return COMPAT_MANIFEST_DIR / f"{normalize_version(version)}_{mod_name}_{normalize_version(mod_version)}.json"
+
+def write_json(path, data):
+    """Write a manifest (replacing any file there), in the format all manifests use"""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         path.unlink()
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=1, sort_keys=True)
+        json.dump(data, f, indent=1, sort_keys=True)
         f.write("\n")
-    print(f"Wrote manifest {path} ({len(records)} files)")
-    return path
 
 def install_mod(mod_dir, game_path, bin_dir=None):
     """Copy <mod_dir> (a directory whose name is the mod's name) into <game_path>/mods, and the files

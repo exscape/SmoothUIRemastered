@@ -6,6 +6,12 @@ build-main.py --make-release compares each new manifest with the previous versio
 frame rate (v0.3-60fps with the 60 fps build before it); manifest-diff.py compares any two.
 Manifests from before the 60 and 120 fps builds count as 120 fps ones; their reports are in an
 older format, so only their files are compared.
+
+It also tells which compat patches (their manifests in manifests/compat/, written by build-compat.py)
+a release makes outdated: build-main.py --make-release checks them all at the end, and
+manifest-diff.py --compat VERSION does it on its own. A patch is checked against what its manifest
+recorded, never against version names, so rebuilding a release (e.g. a release candidate) makes the
+patches built from the earlier build outdated if it changed one of their files.
 """
 
 from __future__ import annotations
@@ -16,9 +22,18 @@ from collections import Counter, defaultdict
 from decimal import Decimal
 from pathlib import Path
 
-from ..common import fail, normalize_version, print_step_header
+from colorama import Fore, Style
+
+from ..common import fail, normalize_version, print_step_header, profile_key
 from ..patcher.swf_patcher import format_unmet_rule, report_settings
-from .shared import MANIFEST_DIR, load_manifest, split_build_version
+from .shared import (
+    COMPAT_MANIFEST_DIR,
+    MANIFEST_DIR,
+    REPO_ROOT,
+    build_version,
+    load_manifest,
+    split_build_version,
+)
 
 VERSION = re.compile(r"v(\d+(?:\.\d+)*)([a-z][a-z0-9]*)?")
 # Versions with the same number, from least to most recent; other suffixes come before these
@@ -218,13 +233,97 @@ def _match_sprites(old_sprites: list, new_sprites: list) -> tuple[list, list, li
     return pairs, list(unpaired_old.values()), added
 
 
+def latest_compat_manifests(version: str) -> list[tuple[Path, dict]]:
+    """(path, manifest) of the newest compat patch manifest of each other mod and mod version, among those
+    built for this build's frame rate from this release or an earlier one (a patch built for a later
+    release, e.g. a dev build, says nothing about this one). Newest: built for the latest release, then
+    the most recently built."""
+    key, fps = version_key(version), build_fps(version)
+    newest = {}  # (mod name, mod version) -> (rank, path, manifest)
+    for path in COMPAT_MANIFEST_DIR.glob("*.json"):
+        patch = load_manifest(path)
+        built_for = version_key(patch["smooth_version"])
+        if built_for is None or key is None or built_for > key or build_fps(patch["smooth_version"]) != fps:
+            continue
+        mod = (patch["mod_name"].lower(), patch["mod_version"])
+        rank = (built_for, patch["created_at"])
+        if mod not in newest or rank > newest[mod][0]:
+            newest[mod] = (rank, path, patch)
+    return [(path, patch) for _, path, patch in sorted(newest.values(), key=lambda item: item[2]["mod_name"].lower())]
+
+
+def compat_patch_problems(patch: dict, release: dict) -> list[str]:
+    """Why a compat patch (its manifest) needs a rebuild for a release (its manifest), as lines of text;
+    none if it works with that release as it is"""
+    version = release["created_mod_version"]
+    ours = {profile_key(path): record for path, record in release["files"].items()}
+    # The build the patch was made from, for the details; gone or rewritten if that release was rebuilt since
+    built_from = load_manifest(patch["smooth_version"]) or {"files": {}}
+    built_from_files = {profile_key(path): record for path, record in built_from["files"].items()}
+
+    problems = []
+    for path, record in sorted(patch["files"].items()):
+        new = ours.get(profile_key(path))
+        if new is None:
+            problems.append(f"{path}: no longer patched by {version}, but the patch still ships it")
+        elif new["output_swf_sha256"] != record["release_output_swf_sha256"]:
+            problems.append(f"{path}: {version} patches it differently")
+            old = built_from_files.get(profile_key(path))
+            if old is not None and old["output_swf_sha256"] == record["release_output_swf_sha256"]:
+                problems += [f"  {change}" for change in _file_changes(old, new, compare_reports=True)]
+            else:
+                problems.append(f"  (no details: {patch['smooth_version']} was rebuilt since the patch was built)")
+    shipped = {profile_key(path) for path in patch["files"]}
+    problems += [f"{path}: now patched by {version}, but missing from the patch (the other mod ships it)"
+                 for path in patch["other_mod_files"] if profile_key(path) in ours and profile_key(path) not in shipped]
+    return problems
+
+
+def print_compat_status(version: str):
+    """Print, for each compat patch with a manifest, whether this build of a release (e.g. v0.3-60fps)
+    makes it outdated"""
+    release = load_manifest(version)
+    if release is None:
+        fail(f"manifest not found: {version}")
+    print_step_header(f"Compat patches for {version}")
+    patches = latest_compat_manifests(version)
+    if not patches:
+        print(f"No {build_fps(version)} fps compat patch manifests in {COMPAT_MANIFEST_DIR}")
+        return
+    outdated = 0
+    for path, patch in patches:
+        name = f"{patch['mod_name']} {patch['mod_version']} (built for {patch['smooth_version']})"
+        problems = compat_patch_problems(patch, release)
+        if not problems:
+            print(f"Up to date: {name}")
+            continue
+        outdated += 1
+        shown_path = path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
+        print(f"{Style.BRIGHT}{Fore.RED}OUTDATED: {name}{Style.RESET_ALL}  [{shown_path}]")
+        print("\n".join(f"  {problem}" for problem in problems))
+    if outdated:
+        print(f"\n{Style.BRIGHT}{Fore.RED}{outdated} compat patch(es) need a rebuild for "
+              f"{version}.{Style.RESET_ALL} For a patch that was never released, delete its manifest instead.")
+    print(flush=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Show what changed between two Smooth UI Remastered manifests")
-    ap.add_argument("manifests", nargs="+", metavar="MANIFEST",
+    ap.add_argument("manifests", nargs="*", metavar="MANIFEST",
                     help="versions (e.g. v0.3-60fps, looked up in manifests/) or paths to manifest files: OLD NEW, "
                          "or only NEW to compare it with the previous version's")
+    ap.add_argument("--compat", metavar="VERSION",
+                    help="instead, tell which compat patches (manifests/compat/) a release makes outdated: "
+                         "e.g. v0.3.1 for both its builds, or v0.3.1-60fps")
     args = ap.parse_args(argv)
-    if len(args.manifests) > 2:
+    if args.compat:
+        if args.manifests:
+            ap.error("give either manifests or --compat")
+        base, fps = split_build_version(args.compat)
+        for version in [build_version(base, fps)] if fps else [build_version(base, 120), build_version(base, 60)]:
+            print_compat_status(version)
+        return
+    if not 1 <= len(args.manifests) <= 2:
         ap.error("give one or two manifests")
     if len(args.manifests) == 1:
         print_changes_since_previous(args.manifests[0])

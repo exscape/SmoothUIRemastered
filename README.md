@@ -55,7 +55,8 @@ This will:
   * Figure out the conflicting files between that build and the other mod
   * Create FPS-patched versions of the conflicting files, based on the other mod's .redswf files (work/compat/120fps/3_patched)
   * Bundle the FPS-patched files .redswf files *only* (work/compat/120fps/4_mod)
-  * Zip the mod to a release-ready file next to the script (which is the only time the --mod-name and --mod-version arguments are used)
+  * Zip the mod to a release-ready file next to the script
+  * Write a manifest of the patch to `manifests/compat/` (not with `--only-fps` considered a dev/testing option), for checking it against later releases (see below)
 * Delete work/compat entirely (use `--keep-work` to keep the files)
 
 Optionally, you can add `--install --launch` to copy the mod to the game folder and launch the game for testing. This needs `--only-fps 120` or `--only-fps 60` to pick the patch matching the build of Smooth UI Remastered you have installed; `--only-fps` builds only that patch.  
@@ -63,6 +64,9 @@ Make sure that Smooth UI Remastered and the target mod, both of the correct vers
 
 The conflicting files are patched with the same settings (and frame rate) as in the specified Smooth UI Remastered release (`--smooth-version`), which should work for most mods.
 If a mod changes identifiers in an incompatible way, or needs more control, `--overrides FILE` adds settings on top; see `config/compat_overrides_example.txt` for the format.
+
+**Does a new Smooth UI Remastered release need a new patch?** Not always. After updating this repository (which brings in the new release's manifests), run e.g. `python manifest-diff.py --compat 0.4`. It reads only the manifests: for each patch you've built, it tells whether it still works with that release as it is, or needs a rebuild because the release patches its files differently or now patches more of the other mod's files.
+This needs the manifests that build-compat.py wrote in your copy's `manifests/compat/`, so keep those around. It also can't tell when the other mod (your mod) has been updated; if it has, **a new compat patch is always needed** if a .redswf patched by Smooth UI was changed.
 
 Run `python3 build-compat.py --help` for basic help. I'm considering making a simple (and optional) GUI to streamline things further, and a binary release (likely PyInstaller-based) to go with it.  
 Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwas?gameId=952), or create a GitHub issue if something is wrong or unclear.
@@ -73,7 +77,7 @@ Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwa
 | --- | --- |
 | `build-compat.py` | Builds a compatibility patch against another mod (zip/rar/7z) |
 | `build-main.py` | Builds the mod; mainly intended for my own use |
-| `manifest-diff.py` | Shows what changed between two releases' manifests (`manifests/`): files, and clips whose handling changed. build-main.py shows this too when it writes a manifest |
+| `manifest-diff.py` | Shows what changed between two releases' manifests (`manifests/`): files, and clips whose handling changed. Also used with `--compat` switch, see above. |
 | `smoothui/common.py` | Various shared logic |
 | `smoothui/build/` | The build process: implements `build-main.py` (`main.py`), `build-compat.py` (`compat.py`) and `manifest-diff.py` (`manifest_diff.py`), and reads profiles, override files and reviewed warnings (see `config/`) |
 | `smoothui/patcher/` | Binary patcher; creates new, higher framerate `.redswf` files from a given list of files |
