@@ -1,4 +1,12 @@
 
+# v0.3.1
+
+* Gwent speed options! The old sped-up versions were appreciated for Gwent especially, so this version adds proper controls to the Settings > Mods menu. There are five presets, and each parameter can be adjusted manually.
+  * Personally I like the Insane preset: very fast, but keeps the things you may still want to see when experienced with the game.
+* The .zip layout is changed: the settings requires a bin/ dir, so "modSmoothUIRemastered" is not at the root of the .zip now. Copying + merging all to the root TW3 install directory should work, and TW3MM + Vortex should handle it also.
+* There are no other changes, so if you want the default Gwent speed, you can skip this version.
+* All v0.3 compat patches still work with this version.
+
 # v0.3
 
 Big changes!
