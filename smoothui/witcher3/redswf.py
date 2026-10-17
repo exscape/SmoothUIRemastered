@@ -32,7 +32,12 @@ import struct
 import zlib
 from typing import NamedTuple
 
-from .swf import SWF_COMPRESSED_SIGS, SWF_HEADER_SIZE, SWF_SIGS, SWF_UNCOMPRESSED_SIGS
+from ..patcher.swf import (
+    SWF_COMPRESSED_SIGS,
+    SWF_HEADER_SIZE,
+    SWF_SIGS,
+    SWF_UNCOMPRESSED_SIGS,
+)
 
 CR2W_MAGIC = b"CR2W"
 CR2W_VERSION = 164

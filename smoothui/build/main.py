@@ -13,7 +13,7 @@ from functools import partial
 
 from ..common import fail, print_step_header
 from ..patcher import dev_mode, patcher_core
-from ..patcher.redswf import swf_sha256
+from ..witcher3.redswf import swf_sha256
 from .manifest_diff import print_changes_since_previous, print_compat_status
 from .profile import load_profile
 from .reviewed_warnings import (

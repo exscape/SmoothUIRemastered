@@ -1,1 +1,1 @@
-"""Witcher 3 file formats (bundles, ...), read and written without the REDkit's tools"""
+"""Witcher 3 file formats, read and written without the REDkit's tools"""

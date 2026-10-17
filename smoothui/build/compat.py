@@ -26,7 +26,7 @@ from ..common import fail, normalize_version, print_step_header, profile_key
 from ..patcher import dev_mode, patcher_core
 from ..patcher.fixes import check_fix_name
 from ..patcher.patcher_core import PatchSettings
-from ..patcher.redswf import swf_sha256
+from ..witcher3.redswf import swf_sha256
 from ..patcher.swf_patcher import (
     SpeedRule,
     SpriteRef,
