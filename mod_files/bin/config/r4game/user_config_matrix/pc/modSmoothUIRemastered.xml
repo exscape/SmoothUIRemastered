@@ -94,7 +94,7 @@
 				</OptionsArray>
 			</Var>
 			<!-- Card effects (animations the game waits for) play as in the game (default), or are skipped (0):
-			     a unit card landing on the board (longer for heroes and spies) -->
+			     a unit card landing on the board (longer for heroes) -->
 			<Var id="GwentLandingEffects" displayName="smoothui_gwent_landing_effects" displayType="OPTIONS">
 				<OptionsArray>
 					<Option id="0" displayName="smoothui_gwent_effect_default"><Entry varId="GwentLandingEffects" value="0"/></Option>

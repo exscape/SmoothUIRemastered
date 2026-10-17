@@ -92,8 +92,8 @@ package smoothui.gwent
 		// Card effects (their classes, as CardFXManager's settings in GwintGameMenu name them): a unit card landing on
 		// the board (for landingEffects), and a weather card's (or a leader's clear weather) intro, before its
 		// ongoing effect on the rows (for weatherIntros; the ongoing effect isn't one of these). Every other one,
-		// from special cards and abilities (Decoy, Horn, Scorch, Medic, Muster...), is for cardEffects.
-		private static const LANDING_FX:Object = { CardFXDeploy: true, CardFXHero: true, CardFXSpy: true };
+		// from special cards and abilities (Decoy, Horn, Scorch, Spy, Medic, Muster...), is for cardEffects.
+		private static const LANDING_FX:Object = { CardFXDeploy: true, CardFXHero: true };
 		private static const WEATHER_FX:Object = { CardFXFrost: true, CardFXFog: true, CardFXRain: true, CardFXClearSky: true };
 		// W3MessageQueue (mcStateMessage) labels: idle, fading in, fully shown (then Hiding: fading out)
 		private static const IDLE_LABEL:String = "Idle";
