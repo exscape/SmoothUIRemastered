@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# build-main.py -- patch UI frame rates, then pack the mod with wcc_lite.
+# build-main.py -- patch UI frame rates, then pack the mod.
 # The files to patch come from the profile file (see config/). A release (--make-release) is one build
 # per release frame rate (120 and 60 fps), each with its manifest, and ends by listing the compat patches
 # it makes outdated (see manifest_diff.py); other builds are at --fps.

@@ -21,6 +21,7 @@ from ..common import fail, normalize_version, print_step_header, to_native, to_w
 from ..patcher.fixes import APPLIED
 from ..patcher.swf_patcher import format_fix
 from ..witcher3.bundle import BundleError, make_entry, write_bundle
+from ..witcher3.metadata_store import MetadataStoreError, make_metadata_store
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
@@ -33,6 +34,9 @@ COMPAT_MANIFEST_DIR = MANIFEST_DIR / "compat"
 MOD_FILES = REPO_ROOT / "mod_files"
 
 REQUIRED_CONFIG_KEYS = ("working_dir", "wcc_lite")
+
+# While metadata_store.py is new: also have wcc_lite make metadata.store, and fail unless both are identical
+COMPARE_STORE_WITH_WCC_LITE = True
 
 # A build's version: the base version (created_mod_version in config.toml), then the frame rate
 BUILD_VERSION = re.compile(r"(v.+?)-(\d+)fps")
@@ -91,11 +95,25 @@ def pack_content(patched_dir, content_dir):
         fail(f"can't pack {patched_dir}: {e}")
     print(f"Packed {len(files)} files into {bundle} ({bundle.stat().st_size / 2**20:.1f} MiB)")
 
-    print_step_header("Running wcc_lite metadatastore")
-    wcc_lite("metadatastore", "-noui", f"-path={to_windows(content_dir)}")
+    store_path = content_dir / "metadata.store"
+    if COMPARE_STORE_WITH_WCC_LITE:
+        print_step_header("Running wcc_lite metadatastore (to compare)")
+        wcc_lite("metadatastore", "-noui", f"-path={to_windows(content_dir)}")
+        if not store_path.is_file():
+            fail("wcc_lite did not produce metadata.store.")
 
-    if not (content_dir / "metadata.store").is_file():
-        fail("wcc_lite did not produce metadata.store.")
+    print_step_header("Writing metadata.store")
+    try:
+        store = make_metadata_store([(bundle.name, bundle.read_bytes())])
+    except MetadataStoreError as e:
+        fail(f"can't make metadata.store for {bundle}: {e}")
+    if COMPARE_STORE_WITH_WCC_LITE:
+        if store_path.read_bytes() != store:
+            store_path.with_name("metadata.store.ours").write_bytes(store)
+            fail(f"metadata.store differs from wcc_lite's; wcc_lite's is in {store_path}, ours in metadata.store.ours")
+        print("Identical to wcc_lite's")
+    store_path.write_bytes(store)
+    print(f"Wrote {store_path} ({len(store)} bytes)")
 
 def load_config(path=None, section=None):
     """Read config.toml (or the given file) and perform basic validation"""
