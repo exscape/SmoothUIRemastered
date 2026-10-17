@@ -22,7 +22,7 @@ import py7zr
 import rarfile
 from colorama import Fore, Style
 
-from ..common import fail, normalize_version, print_step_header, profile_key, to_windows
+from ..common import fail, normalize_version, print_step_header, profile_key
 from ..patcher import dev_mode, patcher_core
 from ..patcher.fixes import check_fix_name
 from ..patcher.patcher_core import PatchSettings
@@ -33,6 +33,7 @@ from ..patcher.swf_patcher import (
     parse_speed,
     parse_sprite_pattern,
 )
+from ..witcher3.bundle import BundleError, extract, read_bundle
 from .manifest_diff import SUFFIXES, version_key
 from .profile import apply_overrides
 from .reviewed_warnings import WarningReview, print_warning_summary, review_of
@@ -52,7 +53,6 @@ from .shared import (
     print_file_result,
     print_rule_issues,
     split_build_version,
-    wcc_lite,
     write_json,
     zip_tree,
 )
@@ -169,9 +169,8 @@ def is_dlc_dir(rel):
     under a dlc folder, or a dlcXxx/content folder shipped without the dlc folder around it"""
     return "dlc" in (part.lower() for part in rel.parts) or rel.parent.name.lower().startswith("dlc")
 
-def find_unbundle_root(unpacked_dir):
-    """The directory to give to wcc_lite unbundle: the modXxx folder if there is one,
-    otherwise the folder that holds the bundle(s).
+def find_content_dir(unpacked_dir):
+    """The folder that holds the mod's bundle(s).
 
     DLC bundles are skipped, like the mod's loose files: they never conflict with the files
     Smooth UI Remastered patches, so only the bundles in a mod folder matter."""
@@ -192,15 +191,23 @@ def find_unbundle_root(unpacked_dir):
         listing = "\n".join(f"  {d.relative_to(unpacked_dir)}" for d in content_dirs)
         fail(f"bundles found in several mod folders, this is not supported:\n{listing}\n"
              "If these are optional parts, build from an archive holding only the part to support.")
-    content = content_dirs[0]
-    if content.name.lower() == "content" and content.parent.name.lower().startswith("mod"):
-        return content.parent
-    return content
+    return content_dirs[0]
 
-def unbundle(root, out_dir):
-    """Extract the bundle(s) under root into loose files under out_dir, at their depot paths"""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    wcc_lite("unbundle", f"-dir={to_windows(root)}", f"-outdir={to_windows(out_dir)}")
+def unbundle(content_dir, out_dir):
+    """Extract the bundle(s) in content_dir into loose files under out_dir, at their depot paths"""
+    entries = {}    # lowercase path -> (bundle name, entry)
+    try:
+        for bundle in sorted(content_dir.glob("*.bundle")):
+            for entry in read_bundle(bundle.read_bytes()):
+                key = entry.path.lower()
+                if key in entries and entries[key][1].content() != entry.content():
+                    # Which copy the game would use is unknown
+                    fail(f"{entry.path} is in both {entries[key][0]} and {bundle.name}, with different contents")
+                entries[key] = (bundle.name, entry)
+        written = extract((entry for _, entry in entries.values()), out_dir)
+    except BundleError as e:
+        fail(f"can't unbundle {content_dir}: {e}")
+    print(f"Extracted {len(written)} files into {out_dir}")
     if not any(out_dir.rglob("*.redswf")):
         fail(f"no .redswf files found after unbundling into {out_dir}")
 
@@ -334,7 +341,7 @@ def main():
     unpack(args.mod_archive, unpacked_dir)
 
     print_step_header("Unbundling the other mod")
-    unbundle(find_unbundle_root(unpacked_dir), unbundled_dir)
+    unbundle(find_content_dir(unpacked_dir), unbundled_dir)
 
     # The patches are made one after the other; a failure stops the run, leaving the earlier ones as they are
     versions = [build_version(smooth_version, fps) for fps in fps_list]

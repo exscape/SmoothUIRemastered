@@ -20,6 +20,7 @@ from colorama import Back, Fore, Style
 from ..common import fail, normalize_version, print_step_header, to_native, to_windows
 from ..patcher.fixes import APPLIED
 from ..patcher.swf_patcher import format_fix
+from ..witcher3.bundle import BundleError, make_entry, write_bundle
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
@@ -81,14 +82,20 @@ def wcc_lite(*args):
 
 def pack_content(patched_dir, content_dir):
     """Pack the patched files into blob0.bundle and create metadata.store"""
-    print_step_header("Running wcc_lite pack")
-    wcc_lite("pack", f"-dir={to_windows(patched_dir)}", f"-outdir={to_windows(content_dir)}")
+    print_step_header("Packing blob0.bundle")
+    files = sorted(p for p in patched_dir.rglob("*") if p.is_file())
+    bundle = content_dir / "blob0.bundle"
+    try:
+        bundle.write_bytes(write_bundle(make_entry(p.relative_to(patched_dir), p.read_bytes()) for p in files))
+    except BundleError as e:
+        fail(f"can't pack {patched_dir}: {e}")
+    print(f"Packed {len(files)} files into {bundle} ({bundle.stat().st_size / 2**20:.1f} MiB)")
 
     print_step_header("Running wcc_lite metadatastore")
     wcc_lite("metadatastore", "-noui", f"-path={to_windows(content_dir)}")
 
-    if not (content_dir / "metadata.store").is_file() or not any(content_dir.glob("blob*.bundle")):
-        fail("wcc_lite did not produce blob*.bundle and metadata.store.")
+    if not (content_dir / "metadata.store").is_file():
+        fail("wcc_lite did not produce metadata.store.")
 
 def load_config(path=None, section=None):
     """Read config.toml (or the given file) and perform basic validation"""
