@@ -47,7 +47,7 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="0"/>	<!-- Default -->
 			</Preset>
 			<Preset id="3" displayName="smoothui_gwent_preset_insane">
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="5"/>	<!-- 300% -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="6"/>	<!-- Instant -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOpponentCardTime" value="5"/>	<!-- Off -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentTurnBannerHold"   value="6"/>	<!-- Off -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="3"/>	<!-- 0.75 s -->
