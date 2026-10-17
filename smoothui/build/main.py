@@ -7,6 +7,7 @@
 
 import argparse
 import datetime
+import re
 import shutil
 from functools import partial
 
@@ -43,6 +44,8 @@ from .strings import build_strings, check_tool
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 DEFAULT_FPS = 120
+# A game version at the end of a folder name: 5.01, 5.00c
+GAME_VERSION_SUFFIX = re.compile(r"\d+(?:\.\d+)+[a-z]?$")
 
 def parse_args():
     ap = argparse.ArgumentParser(
@@ -101,6 +104,14 @@ def parse_args():
         ap.error(f"--fps {args.fps} is outside 1-255")
     return args
 
+def check_game_version(uncooked_files, targeted_game_version):
+    """Fail if the uncooked files' folder name ends with a game version (RemasteredUncooked5.00c) that is
+    not targeted_game_version. Other names (RemasteredUncooked) say nothing, so they pass."""
+    match = GAME_VERSION_SUFFIX.search(uncooked_files.name)     # .name ignores trailing slashes
+    if match and match.group() != targeted_game_version:
+        fail(f"uncooked_files is for game version {match.group()} ({uncooked_files}), but targeted_game_version "
+             f"in the [versions] section of the config file is {targeted_game_version!r}")
+
 def main():
     args = parse_args()
 
@@ -118,6 +129,7 @@ def main():
     base_version = config['versions']['created_mod_version']
     if not base_version or not base_version.startswith("v"):
         fail("Invalid created_mod_version in [versions] section of config file")
+    check_game_version(paths['uncooked_files'], config['versions'].get('targeted_game_version'))
     fps_list = (120, 60) if args.make_release else (args.fps,)
     versions = [build_version(base_version, fps) for fps in fps_list]
 
