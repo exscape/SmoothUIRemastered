@@ -9,7 +9,9 @@ dev-tools/build-as3.py) as a DoABC tag of its own, and changes eight of the file
 - CardTweenManager.calcTweenDuration divides the distance a card moves by GwentSpeed.cardSpeed rather
   than by MOVE_TWEEN_SPEED (2000 px per second)
 - CardTweenManager.tweenTo, which starts a card's move, then calls GwentSpeed.onCardTween(the move)
-  (which puts the card where it goes at once, if moves are instant)
+  (which puts the card where it goes at once, if moves are instant); or, if the card is where it is to
+  go already, GwentSpeed.onCardAtTarget(card, finishCallback) (which ends the instant move that put it
+  there, if tweenTo has just stopped it)
 - AIPlayerController.state_begin_DelayAction waits GwentSpeed.opponentCardDelay rather than 1200 ms
   (with the card the opponent plays shown on screen) before the opponent plays it
 - AIPlayerController.state_begin_SendingCard, which starts moving that card into view, then calls
@@ -26,10 +28,11 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from ..swf_patcher.abc_bytecode import Instruction, assemble, disassemble
+from ..swf_patcher.abc_bytecode import NO_OP_NAMES, Instruction, assemble, disassemble
 from ..swf_patcher.abc_file import (
     PACKAGE_NAMESPACE,
     AbcFile,
+    MethodBody,
     PoolAdditions,
     encode_u30,
     parse_abc,
@@ -48,6 +51,8 @@ AI_CLASS = "red.game.witcher3.menus.gwint.AIPlayerController"
 FX_CLASS = "red.game.witcher3.menus.gwint.CardFXManager"
 FX_SPAWNERS = ("spawnFX", "playRowEffect", "spawnFX_Location")
 AI_DELAY = 1200     # ms, in AIPlayerController.state_begin_DelayAction
+# CardTweenManager.tweenTo(card, targetX, targetY, finishCallback): the local variables of its arguments
+TWEEN_TO_ARGUMENTS, TWEEN_TO_CARD, TWEEN_TO_CALLBACK = 4, 1, 4
 BANNER_CLASS = "mcStateMessage"     # the banners' W3MessageQueue, for the report
 # DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
 DO_ABC_LAZY = 1
@@ -74,6 +79,7 @@ def apply(swf: SwfEdit) -> FixResult:
     opponent_card_delay = additions.qname(public, "opponentCardDelay")
     on_card_sent = additions.qname(public, "onOpponentCardSent")
     on_card_tween = additions.qname(public, "onCardTween")
+    on_card_at_target = additions.qname(public, "onCardAtTarget")
     on_card_fx = additions.qname(public, "onCardFX")
 
     config_ui = _method(abc, MENU_CLASS, "configUI")
@@ -89,11 +95,15 @@ def apply(swf: SwfEdit) -> FixResult:
         # ... / GwentSpeed.cardSpeed
         tween_duration: _replace_speed(abc, tween_duration, bytes([OP_GETLEX]) + encode_u30(speed_class)
                                        + bytes([OP_GETPROPERTY]) + encode_u30(card_speed)),
-        # ...; GwentSpeed.onCardTween(curTween); return curTween (its earlier returns make no move)
-        tween_to: _insert_before_return(abc, tween_to, f"{TWEEN_CLASS}.tweenTo", _returned_local,
-                                        lambda local: bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                        + _getlocal(local) + bytes([OP_CALLPROPVOID])
-                                        + encode_u30(on_card_tween) + encode_u30(1), only_return=False),
+        # ...; GwentSpeed.onCardTween(curTween); return curTween
+        # and if the card is there already: GwentSpeed.onCardAtTarget(card, finishCallback); return null
+        tween_to: _hook_tween_to(abc, tween_to,
+                                 lambda local: bytes([OP_GETLEX]) + encode_u30(speed_class)
+                                 + _getlocal(local) + bytes([OP_CALLPROPVOID])
+                                 + encode_u30(on_card_tween) + encode_u30(1),
+                                 bytes([OP_GETLEX]) + encode_u30(speed_class)
+                                 + _getlocal(TWEEN_TO_CARD) + _getlocal(TWEEN_TO_CALLBACK) + bytes([OP_CALLPROPVOID])
+                                 + encode_u30(on_card_at_target) + encode_u30(2)),
         # new Timer(GwentSpeed.opponentCardDelay, 1)
         ai_delay: _replace_ai_delay(abc, ai_delay, bytes([OP_GETLEX]) + encode_u30(speed_class)
                                     + bytes([OP_GETPROPERTY]) + encode_u30(opponent_card_delay)),
@@ -151,9 +161,7 @@ def _insert_before_config_call(abc: AbcFile, method: int, code: bytes) -> tuple[
                      in zip(instructions[start:start + len(pattern)], pattern))]
     if len(starts) != 1:
         raise CantApply(f"{MENU_CLASS}.configUI: expected 1 OnConfigUI call, found {len(starts)}")
-    start = starts[0]
-    first = instructions[start]
-    return assemble(body.code, instructions, {start: code + body.code[first.offset:first.end]}, body.exceptions)
+    return _insert(body, instructions, {starts[0]: code})
 
 
 def _replace_speed(abc: AbcFile, method: int, code: bytes) -> tuple[bytes, list]:
@@ -175,6 +183,35 @@ def _insert_before_return(abc: AbcFile, method: int, description: str, find_loca
     to the stack: it must fit the method's max_stack, which stays as it is."""
     body = abc.bodies[method]
     instructions = disassemble(body.code)
+    at = _final_return(instructions, description, only_return)
+    return _insert(body, instructions, {at: code(find_local(abc, instructions, description))})
+
+
+def _hook_tween_to(abc: AbcFile, method: int, on_tween, on_at_target: bytes) -> tuple[bytes, list]:
+    """CardTweenManager.tweenTo with on_tween(local) inserted before its final statement, `return <the move
+    it made>` (see _insert_before_return), and on_at_target before its `return null` for a card that is
+    where it is to go already: its only return after it stops the card's move (tryStopCardTween)"""
+    description = f"{TWEEN_CLASS}.tweenTo"
+    if len(abc.methods[method].param_types) != TWEEN_TO_ARGUMENTS:
+        raise CantApply(f"{description}: expected {TWEEN_TO_ARGUMENTS} arguments")
+    body = abc.bodies[method]
+    instructions = disassemble(body.code)
+    final = _final_return(instructions, description, only_return=False)
+    stops = [i for i, ins in enumerate(instructions) if _matches(abc, ins, "callpropvoid", "tryStopCardTween")]
+    if len(stops) != 1:
+        raise CantApply(f"{description}: expected 1 tryStopCardTween call, found {len(stops)}")
+    real = [i for i, ins in enumerate(instructions) if ins.name not in NO_OP_NAMES]
+    null_returns = [real[k] for k in range(len(real) - 1) if stops[0] < real[k] < final
+                    and instructions[real[k]].name == "pushnull" and instructions[real[k + 1]].name == "returnvalue"]
+    if len(null_returns) != 1:
+        raise CantApply(f"{description}: expected 1 return null after tryStopCardTween, found {len(null_returns)}")
+    return _insert(body, instructions, {null_returns[0]: on_at_target,
+                                        final: on_tween(_returned_local(abc, instructions, description))})
+
+
+def _final_return(instructions: list[Instruction], description: str, only_return: bool) -> int:
+    """Where a method's final statement starts: a return at its end (its only one, unless only_return is
+    false), either a plain return or `return <local variable>`"""
     returns = [i for i, ins in enumerate(instructions) if ins.name in ("returnvoid", "returnvalue")]
     if not returns or returns[-1] != len(instructions) - 1 or (only_return and len(returns) > 1):
         raise CantApply(f"{description}: expected {'1 return' if only_return else 'a return'}, at its end")
@@ -184,9 +221,13 @@ def _insert_before_return(abc: AbcFile, method: int, description: str, find_loca
         if len(instructions) < 2 or _local_of(instructions[at - 1]) is None:
             raise CantApply(f"{description}: expected it to end with return <local variable>")
         at -= 1
-    local = find_local(abc, instructions, description)
-    first = instructions[at]
-    return assemble(body.code, instructions, {at: code(local) + body.code[first.offset:first.end]}, body.exceptions)
+    return at
+
+
+def _insert(body: MethodBody, instructions: list[Instruction], inserts: dict[int, bytes]) -> tuple[bytes, list]:
+    """The method with code inserted before some of its instructions: instruction index -> code"""
+    return assemble(body.code, instructions, {at: code + body.code[instructions[at].offset:instructions[at].end]
+                                              for at, code in inserts.items()}, body.exceptions)
 
 
 def _this(abc: AbcFile, instructions: list[Instruction], description: str) -> int:

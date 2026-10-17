@@ -2,6 +2,7 @@ package smoothui.gwent
 {
 	import flash.display.MovieClip;
 	import flash.events.Event;
+	import flash.utils.Dictionary;
 	import flash.utils.getDefinitionByName;
 	import flash.utils.getQualifiedClassName;
 	import flash.utils.getTimer;
@@ -16,7 +17,8 @@ package smoothui.gwent
 	 * the file's methods to use it (see gwent_speed_options.py):
 	 * - GwintGameMenu.configUI calls install(this), before it tells the game script that it is ready
 	 * - CardTweenManager.calcTweenDuration divides by cardSpeed rather than its MOVE_TWEEN_SPEED (2000)
-	 * - CardTweenManager.tweenTo calls onCardTween(the move it starts)
+	 * - CardTweenManager.tweenTo calls onCardTween(the move it starts), or onCardAtTarget(card, callback) if
+	 *   the card is where it is to go already (and it makes no move)
 	 * - CardFXManager.spawnFX, playRowEffect and spawnFX_Location call onCardFX(the card effect they start)
 	 * - AIPlayerController.state_begin_DelayAction waits opponentCardDelay rather than 1200 ms before the
 	 *   opponent plays the card it shows on screen
@@ -105,6 +107,8 @@ package smoothui.gwent
 		private static var lastLabel:String = null;    // the queue's label on the frame before
 		private static var hold:Number = -1;           // the current banner's hold (see bannerHold)
 		private static var shownSince:int = -1;        // getTimer() when the current banner was fully shown
+		// card -> the last instant move that onCardTween put it in place for (weak keys)
+		private static var placedMoves:Dictionary = new Dictionary(true);
 
 		/** menu: the GwintGameMenu */
 		public static function install(menu:Object):void
@@ -123,6 +127,7 @@ package smoothui.gwent
 			hold = -1;
 			shownSince = -1;
 			flow = null;
+			placedMoves = new Dictionary(true);
 			// An error here would stop the menu from starting the match
 			try
 			{
@@ -154,10 +159,41 @@ package smoothui.gwent
 				var card:Object = tween.target;
 				card.x = tween.getValue("x");
 				card.y = tween.getValue("y");
+				placedMoves[card] = tween;
 			}
 			catch (error:Error)
 			{
 				trace("GFX [SmoothUI] GwentSpeed.onCardTween failed: " + error);
+			}
+		}
+
+		/** card, finishCallback: what CardTweenManager.tweenTo was asked to move (and call when the move ends),
+		 * when the card is where it is to go already, so that tweenTo makes no move (and calls nothing) */
+		public static function onCardAtTarget(card:Object, finishCallback:Function):void
+		{
+			// With instant moves, the card can be there because onCardTween put it there, for a move that hasn't
+			// ended yet, and that tweenTo has just stopped (without calling back) before it gave up. That happens
+			// if a row places its cards twice before GTween's next tick, with as many cards. The game expects a
+			// stopped move to be replaced by one that calls back: without the call, a card that was moving onto
+			// the board never lands (no landing effect, and it neither gets nor gives tight bond, morale or horn
+			// boosts). So the stopped move ends after all (on GTween's next tick, as it would have), and calls
+			// what the new one would have. (Without instant moves, a card only gets where it goes as its move ends.)
+			// With no finishCallback, it ends without a call, as the new move would: left stopped, it would stay
+			// there to resume, and a later call for a card that got there long since would call back.
+			if (card == null)
+				return;
+			try
+			{
+				var tween:Object = placedMoves[card];
+				if (tween == null || !tween.paused || tween.position >= tween.duration
+						|| tween.getValue("x") != card.x || tween.getValue("y") != card.y)
+					return;
+				tween.onComplete = finishCallback;
+				tween.paused = false;
+			}
+			catch (error:Error)
+			{
+				trace("GFX [SmoothUI] GwentSpeed.onCardAtTarget failed: " + error);
 			}
 		}
 
