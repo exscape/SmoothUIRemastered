@@ -26,7 +26,6 @@ from ..common import fail, normalize_version, print_step_header, profile_key
 from ..patcher import dev_mode, patcher_core
 from ..patcher.fixes import check_fix_name
 from ..patcher.patcher_core import PatchSettings
-from ..witcher3.redswf import swf_sha256
 from ..patcher.swf_patcher import (
     SpeedRule,
     SpriteRef,
@@ -34,6 +33,7 @@ from ..patcher.swf_patcher import (
     parse_sprite_pattern,
 )
 from ..witcher3.bundle import BundleError, extract, read_bundle
+from ..witcher3.redswf import swf_sha256
 from .manifest_diff import SUFFIXES, version_key
 from .profile import apply_overrides
 from .reviewed_warnings import WarningReview, print_warning_summary, review_of

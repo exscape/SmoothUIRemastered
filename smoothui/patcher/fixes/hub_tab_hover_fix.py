@@ -14,7 +14,12 @@ the arrow keys and bumpers move it too.
 
 from __future__ import annotations
 
-from ..swf_patcher.abc_bytecode import Instruction, assemble, branch_targets, disassemble
+from ..swf_patcher.abc_bytecode import (
+    Instruction,
+    assemble,
+    branch_targets,
+    disassemble,
+)
 from ..swf_patcher.abc_file import AbcFile, encode_u30
 from .swf_edit import CantApply, FixResult, SwfEdit
 

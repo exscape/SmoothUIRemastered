@@ -24,7 +24,6 @@ from colorama import Back, Fore, Style
 from ..common import fail, profile_key
 from .shared import REVIEWED_WARNINGS
 
-
 REVIEW = re.compile(r"\S+ \S+ @[0-9a-f]{8}")
 
 

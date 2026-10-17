@@ -117,8 +117,8 @@ def diff_manifests(old: dict, new: dict) -> list[str]:
 
     stretched = [sum(sprite["stretched"] for record in manifest["files"].values()
                      for sprite in record.get("report", {}).get("sprites", [])) for manifest in (old, new)]
-    lines += ["", f"{changed} of {len(old_files.keys() & new_files.keys())} files in both changed; "
-                  f"stretched clips in all files: {stretched[0]} -> {stretched[1]}"]
+    lines += ["", (f"{changed} of {len(old_files.keys() & new_files.keys())} files in both changed; "
+                  f"stretched clips in all files: {stretched[0]} -> {stretched[1]}")]
     return lines
 
 

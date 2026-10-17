@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 from ..common import print_substep_header, profile_key
+from ..witcher3.redswf import replace_swf
 from .dev_mode import dev_make_body_hook, resolve_dev_target
 from .fixes import AFTER_RESCALE, BEFORE_RESCALE, apply_fixes
-from ..witcher3.redswf import replace_swf
 from .swf import (
     FPS_FIXED_POINT_SCALE,
     MAX_RAW_FPS,
