@@ -36,9 +36,14 @@ MAX_RATIO = 0xFFFF
 # bytes. Such changes are counted as "subpixel" in TweenStats.
 MIN_MOTION = 0.5
 
-# A step more than this many times the median step of its run (and over OUTLIER_MIN_MOTION) is a
-# jump, not part of the tween
+# A step is a jump, not part of the tween, if it is over OUTLIER_MIN_MOTION and more than
+# OUTLIER_FACTOR times the median step of its run AND more than OUTLIER_NEIGHBOUR_FACTOR times the
+# larger of its neighbours in the run. The median alone misfires on a run that drifts slowly and then
+# moves fast (an eased move, a fade over a few frames): its median is tiny, while each of its fast
+# steps is close to the ones around it. A step that stands out from its neighbours (an object popping
+# in or out in one frame) stays a jump: whether that was meant to be instant can't be told.
 OUTLIER_FACTOR = 8.0
+OUTLIER_NEIGHBOUR_FACTOR = 3.0
 OUTLIER_MIN_MOTION = 20
 # Rotations larger than this per frame are ambiguous to interpolate (which way round?)
 MAX_ROTATION_DEGREES = 60.0
@@ -74,7 +79,7 @@ class TweenStats:
     changes: int = 0        # object changes between consecutive frames
     interpolated: int = 0
     single_step: int = 0    # isolated changes: a jump, not a tween
-    outlier: int = 0        # much larger than the rest of its run
+    outlier: int = 0        # much larger than the steps around it
     rotation: int = 0       # rotates too far to interpolate
     subpixel: int = 0       # too small to be worth interpolating
 
@@ -195,7 +200,10 @@ def find_tweens(snapshots: list[Snapshot]) -> tuple[dict[int, list[TweenStep]], 
             for i, k in enumerate(run):
                 others = sorted(magnitudes[:i] + magnitudes[i + 1:])
                 median = others[len(others) // 2]
-                if median > 0 and magnitudes[i] > OUTLIER_FACTOR * median and magnitudes[i] > OUTLIER_MIN_MOTION:
+                neighbour = max(magnitudes[max(i - 1, 0):i] + magnitudes[i + 1:i + 2])
+                if (median > 0 and magnitudes[i] > OUTLIER_FACTOR * median
+                        and magnitudes[i] > OUTLIER_NEIGHBOUR_FACTOR * neighbour
+                        and magnitudes[i] > OUTLIER_MIN_MOTION):
                     stats.outlier += 1
                     continue
                 if magnitudes[i] < MIN_MOTION:
