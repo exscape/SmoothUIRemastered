@@ -34,5 +34,5 @@ w3stringsr = 'E:\Temp\Witcher3Modding\Tools\w3stringsr.exe'
 
 # Version information of the Smooth UI Remastered mod that is created.
 [versions]
-created_mod_version = "v0.3.2"
+created_mod_version = "v0.3.3dev"
 targeted_game_version = "5.01"
