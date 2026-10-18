@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from . import (
     gwent_3d_bug_fix,
+    gwent_card_fx_filter_fix,
     gwent_coin_shadow_fix,
     gwent_fog_intro_fix,
     gwent_frost_flicker_fix,
@@ -22,7 +23,7 @@ from . import (
 )
 from .swf_edit import AFTER_RESCALE, BEFORE_RESCALE, CantApply, FixResult, SwfEdit
 
-FIXES = {fix.NAME: fix for fix in (gwent_3d_bug_fix, gwent_coin_shadow_fix, gwent_fog_intro_fix,
+FIXES = {fix.NAME: fix for fix in (gwent_3d_bug_fix, gwent_card_fx_filter_fix, gwent_coin_shadow_fix, gwent_fog_intro_fix,
                                    gwent_frost_flicker_fix, gwent_rain_loop_fix, gwent_speed_options,
                                    hub_tab_hover_fix)}
 

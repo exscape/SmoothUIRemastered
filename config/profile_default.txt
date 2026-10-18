@@ -77,6 +77,10 @@ gameplay/gui_new/swf/gwint/gwint_game.redswf # Default 24 fps
     # The "fix" hides the shadow; it looks pretty okay still.
     fix: gwent-coin-shadow-fix
 
+    # Fix bugs in the game's card FX (as of 5.01): filters that Scaleform renders wrong draw a red box
+    # in Hero and a grey box in Decoy
+    fix: gwent-card-fx-filter-fix
+
     # Inject data from the Gwent speed options in the game's settings menu; see mod_files/
     fix: gwent-speed-options
 

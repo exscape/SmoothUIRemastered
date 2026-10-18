@@ -177,6 +177,55 @@ def build_move(depth: int, matrix: Matrix | None = None, color_transform: ColorT
     return Tag(TagCode.PLACE_OBJECT3 if display_options else TagCode.PLACE_OBJECT2, payload)
 
 
+_KEEP = object()
+
+
+def rewrite_place_object(tag: Tag, *, color_transform=_KEEP, display_options=_KEEP) -> Tag:
+    """The PlaceObject2/3 tag with its colour transform and/or display options (see PlaceObject)
+    replaced; None / () removes them. Other fields stay as they are."""
+    data = tag.payload
+    flags = data[0]
+    flags3 = data[1] if tag.code == TagCode.PLACE_OBJECT3 else 0
+    offset = 2 if tag.code == TagCode.PLACE_OBJECT3 else 1
+    offset += 2     # depth
+    if flags3 & FLAG3_HAS_CLASS_NAME:
+        offset = read_cstring(data, offset)[1]
+    if flags & FLAG_HAS_CHARACTER:
+        offset += 2
+    if flags & FLAG_HAS_MATRIX:
+        offset = _read_matrix(data, offset)[1]
+    head_end = offset
+    old_color_transform = None
+    if flags & FLAG_HAS_COLOR_TRANSFORM:
+        old_color_transform, offset = _read_color_transform(data, offset)
+    middle_start = offset
+    if flags & FLAG_HAS_RATIO:
+        offset += 2
+    if flags & FLAG_HAS_NAME:
+        offset = read_cstring(data, offset)[1]
+    if flags & FLAG_HAS_CLIP_DEPTH:
+        offset += 2
+    middle = data[middle_start:offset]
+    old_options = []
+    for flag, size in DISPLAY_OPTIONS.items():
+        if flags3 & flag:
+            end = _filter_list_end(data, offset) if size is None else offset + size
+            old_options.append((flag, data[offset:end]))
+            offset = end
+    tail = data[offset:]    # clip actions (AS2 only)
+
+    color_transform = old_color_transform if color_transform is _KEEP else color_transform
+    display_options = tuple(old_options) if display_options is _KEEP else tuple(display_options)
+    flags = flags & ~FLAG_HAS_COLOR_TRANSFORM | (FLAG_HAS_COLOR_TRANSFORM if color_transform else 0)
+    flags3 = flags3 & ~sum(DISPLAY_OPTIONS) | sum(flag for flag, _ in display_options)
+    code = TagCode.PLACE_OBJECT3 if tag.code == TagCode.PLACE_OBJECT3 or display_options else TagCode.PLACE_OBJECT2
+    payload = (bytes([flags, flags3] if code == TagCode.PLACE_OBJECT3 else [flags])
+               + data[2 if tag.code == TagCode.PLACE_OBJECT3 else 1:head_end]
+               + (_encode_color_transform(color_transform) if color_transform else b"")
+               + middle + b"".join(field for _, field in sorted(display_options)) + tail)
+    return Tag(code, payload)
+
+
 def _read_matrix(data: bytes, offset: int) -> tuple[Matrix, int]:
     bits = BitReader(data, offset)
     scale_x = scale_y = FIXED_ONE
