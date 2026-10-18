@@ -3,7 +3,7 @@
      Each option's value is in its displayName (the script reads it from there): the setting's prefix, then
      the value with _ for the decimal point (smoothui_gwent_banner_hold_0_75: 0.75 s), or "default" for the
      game's own. Allowed: card speed 50-1000 (%) or instant, times 0 or more (s; banners can be held longer than the
-     game's 2.3 s too; with 0, they don't show at all).
+     game's 2.3 s too; with 0, they don't show at all), effect speeds 1-10 (times the game's) or instant.
      The default option (..._default) doesn't have to be the first: the script gives every setting its default option
      the first time (see SmoothUI_InitOptions). A setting added later starts out at its first option. -->
 <UserConfig>
@@ -20,7 +20,6 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="0"/>	<!-- Default -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="0"/>	<!-- Default -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="0"/>	<!-- Default -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="0"/>	<!-- Default -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="0"/>	<!-- Default -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="0"/>	<!-- Default -->
 			</Preset>
@@ -31,7 +30,6 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="1"/>	<!-- 1.5 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="1"/>	<!-- 1.5 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="1"/>	<!-- 1.5 s -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="0"/>	<!-- Default -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="0"/>	<!-- Default -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="0"/>	<!-- Default -->
 			</Preset>
@@ -42,9 +40,8 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="3"/>	<!-- 0.75 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="2"/>	<!-- 1 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="3"/>	<!-- 0.75 s -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="0"/>	<!-- Default -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="0"/>	<!-- Default -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="0"/>	<!-- Default -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="1"/>	<!-- 200% -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="1"/>	<!-- 200% -->
 			</Preset>
 			<Preset id="3" displayName="smoothui_gwent_preset_insane">
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="6"/>	<!-- Instant -->
@@ -53,9 +50,8 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="3"/>	<!-- 0.75 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="2"/>	<!-- 1 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="3"/>	<!-- 0.75 s -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="0"/>	<!-- Default -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="1"/>	<!-- Off -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="1"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="3"/>	<!-- 400% -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="3"/>	<!-- 400% -->
 			</Preset>
 			<Preset id="4" displayName="smoothui_gwent_preset_hyperspeed">
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="6"/>	<!-- Instant -->
@@ -64,9 +60,8 @@
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentFirstBannerHold"  value="6"/>	<!-- Off -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentResultBannerHold" value="4"/>	<!-- 0.5 s -->
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentOtherBannerHold"  value="6"/>	<!-- Off -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentLandingEffects"   value="1"/>	<!-- Off -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="1"/>	<!-- Off -->
-				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="1"/>	<!-- Off -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardEffects"      value="4"/>	<!-- Instant -->
+				<Entry overrideGroup="SmoothUIRemastered" varId="GwentWeatherIntros"    value="4"/>	<!-- Instant -->
 			</Preset>
 		</PresetsArray>
 		<VisibleVars>
@@ -93,26 +88,27 @@
 					<Option id="5" displayName="smoothui_gwent_opponent_card_time_0"><Entry varId="GwentOpponentCardTime" value="5"/></Option>
 				</OptionsArray>
 			</Var>
-			<!-- Card effects (animations the game waits for) play as in the game (default), or are skipped (0):
-			     a unit card landing on the board (longer for heroes) -->
-			<Var id="GwentLandingEffects" displayName="smoothui_gwent_landing_effects" displayType="OPTIONS">
-				<OptionsArray>
-					<Option id="0" displayName="smoothui_gwent_effect_default"><Entry varId="GwentLandingEffects" value="0"/></Option>
-					<Option id="1" displayName="smoothui_gwent_effect_0"><Entry varId="GwentLandingEffects" value="1"/></Option>
-				</OptionsArray>
-			</Var>
-			<!-- The same, for special cards and abilities: Decoy, Horn, Scorch, Mardroeme, Medic, Muster, Tight Bond... -->
+			<!-- How fast card effects (animations the game waits for) play: as in the game (default), a multiple of
+			     that (1-10), or not at all (instant). For a unit card landing on the board (longer for heroes), special
+			     cards and abilities: Decoy, Horn, Scorch, Mardroeme, Medic, Muster, Tight Bond...
+			     Changing the options' order? Users' choices are saved as option ids: see SmoothUI_UpdateOptions. -->
 			<Var id="GwentCardEffects" displayName="smoothui_gwent_card_effects" displayType="OPTIONS">
 				<OptionsArray>
 					<Option id="0" displayName="smoothui_gwent_effect_default"><Entry varId="GwentCardEffects" value="0"/></Option>
-					<Option id="1" displayName="smoothui_gwent_effect_0"><Entry varId="GwentCardEffects" value="1"/></Option>
+					<Option id="1" displayName="smoothui_gwent_effect_2"><Entry varId="GwentCardEffects" value="1"/></Option>
+					<Option id="2" displayName="smoothui_gwent_effect_3"><Entry varId="GwentCardEffects" value="2"/></Option>
+					<Option id="3" displayName="smoothui_gwent_effect_4"><Entry varId="GwentCardEffects" value="3"/></Option>
+					<Option id="4" displayName="smoothui_gwent_effect_instant"><Entry varId="GwentCardEffects" value="4"/></Option>
 				</OptionsArray>
 			</Var>
 			<!-- The same, for a weather card's intro (its ongoing effect on the rows still shows) -->
 			<Var id="GwentWeatherIntros" displayName="smoothui_gwent_weather_intros" displayType="OPTIONS">
 				<OptionsArray>
 					<Option id="0" displayName="smoothui_gwent_effect_default"><Entry varId="GwentWeatherIntros" value="0"/></Option>
-					<Option id="1" displayName="smoothui_gwent_effect_0"><Entry varId="GwentWeatherIntros" value="1"/></Option>
+					<Option id="1" displayName="smoothui_gwent_effect_2"><Entry varId="GwentWeatherIntros" value="1"/></Option>
+					<Option id="2" displayName="smoothui_gwent_effect_3"><Entry varId="GwentWeatherIntros" value="2"/></Option>
+					<Option id="3" displayName="smoothui_gwent_effect_4"><Entry varId="GwentWeatherIntros" value="3"/></Option>
+					<Option id="4" displayName="smoothui_gwent_effect_instant"><Entry varId="GwentWeatherIntros" value="4"/></Option>
 				</OptionsArray>
 			</Var>
 			<!-- Seconds the "Your turn", "Opponent's turn" and the player's own "Passed" banners stay fully shown (the
@@ -167,6 +163,8 @@
 			</Var>
 			<!-- Hidden: true once the script gave every setting its default option (see SmoothUI_InitOptions) -->
 			<Var id="DefaultsSet" displayName="smoothui_defaults_set" displayType="TOGGLE" visibilityCondition="hideAlways"/>
+			<!-- Hidden: the version of these settings the user's choices are for (see SmoothUI_UpdateOptions) -->
+			<Var id="SettingsVersion" displayName="smoothui_settings_version" displayType="SLIDER:0:1000:1000" visibilityCondition="hideAlways"/>
 		</VisibleVars>
 	</Group>
 </UserConfig>

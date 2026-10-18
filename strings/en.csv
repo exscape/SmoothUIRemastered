@@ -11,7 +11,7 @@
 2113526036||preset_value_smoothui_gwent_preset_insane|Insane
 2113526037||preset_value_smoothui_gwent_preset_hyperspeed|Hyperspeed
 2113526001||option_smoothui_gwent_card_speed|Gwent: card movement speed
-2113526038||option_smoothui_gwent_card_speed_description|How fast cards move across the board. Effects (weather, card highlights and the like) keep their own speed.
+2113526038||option_smoothui_gwent_card_speed_description|How fast cards move across the board. Instant doesn't show any movement.
 2113526029||preset_value_smoothui_gwent_card_speed_80|80%
 2113526002||preset_value_smoothui_gwent_card_speed_default|Default
 2113526003||preset_value_smoothui_gwent_card_speed_125|125%
@@ -27,14 +27,15 @@
 2113526019||preset_value_smoothui_gwent_opponent_card_time_0_8|0.8 s
 2113526021||preset_value_smoothui_gwent_opponent_card_time_0_4|0.4 s
 2113526023||preset_value_smoothui_gwent_opponent_card_time_0|Off
-2113526045||option_smoothui_gwent_landing_effects|Gwent: card landing effect
-2113526046||option_smoothui_gwent_landing_effects_description|The animation as a unit card lands on the board (longer for heroes), which the game waits for. Off: play goes on at once.
-2113526047||option_smoothui_gwent_card_effects|Gwent: EXPERIMENTAL: special card and ability effects
-2113526048||option_smoothui_gwent_card_effects_description|Experimental: I haven't tested every ability, so it's possible some will not run. Controls the animations of special cards (Decoy, Commander's Horn, Scorch, Mardroeme) and of unit abilities (Spy, Medic, Muster, Tight Bond and the like), which the game waits for. Off: they take effect at once.
-2113526049||option_smoothui_gwent_weather_intros|Gwent: weather intro effect
-2113526050||option_smoothui_gwent_weather_intros_description|The animation as a weather card (or Clear Weather) is played, which the game waits for. Off: the weather takes effect at once; its ongoing effect on the rows still shows.
+2113526047||option_smoothui_gwent_card_effects|Gwent: card effect speed
+2113526048||option_smoothui_gwent_card_effects_description|Decides the speed of card effect animations (e.g. Tight Bond, Spy, Hero cards' burning border, and so on).
+2113526049||option_smoothui_gwent_weather_intros|Gwent: weather intro effect speed
+2113526050||option_smoothui_gwent_weather_intros_description|How fast the animation plays as a weather card is played, which the game waits for. The weather's ongoing effect on the rows keeps its own speed.
 2113526051||preset_value_smoothui_gwent_effect_default|Default
-2113526052||preset_value_smoothui_gwent_effect_0|Off
+2113526053||preset_value_smoothui_gwent_effect_2|200%
+2113526054||preset_value_smoothui_gwent_effect_3|300%
+2113526055||preset_value_smoothui_gwent_effect_4|400%
+2113526052||preset_value_smoothui_gwent_effect_instant|Instant
 2113526007||option_smoothui_gwent_turn_banner_hold|Gwent: turn banner time
 2113526024||option_smoothui_gwent_first_banner_hold|Gwent: coin toss banner time
 2113526028||option_smoothui_gwent_result_banner_hold|Gwent: round result and opponent pass banner time

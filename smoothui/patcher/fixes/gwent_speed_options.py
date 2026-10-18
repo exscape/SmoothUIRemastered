@@ -17,10 +17,15 @@ dev-tools/build-as3.py) as a DoABC tag of its own, and changes eight of the file
 - AIPlayerController.state_begin_SendingCard, which starts moving that card into view, then calls
   GwentSpeed.onOpponentCardSent(this) (which stops it if the card isn't to be shown at all)
 - CardFXManager.spawnFX, playRowEffect and spawnFX_Location, which start a card effect (an animation the
-  game waits for), then call GwentSpeed.onCardFX(the effect) (which skips it, if it is to be skipped)
+  game waits for), then call GwentSpeed.onCardFX(the effect) (which speeds it up or skips it, if the options
+  say so)
 
 GwentSpeed shortens the banners itself, at runtime (see GwentSpeed.as). It is injected after
 the rescale, so the rescaler never sees this code.
+
+To speed up card effects, CardFXStepper (also in gwent_speed.abc) needs to know which frames of them have
+frame scripts, after the rescale: the patcher finds them, and puts them in its ABC in place of a
+placeholder string (see _fx_script_frames).
 """
 
 from __future__ import annotations
@@ -37,6 +42,8 @@ from ..swf_patcher.abc_file import (
     encode_u30,
     parse_abc,
 )
+from ..swf_patcher.code_analysis import CodeAnalysis
+from ..swf_patcher.movie import SwfMovie
 from ..swf_patcher.swf_tags import Tag, TagCode
 from .swf_edit import AFTER_RESCALE, CantApply, FixResult, SwfEdit
 
@@ -54,6 +61,12 @@ AI_DELAY = 1200     # ms, in AIPlayerController.state_begin_DelayAction
 # CardTweenManager.tweenTo(card, targetX, targetY, finishCallback): the local variables of its arguments
 TWEEN_TO_ARGUMENTS, TWEEN_TO_CARD, TWEEN_TO_CALLBACK = 4, 1, 4
 BANNER_CLASS = "mcStateMessage"     # the banners' W3MessageQueue, for the report
+# The string in gwent_speed.abc (CardFXStepper.SCRIPT_FRAMES) that the card effects' frame scripts replace
+SCRIPT_FRAMES_PLACEHOLDER = "@SMOOTHUI_FX_SCRIPT_FRAMES@"
+# Card effects: the classes CardFXManager starts (the ones whose name starts with this, but those below)
+FX_PREFIX = "CardFX"
+FX_MANAGER_PREFIX = "CardFXManager"     # CardFXManager and its 1-frame containers
+FX_ONGOING_SUFFIX = "_Ongoing"          # weather on the rows, which CardFXManager shows and hides itself
 # DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
 DO_ABC_LAZY = 1
 
@@ -62,7 +75,8 @@ OP_GETLEX, OP_GETLOCAL0, OP_GETLOCAL, OP_GETPROPERTY, OP_CALLPROPVOID = 0x60, 0x
 
 def apply(swf: SwfEdit) -> FixResult:
     abc = swf.abc
-    our_abc = _abc_bytes()
+    script_frames, not_sped_up = _fx_script_frames(swf)
+    our_abc = _with_string(_abc_bytes(), SCRIPT_FRAMES_PLACEHOLDER, script_frames)
     ours = parse_abc(our_abc)
     defined = {abc.full_name_of(instance.name) for instance in abc.instances}
     if clash := defined & {ours.full_name_of(instance.name) for instance in ours.instances}:
@@ -128,7 +142,9 @@ def apply(swf: SwfEdit) -> FixResult:
                               "CardTweenManager.tweenTo tells it about card moves, "
                               f"CardFXManager.{'/'.join(FX_SPAWNERS)} about card effects, "
                               "AIPlayerController.state_begin_DelayAction its opponent card delay, "
-                              "AIPlayerController.state_begin_SendingCard tells it about the card")
+                              "AIPlayerController.state_begin_SendingCard tells it about the card"
+                              + (f"; can't speed up {', '.join(not_sped_up)} (frame scripts it would skip)"
+                                 if not_sped_up else ""))
 
 
 def _abc_bytes() -> bytes:
@@ -136,6 +152,67 @@ def _abc_bytes() -> bytes:
         return ABC_PATH.read_bytes()
     except FileNotFoundError:
         raise CantApply(f"{ABC_PATH.name} is missing; build it with dev-tools/build-as3.py") from None
+
+
+def _fx_script_frames(swf: SwfEdit) -> tuple[str, list[str]]:
+    """The frames of the card effects that have frame scripts, for CardFXStepper, as
+    "class=frames;class=frames...": each card effect's class, and the classes in it with frame scripts (named as
+    getQualifiedClassName names them), with their 1-based frame numbers, s before those whose script only calls
+    stop(). It never steps a card effect onto (or over) a frame with a script, but steps the clips in it along
+    with it, so an effect with a clip whose script does more than stop it (or scripts that can't be read) is
+    left out: it isn't sped up. Also returns the classes of those."""
+    movie = SwfMovie(swf.body())
+    scripts = CodeAnalysis(movie).find_frame_scripts()
+    entries, left_out = {}, []
+    for fx_class, ids in sorted(movie.sprites_of_class.items()):
+        if (not fx_class.startswith(FX_PREFIX) or fx_class.startswith(FX_MANAGER_PREFIX)
+                or fx_class.endswith(FX_ONGOING_SUFFIX)):
+            continue
+        classes = {movie.class_name(cid) for cid in _sprite_tree(movie, ids[0])} if len(ids) == 1 else set()
+        found = {name: scripts[name] for name in classes if name in scripts}
+        if (fx_class not in found or not all(found_scripts.recognised for found_scripts in found.values())
+                or any(found_scripts.frames - found_scripts.stop_frames
+                       for name, found_scripts in found.items() if name != fx_class)):
+            left_out.append(fx_class)
+            continue
+        for name, found_scripts in found.items():
+            stops = found_scripts.stop_frames
+            entries[_qualified_name(name)] = ",".join(("s" if frame in stops else "") + str(frame + 1)
+                                                      for frame in sorted(found_scripts.frames))
+    return ";".join(f"{name}={frames}" for name, frames in sorted(entries.items())), left_out
+
+
+def _sprite_tree(movie: SwfMovie, character_id: int) -> set[int]:
+    """A sprite and the sprites placed in it, all the way down"""
+    tree, todo = set(), [character_id]
+    while todo:
+        sprite = todo.pop()
+        if sprite in tree or sprite not in movie.sprites:
+            continue
+        tree.add(sprite)
+        todo.extend(child for child, _ in movie.placements.get(sprite, ()))
+    return tree
+
+
+def _qualified_name(class_name: str) -> str:
+    """A class's name as getQualifiedClassName gives it (package::Class)"""
+    package, _, name = class_name.rpartition(".")
+    return f"{package}::{name}" if package else name
+
+
+def _with_string(abc_bytes: bytes, old: str, new: str) -> bytes:
+    """An ABC file with the string constant old replaced by new. (Nothing in an ABC file refers to a byte
+    offset, so what follows the string can move.)"""
+    abc = parse_abc(abc_bytes)
+    old_entry, new_entry = (encode_u30(len(text.encode())) + text.encode() for text in (old, new))
+    pool = abc_bytes[abc.string_pool.values_start:abc.string_pool.end]
+    if old not in abc.strings or pool.count(old_entry) != 1:
+        raise CantApply(f"{ABC_PATH.name} doesn't have the string {old} (once); rebuild it with dev-tools/build-as3.py")
+    result = (abc_bytes[:abc.string_pool.values_start] + pool.replace(old_entry, new_entry)
+              + abc_bytes[abc.string_pool.end:])
+    if parse_abc(result).strings != [new if text == old else text for text in abc.strings]:
+        raise AssertionError(f"BUG: replacing the string {old} in {ABC_PATH.name} went wrong")
+    return result
 
 
 def _method(abc: AbcFile, class_name: str, method_name: str) -> int:
