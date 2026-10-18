@@ -3,7 +3,7 @@
 # build-main.py -- patch UI frame rates, then pack the mod.
 # The files to patch come from the profile file (see config/). A release (--make-release) is one build
 # per release frame rate (120 and 60 fps), each with its manifest, and ends by listing the compat patches
-# it makes outdated (see manifest_diff.py); other builds are at --fps.
+# it makes outdated (see compat_status.py); other builds are at --fps.
 
 import argparse
 import datetime
@@ -14,7 +14,8 @@ from functools import partial
 from ..common import fail, print_step_header
 from ..patcher import dev_mode, patcher_core
 from ..witcher3.redswf import swf_sha256
-from .manifest_diff import print_changes_since_previous, print_compat_status
+from .compat_status import print_compat_status
+from .manifest_diff import print_changes_since_previous
 from .profile import load_profile
 from .reviewed_warnings import (
     WarningReview,

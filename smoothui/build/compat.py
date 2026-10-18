@@ -8,7 +8,7 @@
 # --smooth-version, optionally with additions from an override file (--overrides; see
 # config/compat_overrides_example.txt).
 # Unless --only-fps or a dev hook is given, each patch also gets a manifest in manifests/compat/.
-# This is used by build-main.py to tell which compat patches become outdated by a new release.
+# build-main.py and manifest-tool.py use these to tell which compat patches a new release makes outdated.
 # Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.3
 
 import argparse
@@ -34,7 +34,6 @@ from ..patcher.swf_patcher import (
 )
 from ..witcher3.bundle import BundleError, extract, read_bundle
 from ..witcher3.redswf import swf_sha256
-from .manifest_diff import SUFFIXES, version_key
 from .profile import apply_overrides
 from .reviewed_warnings import WarningReview, print_warning_summary, review_of
 from .shared import (
@@ -46,6 +45,7 @@ from .shared import (
     enforce_strict,
     finish_work_dir,
     install_and_launch,
+    is_dev_version,
     load_config,
     load_manifest,
     pack_content,
@@ -53,6 +53,7 @@ from .shared import (
     print_file_result,
     print_rule_issues,
     split_build_version,
+    version_key,
     write_json,
     zip_tree,
 )
@@ -228,8 +229,7 @@ def check_not_outdated(smooth_version, force):
     """Fail if smooth_version (without a frame rate specified) is older than the most recent release with a
     manifest, unless force. Dev versions (e.g. v0.4dev) don't count as releases."""
     releases = {split_build_version(path.stem)[0] for path in MANIFEST_DIR.glob("*.json")}
-    releases = [version for version in releases
-                if (key := version_key(version)) is not None and key[1] != SUFFIXES.index("dev")]
+    releases = [version for version in releases if version_key(version) is not None and not is_dev_version(version)]
     newest = max(releases, key=version_key, default=None)
     if newest is None or version_key(smooth_version) is None or version_key(smooth_version) >= version_key(newest):
         return
@@ -432,7 +432,7 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundle
     release (version, e.g. v0.3-60fps; manifest is its manifest), replacing any earlier one: what the
     patch holds, and the release's own output for each of those files. A later release that patches a
     file differently (other settings, fixes or patcher code) makes the patch outdated; so does one that
-    starts patching a file the other mod ships. See manifest_diff.py's compat_patch_problems."""
+    starts patching a file the other mod ships. See compat_status.py's compat_patch_problems."""
     print_step_header(f"Writing compat patch manifest ({version})")
     release_files = {profile_key(key): record for key, record in manifest["files"].items()}
     files = {}

@@ -40,6 +40,12 @@ COMPARE_STORE_WITH_WCC_LITE = True
 
 # A build's version: the base version (created_mod_version in config.toml), then the frame rate
 BUILD_VERSION = re.compile(r"(v.+?)-(\d+)fps")
+# A base version: numbers, then an optional suffix, e.g. v0.3, v0.3.1, v0.3.2dev, v0.3beta
+VERSION = re.compile(r"v(\d+(?:\.\d+)*)([a-z][a-z0-9]*)?")
+# Versions with the same numbers, from least to most recent; other suffixes come before these
+SUFFIXES = ("beta", "dev", "")
+# The frame rate of manifests from before the 60 and 120 fps builds
+OLD_MANIFEST_FPS = 120
 
 # wcc_lite lines that appear on every run and are harmless
 NOISE = [re.compile(p) for p in (
@@ -270,6 +276,30 @@ def split_build_version(version):
     version = normalize_version(version)
     match = BUILD_VERSION.fullmatch(version)
     return (match[1], int(match[2])) if match else (version, None)
+
+def version_key(version):
+    """Sort key for versions like v0.3.1, v0.3beta or v0.3-60fps (the frame rate is ignored; see
+    build_fps), and other mods' versions like v1.55; None if it isn't one. The numbers compare as
+    integers (v0.3.10 comes after v0.3.9), then the suffix (see SUFFIXES)."""
+    match = VERSION.fullmatch(split_build_version(version)[0])
+    if not match:
+        return None
+    suffix = match[2] or ""
+    return tuple(int(number) for number in match[1].split(".")), SUFFIXES.index(suffix) if suffix in SUFFIXES else -1
+
+def is_dev_version(version):
+    key = version_key(version)
+    return key is not None and key[1] == SUFFIXES.index("dev")
+
+def build_fps(version):
+    """The frame rate of the build a version names"""
+    return split_build_version(version)[1] or OLD_MANIFEST_FPS
+
+def release_manifests(fps):
+    """(version, path) of each release manifest in manifests/ of a build at fps, oldest first"""
+    found = [(path.stem, path) for path in MANIFEST_DIR.glob("*.json")
+             if version_key(path.stem) is not None and build_fps(path.stem) == fps]
+    return sorted(found, key=lambda item: version_key(item[0]))
 
 def manifest_path(version):
     """Where a mod release's manifest lives: manifests/<version>.json"""
