@@ -15,6 +15,7 @@ from ..common import fail, print_step_header
 from ..patcher import dev_mode, patcher_core
 from ..witcher3.redswf import swf_sha256
 from .compat_status import print_compat_status
+from .game_files import game_file_report
 from .manifest_diff import print_changes_since_previous
 from .profile import load_profile
 from .reviewed_warnings import (
@@ -31,6 +32,7 @@ from .shared import (
     enforce_strict,
     finish_work_dir,
     install_and_launch,
+    latest_manifests,
     load_config,
     manifest_path,
     pack_content,
@@ -145,6 +147,13 @@ def main():
     if not paths['uncooked_files'].is_dir():
         fail(f"not a directory: {paths['uncooked_files']}")
 
+    # Before building: a release build replaces the latest manifest with one made from these very files
+    game_file_lines, game_files_changed = [], 0
+    if latest := latest_manifests():
+        print_step_header(f"Game files against {', '.join(path.stem for path in latest.values())}")
+        game_file_lines, game_files_changed = game_file_report(paths['uncooked_files'], latest.values())
+        print("\n".join(game_file_lines), flush=True)
+
     # The settings menu's strings, which every build ships (from mod_files/; see strings.py)
     if not args.dry_run:
         check_tool(paths.get('w3stringsr'))
@@ -157,6 +166,9 @@ def main():
     for version, print_issues in zip(versions, issue_printers):
         print_step_header(f"Warnings and errors: {version}")
         print_issues()
+    if game_files_changed:
+        print_step_header("Game files changed since the latest builds (checked before building)")
+        print("\n".join(game_file_lines), flush=True)
 
     if args.make_release and not args.dry_run:
         for version in versions:

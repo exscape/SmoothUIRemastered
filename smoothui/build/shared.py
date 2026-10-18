@@ -46,6 +46,8 @@ VERSION = re.compile(r"v(\d+(?:\.\d+)*)([a-z][a-z0-9]*)?")
 SUFFIXES = ("beta", "dev", "")
 # The frame rate of manifests from before the 60 and 120 fps builds
 OLD_MANIFEST_FPS = 120
+# The frame rates of a release's builds, in the order they are built and reported
+RELEASE_FPS = (120, 60)
 
 # wcc_lite lines that appear on every run and are harmless
 NOISE = [re.compile(p) for p in (
@@ -300,6 +302,10 @@ def release_manifests(fps):
     found = [(path.stem, path) for path in MANIFEST_DIR.glob("*.json")
              if version_key(path.stem) is not None and build_fps(path.stem) == fps]
     return sorted(found, key=lambda item: version_key(item[0]))
+
+def latest_manifests():
+    """{fps: path} of the most recent release manifest at each release frame rate, dev builds included"""
+    return {fps: manifests[-1][1] for fps in RELEASE_FPS if (manifests := release_manifests(fps))}
 
 def manifest_path(version):
     """Where a mod release's manifest lives: manifests/<version>.json"""

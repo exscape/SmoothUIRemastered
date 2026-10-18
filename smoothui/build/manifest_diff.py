@@ -3,7 +3,7 @@ or removed, and per file what changed in its settings, fixes, warnings, code edi
 (stretched or not, speed, interpolation). Only for information.
 
 build-main.py --make-release compares each new manifest with the previous version's at the same frame
-rate (v0.3-60fps with the 60 fps build before it); manifest-tool.py --diff compares any two.
+rate (v0.3-60fps with the 60 fps build before it); version-tool.py --diff compares any two.
 Manifests from before the 60 and 120 fps builds count as 120 fps ones; their reports are in an older
 format, so only their files are compared.
 """

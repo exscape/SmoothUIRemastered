@@ -1,6 +1,6 @@
 """Tell which compat patches (their manifests in manifests/compat/, written by build-compat.py) a build of
 Smooth UI Remastered makes outdated: build-main.py --make-release checks them all at the end, and
-manifest-tool.py does it on request.
+version-tool.py does it on request.
 
 A patch is outdated when the release patches a file the patch ships differently from the build the
 patch was made from (other settings, fixes or patcher code: the output differs), no longer patches one

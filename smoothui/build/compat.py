@@ -8,7 +8,7 @@
 # --smooth-version, optionally with additions from an override file (--overrides; see
 # config/compat_overrides_example.txt).
 # Unless --only-fps or a dev hook is given, each patch also gets a manifest in manifests/compat/.
-# build-main.py and manifest-tool.py use these to tell which compat patches a new release makes outdated.
+# build-main.py and version-tool.py use these to tell which compat patches a new release makes outdated.
 # Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.3
 
 import argparse

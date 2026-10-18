@@ -66,7 +66,7 @@ The conflicting files are patched with the same settings (and frame rate) as in 
 If a mod changes identifiers in an incompatible way, or needs more control, `--overrides FILE` adds settings on top; see `config/compat_overrides_example.txt` for the format.
 
 **Does a new Smooth UI Remastered release need a new compat patch?**  
-Not always. After updating this repository (to download the new release's manifests), run `python manifest-tool.py --check-compat-patch YourModName`.  
+Not always. After updating this repository (to download the new release's manifests), run `python version-tool.py --check-compat-patch YourModName`.  
 This only reads the manifests: for your mod's patches (those of its latest version), it tells whether they still work with that release as they are, or need a rebuild because the release patches their files differently (or now patches more of your mod's files).  
 This needs the manifests that build-compat.py wrote in your copy's `manifests/compat/`, so keep those around. It also can't tell when the other mod (your mod) has been updated; if it has, **a new compat patch is always needed** if a .redswf patched by Smooth UI was changed.
 
@@ -79,11 +79,11 @@ Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwa
 | --- | --- |
 | `build-compat.py` | Builds a compatibility patch against another mod (zip/rar/7z) |
 | `build-main.py` | Builds the mod; mainly intended for my own use |
-| `manifest-tool.py` | Reads the manifests (`manifests/`): checks whether compat patches are up-to-date, and can also `--diff` two release manifests to show changes. |
+| `version-tool.py` | Reads the manifests (`manifests/`): checks whether compat patches are up-to-date, and can also `--diff` two release manifests to show changes, or `--check-game-files` to see whether a game update changed files the mod patches. |
 | `smoothui/common.py` | Various shared logic |
-| `smoothui/build/` | The build process: implements `build-main.py` (`main.py`), `build-compat.py` (`compat.py`) and `manifest-tool.py`, and reads profiles, override files and reviewed warnings (see `config/`) |
+| `smoothui/build/` | The build process: implements `build-main.py` (`main.py`), `build-compat.py` (`compat.py`) and `version-tool.py`, and reads profiles, override files and reviewed warnings (see `config/`) |
 | `smoothui/patcher/` | Binary patcher; creates new, higher framerate `.redswf` files from a given list of files |
 | `smoothui/patcher/swf_patcher/` | Rescales a single SWF: retimes its animations for the new frame rate, and adjusts the ActionScript code that depends on frame numbers |
 | `smoothui/patcher/fixes/` | Pre- or post-FPS patch edits. Fixes for base game bugs, and non-FPS-related Smooth UI features are added here. |
 
-Only build-main.py, build-compat.py and manifest-tool.py can be called as scripts.
+Only build-main.py, build-compat.py and version-tool.py can be called as scripts.

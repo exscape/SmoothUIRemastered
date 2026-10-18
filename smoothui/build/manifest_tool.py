@@ -1,42 +1,46 @@
-"""manifest-tool.py: answers questions about Smooth UI Remastered builds from their manifests (manifests/,
+"""version-tool.py: answers questions about Smooth UI Remastered builds from their manifests (manifests/,
 and manifests/compat/ for the compat patches), without building anything:
 
 --check-all-compat-patches  Which compat patches need a rebuild for the latest Smooth UI builds?
 --check-compat-patch PATCH  Does one other mod's compat patch need a rebuild for them?
 --diff OLD NEW              What changed from one release to another, file by file?
+--check-game-files [DIR]    Check whether the game files (for a new game version) make the mod out-of-date or not, and if so, which files
 
 The checks use the latest manifest at each frame rate (dev builds included), or the release --against
-names; see compat_status.py. The diff is manifest_diff.py's.
-Exit status: 0, or 1 if a check found an outdated patch, or 2 for an invalid command line.
+names; see compat_status.py and game_files.py. The diff is manifest_diff.py's.
+Exit status: 0, or 1 if a check found something outdated, or 2 for an invalid command line.
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-from ..common import normalize_version
+from ..common import normalize_version, print_step_header
 from .compat_status import newest_compat_patches, print_compat_status
+from .game_files import game_file_report
 from .manifest_diff import print_manifest_diff
 from .shared import (
     COMPAT_MANIFEST_DIR,
     OLD_MANIFEST_FPS,
+    RELEASE_FPS,
     build_version,
+    config_paths,
+    latest_manifests,
+    load_config,
     load_manifest,
     manifest_path,
-    release_manifests,
 )
 
-# The frame rates of a release's builds, in the order they are reported
-FPS_LIST = (120, 60)
-
 EXAMPLES = """examples:
-  manifest-tool.py --check-all-compat-patches
+  version-tool.py --check-all-compat-patches
       which compat patches the latest builds (e.g. v0.3.2dev-120fps and -60fps) make outdated
-  manifest-tool.py --check-all-compat-patches --against v0.3.1
-  manifest-tool.py --check-compat-patch SortEverything
-  manifest-tool.py --check-compat-patch manifests/compat/v0.3.1-60fps_SortEverything_v1.55.json
-  manifest-tool.py --diff v0.3.1 v0.3.2dev
-      what changed from v0.3.1 to v0.3.2dev, for each frame rate (or e.g. v0.3.1-60fps for one build)"""
+  version-tool.py --check-all-compat-patches --against v0.3.1
+  version-tool.py --check-compat-patch SortEverything
+  version-tool.py --check-compat-patch manifests/compat/v0.3.1-60fps_SortEverything_v1.55.json
+  version-tool.py --diff v0.3.1 v0.3.2dev
+      what changed from v0.3.1 to v0.3.2dev, for each frame rate (or e.g. v0.3.1-60fps for one build)
+  version-tool.py --check-game-files
+      which files the latest builds patched have changed in the uncooked files (config/config.toml)"""
 
 
 def main(argv=None):
@@ -54,6 +58,10 @@ def main(argv=None):
     mode.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"),
                       help="show what changed from one release to another: versions (v0.3.1 for both of its "
                            "builds, v0.3.1-60fps for one) or paths to their manifests")
+    mode.add_argument("--check-game-files", nargs="?", const="", metavar="UNCOOKED_DIR",
+                      help="tell which files the latest Smooth UI builds patched have changed in the game's "
+                           "uncooked files (by default uncooked_files in config/config.toml), e.g. after a game "
+                           "patch, and which compat patches ship them")
     ap.add_argument("--against", metavar="VERSION",
                     help="with --check-...: check against this release (e.g. v0.3.1, or v0.3.1-60fps for one "
                          "build) rather than the latest builds")
@@ -72,8 +80,17 @@ def main(argv=None):
     if args.against:
         targets = release_builds(ap, args.against)
     else:
-        targets = {fps: manifests[-1][1] for fps in FPS_LIST if (manifests := release_manifests(fps))}
+        targets = latest_manifests()
     against = args.against or "the latest builds"
+
+    if args.check_game_files is not None:
+        uncooked_dir = Path(args.check_game_files) if args.check_game_files else config_paths(load_config())["uncooked_files"]
+        if not uncooked_dir.is_dir():
+            ap.error(f"not a directory: {uncooked_dir}")
+        print_step_header(f"Game files against {', '.join(path.stem for path in targets.values())}")
+        lines, changed = game_file_report(uncooked_dir, targets.values())
+        print("\n".join(lines), flush=True)
+        sys.exit(1 if changed else 0)
 
     patch_arg, patch = args.check_compat_patch, None
     if patch_arg and patch_arg.endswith(".json"):
@@ -113,7 +130,7 @@ def release_builds(ap, version_or_path) -> dict[int, Path]:
         if "mod_name" in manifest:
             ap.error(f"{path} is a compat patch's manifest; check it with --check-compat-patch")
         return {manifest.get("fps", OLD_MANIFEST_FPS): path}
-    builds = {fps: manifest_path(build_version(version_or_path, fps)) for fps in FPS_LIST}
+    builds = {fps: manifest_path(build_version(version_or_path, fps)) for fps in RELEASE_FPS}
     builds = {fps: path for fps, path in builds.items() if path.is_file()}
     if not builds:
         ap.error(f"no manifest of {normalize_version(version_or_path)} in {path.parent}")
@@ -126,7 +143,7 @@ def diff_pairs(ap, old, new) -> list[tuple[Path, Path]]:
     old_builds, new_builds = release_builds(ap, old), release_builds(ap, new)
     if len(old_builds) == 1 and len(new_builds) == 1:
         return [(next(iter(old_builds.values())), next(iter(new_builds.values())))]
-    pairs = [(old_builds[fps], new_builds[fps]) for fps in FPS_LIST if fps in old_builds and fps in new_builds]
+    pairs = [(old_builds[fps], new_builds[fps]) for fps in RELEASE_FPS if fps in old_builds and fps in new_builds]
     if not pairs:
         ap.error(f"{old} and {new} have no builds at the same frame rate; name the two builds to compare")
     return pairs
