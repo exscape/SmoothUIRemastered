@@ -1,4 +1,12 @@
 
+# v0.3.2
+
+* Gwent: add card effects speed settings (from Default/Off to Default/200%/300%/400%/Instant) -- Instant is a better name than Off
+* Gwent: add weather FX speed setting (only affects Clear Weather visually, but returns control to the player/AI faster for the others as well)
+* Gwent: fix more base game bugs: remove red rectangle around the Hero card placement animation, and huge gray rectangle + red tint on Decoy
+* Gwent: remove separate "landing effects" setting and use "card effects": the game separates them, but most players probably don't (Spy and Hero cards are "landing effects", everything else like Tight Bond, Muster, Scorch "card effects").
+* Gwent: Improve a few animations, e.g. coin toss (glint returned), Tight Bond (smoother); a few others. Nothing major.
+
 # v0.3.1
 
 * Gwent speed options! The old sped-up versions were appreciated for Gwent especially, so this version adds proper controls to the Settings > Mods menu. There are five presets, and each parameter can be adjusted manually.
