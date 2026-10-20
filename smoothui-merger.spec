@@ -3,7 +3,11 @@
 #     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec
 # Output: dist/SmoothUIMerger/ with SmoothUILauncher.exe, SmoothUIMerger.exe, _internal/
 import hashlib
+import importlib.metadata
+import platform
+import re
 import shutil
+import sys
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -54,6 +58,19 @@ def check_bootloader():
 check_bootloader()
 
 
+def is_lgpl(dist):
+    meta = dist.metadata
+    text = " ".join([meta.get("License-Expression") or "", meta.get("License") or "", *(meta.get_all("Classifier") or [])])
+    return "LGPL" in text or "Lesser General Public" in text
+
+
+# The LGPL lets users replace the library with a modified version: collect LGPL packages (py7zr and
+# its compression libraries) as .py files in _internal\ rather than into the exe's archive. (Their
+# compiled extensions are separate files anyway.)
+LGPL_MODULES = sorted(module for module, dists in importlib.metadata.packages_distributions().items()
+                      if any(is_lgpl(importlib.metadata.distribution(name)) for name in dists))
+
+
 def version_info(file_description, original_filename):
     dotted = ".".join(map(str, TOOL_VERSION))
     return VSVersionInfo(
@@ -92,10 +109,25 @@ merger_a = Analysis(
     binaries=[],
     datas=collect_data_files("customtkinter"),  # themes/fonts; it fails at startup without these
     hiddenimports=[],
-    excludes=[],
+    # pybcj, pyppmd and inflate64 (for py7zr) fall back to importing importlib_metadata on Python < 3.8;
+    # PyInstaller resolves that to setuptools' vendored copy, which pulls in all of setuptools.
+    # (Excluding importlib_metadata itself makes PyInstaller's setuptools hook fail.)
+    excludes=["setuptools", "_distutils_hack", "pkg_resources"],
     noarchive=False,
     optimize=0,
+    module_collection_mode={module: "py" for module in LGPL_MODULES},
 )
+
+
+def is_ucrt(dest_name):
+    name = dest_name.lower()
+    return name == "ucrtbase.dll" or name.startswith("api-ms-win-")
+
+
+# The Universal CRT is part of Windows 10 and later, so it's never shipped. (PyInstaller collects any copy it
+# finds in PATH, e.g. a JDK's.) VCRUNTIME140.dll is not part of Windows, and stays.
+for a in (launcher_a, merger_a):
+    a.binaries = [entry for entry in a.binaries if not is_ucrt(entry[0])]
 
 launcher_exe = EXE(
     PYZ(launcher_a.pure),
@@ -136,10 +168,59 @@ coll = COLLECT(
 out_dir = Path(DISTPATH) / APP_DIR_NAME
 manifests = sorted(
     p for p in (Path(SPECPATH) / "manifests").glob("*.json")
-    if not fnmatch(p.name, "*dev*")  # same as .gitignore; manifests/compat/ is never matched
+    if not fnmatch(p.name, "*dev*") and not p.name == "v0.2.json"
 )
 if not manifests:
     raise SystemExit("ERROR: no release manifests found in manifests/")
 (out_dir / "manifests").mkdir()
 for p in manifests:
     shutil.copyfile(p, out_dir / "manifests" / p.name)
+
+
+# Licenses: ours next to the exes; in licenses\, Python's (which also covers what it includes: Tcl/Tk,
+# OpenSSL, bzip2, libffi, the Microsoft runtime), PyInstaller's (its bootloader is in each exe), and
+# those of each package with files in the build, from its .dist-info folder.
+LICENSE_FILE_PREFIXES = ("LICENSE", "LICENCE", "COPYING", "NOTICE")
+
+
+def bundled_distributions(*analyses):
+    """The installed distributions (packages) that have modules or files in the build"""
+    top_level = {re.split(r"[./\\]", entry[0])[0] for a in analyses for entry in a.pure + a.binaries + a.datas}
+    providers = importlib.metadata.packages_distributions()
+    names = {name for module in top_level for name in providers.get(module, [])}
+    return sorted((importlib.metadata.distribution(name) for name in names), key=lambda d: d.metadata["Name"].lower())
+
+
+def license_files(dist):
+    """The license files in a distribution's .dist-info folder (or its licenses\\ subfolder)"""
+    return [f for f in dist.files or []
+            if f.parts[0].endswith(".dist-info") and f.name.upper().startswith(LICENSE_FILE_PREFIXES)]
+
+
+shutil.copyfile(Path(SPECPATH) / "LICENSE.txt", out_dir / "LICENSE.txt")
+licenses_dir = out_dir / "licenses"
+python_version = platform.python_version()
+(licenses_dir / "Python").mkdir(parents=True)
+shutil.copyfile(Path(sys.base_prefix) / "LICENSE.txt", licenses_dir / "Python" / "LICENSE.txt")
+readme = [
+    f"Third-party software in {PRODUCT}'s tools; each one's license is in the folder of the same name.",
+    "",
+    f"Python {python_version}, with the libraries it includes (Tcl/Tk, OpenSSL, bzip2, libffi): https://www.python.org/",
+]
+lgpl = []
+for dist in [importlib.metadata.distribution("pyinstaller"), *bundled_distributions(launcher_a, merger_a)]:
+    name, version = dist.metadata["Name"], dist.version
+    files = license_files(dist)
+    if not files:
+        raise SystemExit(f"ERROR: {name} {version} is in the build but has no license file in its .dist-info")
+    (licenses_dir / name).mkdir()
+    for f in files:
+        shutil.copyfile(dist.locate_file(f), licenses_dir / name / f.name)
+    note = " (its bootloader, in each exe)" if name.lower() == "pyinstaller" else ""
+    readme.append(f"{name} {version}{note}: https://pypi.org/project/{name}/{version}/")
+    if is_lgpl(dist):
+        lgpl.append(name)
+if lgpl:
+    readme += ["", (f"{', '.join(lgpl)} (LGPL) are in _internal\\ as .py files, so they can be replaced by modified "
+                    "versions. Their source code is at the links above.")]
+(licenses_dir / "README.txt").write_text("\n".join(readme) + "\n", encoding="utf-8", newline="\r\n")
