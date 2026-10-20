@@ -64,7 +64,7 @@ def check_menu_strings(source: str, xml_path: Path):
     # Optional: descriptions (see smoothui_gwent.ws)
     descriptions = {key + "_description" for key in needed if key.startswith("option_")}
     if unused := sorted(keys - needed - descriptions):
-        print(f"Note: strings that {xml_path.name} doesn't use: {', '.join(unused)}")
+        log.info(f"Note: strings that {xml_path.name} doesn't use: {', '.join(unused)}")
 
 
 def build_strings(tool: Path, work_dir: Path, mod_name: str, dry_run=False):
@@ -77,7 +77,7 @@ def build_strings(tool: Path, work_dir: Path, mod_name: str, dry_run=False):
     check_menu_strings(source, menu_xml(mod_name))
     out_dir = content_dir(mod_name)
     if dry_run:
-        print(f"Dry run: would write {len(LANGUAGES)} .w3strings files to {out_dir.relative_to(REPO_ROOT)}")
+        log.info(f"Dry run: would write {len(LANGUAGES)} .w3strings files to {out_dir.relative_to(REPO_ROOT)}")
         return
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -95,4 +95,4 @@ def build_strings(tool: Path, work_dir: Path, mod_name: str, dry_run=False):
             if result.returncode != 0 or not out.is_file():
                 fail(f"w3stringsr failed for {language} (exit code {result.returncode}):\n"
                      f"{(result.stdout + result.stderr).strip()}")
-    print(f"Wrote {len(LANGUAGES)} .w3strings files to {out_dir.relative_to(REPO_ROOT)}")
+    log.info(f"Wrote {len(LANGUAGES)} .w3strings files to {out_dir.relative_to(REPO_ROOT)}")

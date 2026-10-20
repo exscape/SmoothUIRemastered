@@ -13,6 +13,7 @@ smoothui/build/reviewed_warnings.py)."""
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,8 @@ from ..patcher.swf_patcher import (
 )
 from .reviewed_warnings import check_review
 from .shared import DEFAULT_PROFILE
+
+log = logging.getLogger(__name__)
 
 SETTING = re.compile(r"(include|exclude|fix|reviewed|speed (\S+)):\s*(.*)")
 
@@ -124,7 +127,7 @@ def load_profile(path, fps: int) -> tuple[dict[str, PatchSettings], list[str]]:
                                   _unique(entry.include + star.include), _unique(entry.exclude + star.exclude),
                                   _unique(entry.fixes))
                for key, entry in files.items()}
-    print(f"Loaded {len(profile)} entries from {path}")
+    log.info(f"Loaded {len(profile)} entries from {path}")
     return profile, star.descriptions()
 
 
@@ -147,5 +150,5 @@ def apply_overrides(profile: dict[str, PatchSettings], path) -> tuple[dict[str, 
             _unique([*settings.include, *entry.include, *star.include]),
             _unique([*settings.exclude, *entry.exclude, *star.exclude]),
             _unique([*settings.fixes, *entry.fixes]))
-    print(f"Applied overrides from {path} ({len(files)} files, {len(star.descriptions())} settings under *)")
+    log.info(f"Applied overrides from {path} ({len(files)} files, {len(star.descriptions())} settings under *)")
     return merged, star.descriptions(), set(star.reviewed)

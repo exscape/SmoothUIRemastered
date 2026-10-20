@@ -34,7 +34,7 @@ def print_changes_since_previous(version):
     """Print what changed in a build's manifest since the previous version's at the same frame rate"""
     older = [path for other, path in release_manifests(build_fps(version)) if version_key(other) < version_key(version)]
     if not older:
-        print(f"No {build_fps(version)} fps manifest of a version before {normalize_version(version)} to compare with")
+        log.info(f"No {build_fps(version)} fps manifest of a version before {normalize_version(version)} to compare with")
         return
     print_manifest_diff(older[-1], version)
 
@@ -48,7 +48,7 @@ def print_manifest_diff(old, new):
             fail(f"manifest not found: {version_or_path}")
         manifests.append(manifest)
     log.info(f"Changes from {manifests[0]['created_mod_version']} to {manifests[1]['created_mod_version']}", extra=HEADING)
-    print("\n".join(diff_manifests(*manifests)), flush=True)
+    log.info("\n".join(diff_manifests(*manifests)))
 
 
 def diff_manifests(old: dict, new: dict) -> list[str]:

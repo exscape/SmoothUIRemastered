@@ -143,7 +143,7 @@ def main():
     if args.make_release and not args.dry_run:
         existing = [version for version in versions if manifest_path(version).exists()]
         if existing and args.force:
-            print(f"Overwriting previously existing mod release(s) {', '.join(existing)}, including the manifests")
+            log.info(f"Overwriting previously existing mod release(s) {', '.join(existing)}, including the manifests")
         elif existing:
             fail(f"Version(s) {', '.join(existing)} already seem to exist! Use --force to overwrite, "
                  "including the manifests")
@@ -152,11 +152,11 @@ def main():
         fail(f"not a directory: {paths['uncooked_files']}")
 
     # Before building: a release build replaces the latest manifest with one made from these very files
-    game_file_lines, game_files_changed = [], 0
+    game_file_text, game_files_changed = "", 0
     if latest := latest_manifests():
         log.info(f"Game files against {', '.join(path.stem for path in latest.values())}", extra=HEADING)
-        game_file_lines, game_files_changed = game_file_report(paths['uncooked_files'], latest.values())
-        print("\n".join(game_file_lines), flush=True)
+        game_file_text, game_files_changed = game_file_report(paths['uncooked_files'], latest.values())
+        log.log(logging.WARNING if game_files_changed else logging.INFO, game_file_text)
 
     # The settings menu's strings, which every build ships (from mod_files/; see strings.py)
     if not args.dry_run:
@@ -172,7 +172,7 @@ def main():
         print_issues()
     if game_files_changed:
         log.info("Game files changed since the latest builds (checked before building)", extra=HEADING)
-        print("\n".join(game_file_lines), flush=True)
+        log.warning(game_file_text)
 
     if args.make_release and not args.dry_run:
         for version in versions:
@@ -207,8 +207,7 @@ def build(args, config, paths, version, fps):
             dry_run=args.dry_run, on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
-    print()
-    print(f"Done ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
+    log.info(f"\nDone ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
 
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     if args.accept_warnings and warnings.unreviewed:

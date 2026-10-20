@@ -14,15 +14,17 @@ file (only where the other mod has the same code), plus those marked "reviewed:"
 file, so only warnings that the other mod's changes introduced are shown.
 """
 
+import logging
 import re
 from collections import defaultdict
 from pathlib import Path
 from typing import NamedTuple
 
-from colorama import Back, Fore, Style
-
 from ..common import fail, profile_key
+from ..log import SUBHEADING
 from .shared import REVIEWED_WARNINGS
+
+log = logging.getLogger(__name__)
 
 REVIEW = re.compile(r"\S+ \S+ @[0-9a-f]{8}")
 
@@ -91,30 +93,25 @@ def accept_warnings(unreviewed: dict[str, list[str]], path: Path = REVIEWED_WARN
         for review, occurrences in sorted(unreviewed.items()):
             files = sorted({Path(occurrence.split(":", 1)[0]).name for occurrence in occurrences})
             f.write(f"{review}    # {', '.join(files)}\n")
-    print(f"Added {len(unreviewed)} review(s) to {path}; consider noting why each one is harmless")
+    log.info(f"Added {len(unreviewed)} review(s) to {path}; consider noting why each one is harmless")
 
 
 def print_warning_summary(summary: WarningSummary, how_to_accept: list[str], reviewed_source: str):
     """how_to_accept: lines telling the user how to mark the unreviewed warnings as reviewed"""
     if summary.hidden:
-        print(f"{summary.hidden} reviewed warning(s) hidden", flush=True)
+        log.info(f"{summary.hidden} reviewed warning(s) hidden")
     if summary.stale and summary.unchecked:
         # The unseen warnings may well occur in the files that failed
-        print(f"{Fore.YELLOW}Skipped the check for reviewed warnings that no longer occur, as "
-              f"{summary.unchecked} file(s) could not be patched{Style.RESET_ALL}", flush=True)
+        log.warning(f"Skipped the check for reviewed warnings that no longer occur, as "
+                    f"{summary.unchecked} file(s) could not be patched")
     elif summary.stale:
-        print(f"{Fore.YELLOW}{len(summary.stale)} review(s) no longer match a warning; "
-              f"consider removing them from {reviewed_source}:{Style.RESET_ALL}", flush=True)
-        for key in summary.stale:
-            print(f"{Fore.YELLOW}  {key}{Style.RESET_ALL}", flush=True)
+        log.warning(f"{len(summary.stale)} review(s) no longer match a warning; consider removing them from "
+                    f"{reviewed_source}:" + "".join(f"\n  {key}" for key in summary.stale))
     if not summary.unreviewed:
         return
-    print(f"\n{Back.YELLOW}{Fore.BLACK} {len(summary.unreviewed)} UNREVIEWED WARNING(S): "
-          f"check these by hand {Style.RESET_ALL}", flush=True)
+    log.warning(f"{len(summary.unreviewed)} UNREVIEWED WARNING(S): check these by hand", extra=SUBHEADING)
     for review, occurrences in summary.unreviewed.items():
-        print(f"{Fore.YELLOW}  {review}{Style.RESET_ALL}", flush=True)
-        for occurrence in occurrences:
-            print(f"{Fore.YELLOW}    {occurrence}{Style.RESET_ALL}", flush=True)
+        log.warning(f"  {review}" + "".join(f"\n    {occurrence}" for occurrence in occurrences))
     for line in how_to_accept:
-        print(line, flush=True)
-    print(flush=True)
+        log.info(line)
+    log.info("")

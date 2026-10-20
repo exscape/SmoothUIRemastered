@@ -9,8 +9,6 @@ import subprocess
 import sys
 import zipfile
 
-log = logging.getLogger(__name__)
-
 try:
     import tomllib
 except ImportError:
@@ -18,14 +16,14 @@ except ImportError:
     import tomli as tomllib  # type: ignore
 from pathlib import Path
 
-from colorama import Back, Fore, Style
-
 from ..common import fail, normalize_version, to_native, to_windows
-from ..log import HEADING
+from ..log import HEADING, SUBHEADING
 from ..patcher.fixes import APPLIED
 from ..patcher.swf_patcher import format_fix
 from ..witcher3.bundle import BundleError, make_entry, write_bundle
 from ..witcher3.metadata_store import MetadataStoreError, make_metadata_store
+
+log = logging.getLogger(__name__)
 
 REPO_ROOT = Path.cwd() if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
 
@@ -63,7 +61,7 @@ NOISE = [re.compile(p) for p in (
 
 def run_command(cmd, cwd=None, filter_predicate=None, detach=False):
     """Run a command, streaming output; optionally filter lines before printing"""
-    print("$", " ".join(str(c) for c in cmd), flush=True)
+    log.info("$ " + " ".join(str(c) for c in cmd))
     try:
         if detach:
             subprocess.Popen(
@@ -80,7 +78,7 @@ def run_command(cmd, cwd=None, filter_predicate=None, detach=False):
             for line in proc.stdout:
                 line = line.rstrip()
                 if filter_predicate is None or not filter_predicate(line):
-                    print(line, flush=True)
+                    log.info(line)
     except FileNotFoundError:
         fail(f"executable or working directory not found: {cmd[0]}")
     if proc.returncode != 0:
@@ -106,7 +104,7 @@ def pack_content(patched_dir, content_dir):
         bundle.write_bytes(write_bundle(make_entry(p.relative_to(patched_dir), p.read_bytes()) for p in files))
     except BundleError as e:
         fail(f"can't pack {patched_dir}: {e}")
-    print(f"Packed {len(files)} files into {bundle} ({bundle.stat().st_size / 2**20:.1f} MiB)")
+    log.info(f"Packed {len(files)} files into {bundle} ({bundle.stat().st_size / 2**20:.1f} MiB)")
 
     store_path = content_dir / "metadata.store"
     if COMPARE_STORE_WITH_WCC_LITE:
@@ -124,9 +122,9 @@ def pack_content(patched_dir, content_dir):
         if store_path.read_bytes() != store:
             store_path.with_name("metadata.store.ours").write_bytes(store)
             fail(f"metadata.store differs from wcc_lite's; wcc_lite's is in {store_path}, ours in metadata.store.ours")
-        print("Identical to wcc_lite's")
+        log.info("Identical to wcc_lite's")
     store_path.write_bytes(store)
-    print(f"Wrote {store_path} ({len(store)} bytes)")
+    log.info(f"Wrote {store_path} ({len(store)} bytes)")
 
 def load_config(path=None, section=None):
     """Read config.toml (or the given file) and perform basic validation"""
@@ -161,50 +159,47 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
     """on_file callback for patcher_core.patch_files: the result, and anything to check by hand.
     Bind is_reviewed(rel, warning) (see reviewed_warnings.py) to hide warnings already checked."""
     if status == "failed":
-        print(f"{Style.BRIGHT}{Fore.RED}FAILED {rel}: {error}{Style.RESET_ALL}", file=sys.stderr, flush=True)
+        log.error(f"{rel}: {error}")
         return
     if status == "kept":
-        print(f"KEEP {rel}: {report['old_fps']:g} fps, already at or above the target "
-              f"{report['target_fps']:g} fps", flush=True)
+        log.info(f"KEEP {rel}: {report['old_fps']:g} fps, already at or above the target "
+                 f"{report['target_fps']:g} fps")
         _print_fixes(report)
         return
 
     if report["new_fps"] is None:
-        print(f"{rel}: {report['old_fps']:g} fps, already at or above the target {report['target_fps']:g} fps; "
-              "fixed only", flush=True)
+        log.info(f"{rel}: {report['old_fps']:g} fps, already at or above the target {report['target_fps']:g} fps; "
+                 "fixed only")
     else:
-        print(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps", flush=True)
+        log.info(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps")
     _print_fixes(report)
     if report["unmet_rules"]:
-        print(f"{Style.BRIGHT}{Fore.RED}  {len(report['unmet_rules'])} explicit rule(s) not followed "
-              f"(listed at the end){Style.RESET_ALL}", flush=True)
+        log.error(f"  {len(report['unmet_rules'])} explicit rule(s) not followed (listed at the end)")
     warnings = [warning for warning in report["warnings"]
                 if not (is_reviewed and is_reviewed(rel, warning))]
     if warnings:
-        print(f"{Fore.YELLOW}  {len(warnings)} unreviewed warning(s):{Style.RESET_ALL}", flush=True)
-        for warning in warnings:
-            print(f"{Fore.YELLOW}    [{warning['key']}] {warning['message']}{Style.RESET_ALL}", flush=True)
+        log.warning(f"  {len(warnings)} unreviewed warning(s):"
+                    + "".join(f"\n    [{warning['key']}] {warning['message']}" for warning in warnings))
 
 def _print_fixes(report):
     """The fixes' results; those that changed nothing are listed again at the end, as rule issues"""
     for fix in report.get("fixes", []):
-        color = "" if fix["result"] == APPLIED else Style.BRIGHT + Fore.RED
-        print(f"{color}  {format_fix(fix)}{Style.RESET_ALL}", flush=True)
+        log.log(logging.INFO if fix["result"] == APPLIED else logging.ERROR, f"  {format_fix(fix)}")
 
 def print_rule_issues(issues):
     """Print patcher_core.RuleIssues. The build still finishes, so these must be impossible to miss."""
     if issues.warnings:
-        print(f"\n{Back.YELLOW}{Fore.BLACK} {len(issues.warnings)} INHERITED SETTING(S) NO LONGER APPLY: "
-              f"the other mod changed what they matched {Style.RESET_ALL}", flush=True)
+        log.warning(f"{len(issues.warnings)} INHERITED SETTING(S) NO LONGER APPLY: the other mod changed what "
+                    "they matched", extra=SUBHEADING)
         for warning in issues.warnings:
-            print(f"{Fore.YELLOW}  {warning}{Style.RESET_ALL}", flush=True)
-        print(flush=True)
+            log.warning(f"  {warning}")
+        log.info("")
     if issues.errors:
-        print(f"\n{Back.RED}{Fore.WHITE} {len(issues.errors)} EXPLICIT RULE(S) NOT FOLLOWED: "
-              f"the result is NOT patched entirely as configured {Style.RESET_ALL}", flush=True)
+        log.error(f"{len(issues.errors)} EXPLICIT RULE(S) NOT FOLLOWED: the result is NOT patched entirely as "
+                  "configured", extra=SUBHEADING)
         for error in issues.errors:
-            print(f"{Style.BRIGHT}{Fore.RED}  {error}{Style.RESET_ALL}", flush=True)
-        print(flush=True)
+            log.error(f"  {error}")
+        log.info("")
 
 def enforce_strict(kept, rule_errors, unreviewed_warnings=()):
     """--strict: fail unless every file was patched, exactly as configured, with no unreviewed warnings.
@@ -239,7 +234,7 @@ def add_mod_files(output_dir, mod_name):
     if unexpected:
         fail(f"{MOD_FILES} should only hold mods/{mod_name}/ and bin/, not {', '.join(unexpected)}")
     for path in copy_files(MOD_FILES, output_dir):
-        print(f"Added {path.as_posix()}")
+        log.info(f"Added {path.as_posix()}")
 
 def zip_tree(src_dir, zip_out):
     """Zip every file under src_dir, keeping the tree's layout at the root of the archive"""
@@ -250,7 +245,7 @@ def zip_tree(src_dir, zip_out):
         for f in sorted(src_dir.rglob("*")):
             if f.is_file():
                 z.write(f, f.relative_to(src_dir))
-    print(f"Created {zip_out} ({zip_out.stat().st_size:,} bytes)")
+    log.info(f"Created {zip_out} ({zip_out.stat().st_size:,} bytes)")
 
 def sha256_file(path):
     """SHA-256 of a file's contents"""
@@ -338,7 +333,7 @@ def write_manifest(version, records, extra=None):
 
     path = manifest_path(version)
     write_json(path, manifest)
-    print(f"Wrote manifest {path} ({len(records)} files)")
+    log.info(f"Wrote manifest {path} ({len(records)} files)")
     return path
 
 def compat_manifest_path(version, mod_name, mod_version):
@@ -364,10 +359,10 @@ def install_mod(mod_dir, game_path, bin_dir=None):
     dest = game_path / "mods" / Path(mod_dir).name
     shutil.rmtree(dest, ignore_errors=True)
     shutil.copytree(mod_dir, dest)
-    print(f"Installed mod into {dest}")
+    log.info(f"Installed mod into {dest}")
     if bin_dir is not None and Path(bin_dir).is_dir():
         for path in copy_files(bin_dir, game_path / "bin"):
-            print(f"Installed {game_path / 'bin' / path}")
+            log.info(f"Installed {game_path / 'bin' / path}")
 
 def launch_game(game_path):
     """Attempt to launch the game executable"""
@@ -379,22 +374,22 @@ def install_and_launch(mod_dir, game_path: Path, install, launch, bin_dir=None):
     """Copy the built mod (and the files in bin_dir, if given) into the game folder, then launch the
     game if asked. A missing game_path (None) means nothing can be installed or launched"""
     if not game_path and (install or launch):
-        print("Warning: game_path not set in config.toml; will ignore --install/--launch")
+        log.warning("game_path not set in config.toml; will ignore --install/--launch")
         return
     if not game_path.exists():
-        print("Warning: game_path set in config.toml does not exist! Will ignore --install/--launch")
+        log.warning("game_path set in config.toml does not exist! Will ignore --install/--launch")
         return
     if install:
         install_mod(mod_dir, game_path, bin_dir)
         if launch:
             launch_game(game_path)
     elif launch:
-        print("\nWarning:--launch used without --install: not launching game with old mod version")
+        log.warning("\n--launch used without --install: not launching game with old mod version")
 
 def finish_work_dir(work_dir, keep_work):
     """Keep or drop the work tree once the build is done"""
     if keep_work:
-        print(f"Keeping work files in {work_dir}")
+        log.info(f"Keeping work files in {work_dir}")
     else:
         log.info(f"Removing {work_dir}", extra=HEADING)
         shutil.rmtree(work_dir, ignore_errors=True)

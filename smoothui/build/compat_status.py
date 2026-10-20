@@ -16,8 +16,6 @@ from __future__ import annotations
 
 import logging
 
-from colorama import Fore, Style
-
 from ..common import fail, profile_key
 from ..log import HEADING
 from .manifest_diff import describe_commit, file_changes
@@ -97,23 +95,22 @@ def print_compat_status(version_or_path, patches: list[tuple] | None = None, mod
     if patches is None:
         patches = newest_compat_patches(version, mod_name)
     if not patches:
-        print(f"No {build_fps(version)} fps compat patch manifests{f' of {mod_name}' if mod_name else ''} built "
-              f"for {version} or earlier in {COMPAT_MANIFEST_DIR}", flush=True)
+        log.info(f"No {build_fps(version)} fps compat patch manifests{f' of {mod_name}' if mod_name else ''} built "
+                 f"for {version} or earlier in {COMPAT_MANIFEST_DIR}")
         return 0
 
     results = [(path, patch, compat_patch_problems(patch, release)) for path, patch in patches]
     for _, patch, problems in results:
-        status = f"{Style.BRIGHT}{Fore.RED}OUTDATED  {Style.RESET_ALL}" if problems else "Up to date"
-        print(f"{status}  {_describe(patch)}")
+        log.info(f"{'OUTDATED' if problems else 'Up to date':<10}  {_describe(patch)}")
     outdated = [result for result in results if result[2]]
     for path, patch, problems in outdated:
         shown_path = path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
-        print(f"\n{Style.BRIGHT}{_describe(patch)}{Style.RESET_ALL}  [{shown_path}]")
-        print("\n".join(f"  {problem}" for problem in problems))
+        log.info(f"\n{_describe(patch)}  [{shown_path}]")
+        log.info("\n".join(f"  {problem}" for problem in problems))
     if outdated:
-        print(f"\n{Style.BRIGHT}{Fore.RED}{len(outdated)} compat patch(es) need a rebuild for "
-              f"{version}.{Style.RESET_ALL} For a patch that was never released, delete its manifest instead.")
-    print(flush=True)
+        log.warning(f"\n{len(outdated)} compat patch(es) need a rebuild for {version}. For a patch that was "
+                    "never released, delete its manifest instead.")
+    log.info("")
     return len(outdated)
 
 

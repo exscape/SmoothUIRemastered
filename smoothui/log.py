@@ -38,8 +38,9 @@ class ConsoleFormatter(logging.Formatter):
             color = HEADING_COLORS.get(level, Fore.CYAN)
             return f"\n{color}{_banner(msg, '-', 90, align_start=True)}{Style.RESET_ALL}"
         prefix = LEVEL_PREFIXES.get(level)
-        if prefix:
-            msg = prefix + msg
+        if prefix:  # after any leading blank lines and indent, so "  item" stays indented
+            text = msg.lstrip()
+            msg = msg[:len(msg) - len(text)] + prefix + text
         color = LEVEL_COLORS.get(level)
         if not color:
             return msg
@@ -62,8 +63,8 @@ class _StderrHandler(logging.StreamHandler):
         super().emit(record)
 
 def setup_console():
-    """Log to the console: errors to stderr, everything else to stdout. Does nothing without a console
-    (a windowed exe has no sys.stdout)."""
+    """Log to the console: errors to stderr, everything else to stdout; our own debug messages too, but
+    other libraries' only from INFO up. Does nothing without a console (a windowed exe has no sys.stdout)."""
     if sys.stdout is None or sys.stderr is None:
         return
     just_fix_windows_console()  # first: it may replace sys.stdout and sys.stderr
@@ -76,3 +77,4 @@ def setup_console():
         handler.setFormatter(ConsoleFormatter())
         root.addHandler(handler)
     root.setLevel(logging.INFO)
+    logging.getLogger("smoothui").setLevel(logging.DEBUG)

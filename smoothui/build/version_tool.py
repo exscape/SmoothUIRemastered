@@ -92,8 +92,8 @@ def main(argv=None):
         if not uncooked_dir.is_dir():
             ap.error(f"not a directory: {uncooked_dir}")
         log.info(f"Game files against {', '.join(path.stem for path in targets.values())}", extra=HEADING)
-        lines, changed = game_file_report(uncooked_dir, targets.values())
-        print("\n".join(lines), flush=True)
+        text, changed = game_file_report(uncooked_dir, targets.values())
+        log.log(logging.WARNING if changed else logging.INFO, text)
         sys.exit(1 if changed else 0)
 
     patch_arg, patch = args.check_compat_patch, None
@@ -115,7 +115,7 @@ def main(argv=None):
     if patch is not None:
         targets = {patch["fps"]: targets[patch["fps"]]}
     if not args.against:
-        print("Checking against the latest builds: " + ", ".join(path.stem for path in targets.values()))
+        log.info("Checking against the latest builds: " + ", ".join(path.stem for path in targets.values()))
     if patch is not None:
         outdated = print_compat_status(targets[patch["fps"]], [(Path(patch_arg), patch)])
     else:

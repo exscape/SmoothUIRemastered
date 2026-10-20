@@ -28,6 +28,7 @@ CRC. All CRCs are the standard CRC-32 (zlib.crc32).
 from __future__ import annotations
 
 import hashlib
+import logging
 import struct
 import zlib
 from typing import NamedTuple
@@ -38,6 +39,8 @@ from ..patcher.swf import (
     SWF_SIGS,
     SWF_UNCOMPRESSED_SIGS,
 )
+
+log = logging.getLogger(__name__)
 
 CR2W_MAGIC = b"CR2W"
 CR2W_VERSION = 164
@@ -246,13 +249,12 @@ def replace_swf(redswf: bytes | bytearray, swf: bytes | bytearray) -> bytearray:
     check_swf(swf)
     old = RedSwf(redswf)
     if old.stale:
-        print(f"[!] Stale CRCs in the original .redswf: {', '.join(sorted(old.stale))}")
+        log.warning(f"Stale CRCs in the original .redswf: {', '.join(sorted(old.stale))}")
     out = old.with_swf(swf)
     problems = verify_replacement(old, out, swf)
     if problems:
         raise RedSwfError(f"replacing the SWF failed verification: {'; '.join(problems)}")
-    print(f"Replaced the SWF: {len(old.swf)} -> {len(swf)} bytes, "
-          f".redswf {len(old.data)} -> {len(out)} bytes")
+    log.debug(f"Replaced the SWF: {len(old.swf)} -> {len(swf)} bytes, .redswf {len(old.data)} -> {len(out)} bytes")
     return out
 
 

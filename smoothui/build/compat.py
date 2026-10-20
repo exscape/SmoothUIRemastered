@@ -22,7 +22,6 @@ from pathlib import Path
 
 import py7zr
 import rarfile
-from colorama import Fore, Style
 
 from ..common import fail, normalize_version, profile_key
 from ..log import HEADING
@@ -169,7 +168,7 @@ def unpack(mod_archive, dest_dir):
     except (zipfile.BadZipFile, py7zr.Bad7zFile, rarfile.Error) as e:
         fail(f"could not unpack {mod_archive}: {e}")
     count = sum(1 for f in dest_dir.rglob("*") if f.is_file())
-    print(f"Unpacked {count} files into {dest_dir}")
+    log.info(f"Unpacked {count} files into {dest_dir}")
 
 def is_dlc_dir(rel):
     """Whether a folder holding bundles (relative to the unpacked archive) is DLC content: anything
@@ -187,7 +186,7 @@ def find_content_dir(unpacked_dir):
 
     dlc_dirs = [d for d in content_dirs if is_dlc_dir(d.relative_to(unpacked_dir))]
     for d in dlc_dirs:
-        print(f"  ignored: {d.relative_to(unpacked_dir)} (DLC bundles can't conflict with Smooth UI Remastered)")
+        log.info(f"  ignored: {d.relative_to(unpacked_dir)} (DLC bundles can't conflict with Smooth UI Remastered)")
     content_dirs = [d for d in content_dirs if d not in dlc_dirs]
 
     if not content_dirs:
@@ -214,7 +213,7 @@ def unbundle(content_dir, out_dir):
         written = extract((entry for _, entry in entries.values()), out_dir)
     except BundleError as e:
         fail(f"can't unbundle {content_dir}: {e}")
-    print(f"Extracted {len(written)} files into {out_dir}")
+    log.info(f"Extracted {len(written)} files into {out_dir}")
     if not any(out_dir.rglob("*.redswf")):
         fail(f"no .redswf files found after unbundling into {out_dir}")
 
@@ -242,8 +241,7 @@ def check_not_outdated(smooth_version, force):
     if not force:
         fail(f"--smooth-version {smooth_version} is older than {newest}, the most recent release in "
              f"{MANIFEST_DIR}. Use --force to build for it anyway")
-    print(f"{Style.BRIGHT}{Fore.YELLOW}Warning: building for {smooth_version}, which is older than {newest}, "
-          f"the most recent release (--force){Style.RESET_ALL}")
+    log.warning(f"building for {smooth_version}, which is older than {newest}, the most recent release (--force)")
 
 def profile_from_manifest(manifest):
     """The settings each file was patched with in a Smooth UI release, from its manifest (see
@@ -286,11 +284,11 @@ def find_shared_files(their_dir, manifest, smooth_version):
     theirs = sorted(f.relative_to(their_dir) for f in their_dir.rglob("*.redswf"))
     shared = [p for p in theirs if key(p) in our_keys]
 
-    print(f"The other mod has {len(theirs)} .redswf files, {len(shared)} of which "
-          f"Smooth UI Remastered {smooth_version} also patches")
+    log.info(f"The other mod has {len(theirs)} .redswf files, {len(shared)} of which "
+             f"Smooth UI Remastered {smooth_version} also patches")
     for p in theirs:
         if key(p) not in our_keys:
-            print(f"  not patched: {p} (not in our mod)")
+            log.info(f"  not patched: {p} (not in our mod)")
 
     if not shared:
         fail("no .redswf files in common! This mod does not need a compat patch.")
@@ -337,7 +335,7 @@ def main():
     if not paths["wcc_lite"].is_file():
         fail(f"wcc_lite setting in config/config.toml is not set to a valid wcc_lite.exe path: {paths['wcc_lite']} does not exist")
 
-    print(f"Mod folder: {mod_name}")
+    log.info(f"Mod folder: {mod_name}")
 
     log.info(f"Cleaning {work_dir}", extra=HEADING)
     shutil.rmtree(work_dir, ignore_errors=True)
@@ -378,15 +376,15 @@ def main():
     for version, print_issues in zip(versions, issue_printers):
         log.info(f"Warnings and errors: {version}", extra=HEADING)
         print_issues()
-    print(f"\nCreated {len(versions)} compat patch(es): " + ", ".join(versions))
+    log.info(f"\nCreated {len(versions)} compat patch(es): " + ", ".join(versions))
     for warning in unneeded:
-        print(warning)
+        log.warning(warning)
 
 def make_patch(version, manifest, unbundled_dir, patched_dir, args):
     """Patch the files the other mod shares with one build of the release (version, e.g. v0.3-60fps) into
     patched_dir, and check the result. Returns a function that prints the warnings and rule issues."""
     log.info(f"Finding files in common with Smooth UI Remastered {version}", extra=HEADING)
-    print(f"Files are patched to {manifest['fps']} fps, as in that build")
+    log.info(f"Files are patched to {manifest['fps']} fps, as in that build")
     shared = find_shared_files(unbundled_dir, manifest, version)
     shared_keys = {rel.as_posix().lower() for rel in shared}
     shared_profile = {key: settings for key, settings in profile_from_manifest(manifest).items()
@@ -408,8 +406,7 @@ def make_patch(version, manifest, unbundled_dir, patched_dir, args):
             on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
-    print()
-    print(f"Done ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
+    log.info(f"\nDone ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
 
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     how_to_accept = [("These come from the other mod's changes. Once checked, add these lines under * in "
@@ -456,12 +453,11 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundle
     # Identical: neither the other mod's files nor our patching of them changed
     outputs = lambda files: {profile_key(p): record["output_swf_sha256"] for p, record in files.items()}
     earlier = newest_compat_patches(version, args.mod_name, exclude=path)
-    unneeded = [f"{Style.BRIGHT}{Fore.YELLOW}Warning: {zip_out.name} is not needed, it is identical to "
-                f"{earlier[0][1]['output_zip']}. Unless you release it anyway, delete it and "
-                f"{path.relative_to(REPO_ROOT)}{Style.RESET_ALL}"] \
+    unneeded = [(f"{zip_out.name} is not needed, it is identical to {earlier[0][1]['output_zip']}. Unless you "
+                 f"release it anyway, delete it and {path.relative_to(REPO_ROOT)}")] \
         if earlier and outputs(earlier[0][1]["files"]) == outputs(files) else []
     for warning in unneeded:
-        print(warning)
+        log.warning(warning)
     write_json(path, {
         "mod_name": args.mod_name,
         "mod_version": mod_version,
@@ -478,5 +474,5 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundle
         "other_mod_files": sorted(f.relative_to(unbundled_dir).as_posix() for f in unbundled_dir.rglob("*.redswf")),
         "files": files,
     })
-    print(f"Wrote compat patch manifest {path} ({len(files)} files)")
+    log.info(f"Wrote compat patch manifest {path} ({len(files)} files)")
     return unneeded
