@@ -2,13 +2,14 @@
 
 Layout (all integers little-endian):
 
-  0x00  header, 32 bytes: 'POTATO70' | u32 bundle size | u32 0 | u32 TOC size (304 per file) |
+  0x00  header, 32 bytes: 'POTATO70' | u64 bundle size | u32 TOC size (304 per file) |
         u16 version 5 | u32 data start (0x20 + TOC size) | 6 zero bytes
         The bundle size is the file size rounded up to 16 (wcc_lite doesn't pad the file itself; the
-        game's bundles are padded). The u32 at 0x0C is 0 in all but 4 of the game's bundles (unknown).
+        game's bundles are padded). Sizes and offsets are 64-bit: the game's buffers.bundle and
+        movies.bundle are over 4 GiB.
   0x20  the TOC, one 304-byte entry per file:
           path, 256 bytes: backslash-separated (gameplay\\gui_new\\...), NUL-terminated, zero-padded
-          hash, 16 bytes (unknown; wcc_lite writes zeros) | u32 offset | u32 0 | u32 size |
+          hash, 16 bytes (unknown; wcc_lite writes zeros) | u64 offset | u32 size |
           u32 stored size | u32 crc32 of the content | u32 compression | 8 zero bytes
         The order doesn't matter: the game's bundles are mostly unsorted, and wcc_lite writes the
         files in Windows directory listing order.
@@ -25,28 +26,31 @@ The game's bundles use none and zlib. wcc_lite uses LZ4HC, or none when that isn
 does write_bundle: LZ4 decompresses several times faster than zlib, which matters when menus load.
 wcc_lite skips empty files; write_bundle refuses them.
 
+read_bundle reads a whole bundle in memory. read_toc reads only a bundle file's header and TOC (paths, sizes,
+CRCs, where each file's data is), and read_entry then reads single files from it.
+
 A mod's metadata.store repeats the offset, sizes and compression of every file in its bundles, so
 it must be made again whenever a bundle changes (see metadata_store.py).
 """
 
 from __future__ import annotations
 
+import os
 import struct
 import zlib
 from collections.abc import Iterable
 from pathlib import Path
-from typing import NamedTuple
+from typing import BinaryIO, NamedTuple
 
 import lz4.block
 
 MAGIC = b"POTATO70"
-HEADER = struct.Struct("<8sIIIHI6x")
+HEADER = struct.Struct("<8sQIHI6x")
 VERSION = 5
-ENTRY = struct.Struct("<256s16sIIIIII8x")
+ENTRY = struct.Struct("<256s16sQIIII8x")
 ENTRY_V3 = struct.Struct("<256s16sIIIIQ16xII")
 PATH_SIZE = 256
 ALIGNMENT = 16
-MAX_BUNDLE_SIZE = 2**32 - ALIGNMENT
 # wcc_lite rejects a bundle with too little data after its TOC ("too small to contain headers"; the
 # game likely has the same check): seen with up to 224 bytes of data, while 544 and more worked. So
 # write_bundle pads small bundles with zeros up to this much data.
@@ -115,39 +119,84 @@ class BundleHeader(NamedTuple):
     version: int
 
 
-def read_header(data: bytes) -> BundleHeader:
+class TocEntry(NamedTuple):
+    """One file in a bundle's TOC: what read_toc returns, without the file's data"""
+    path: str           # as stored (see BundleEntry)
+    size: int           # of the content
+    crc: int            # crc32 of the content
+    compression: int
+    offset: int         # where its stored data starts in the bundle
+    stored_size: int
+
+
+def read_header(data: bytes, file_size: int | None = None) -> BundleHeader:
+    """A bundle's header. data holds at least the header; file_size is the bundle's size (default: len(data))."""
+    file_size = len(data) if file_size is None else file_size
     if len(data) < HEADER.size or not data.startswith(MAGIC):
         raise BundleError(f"not a Witcher 3 bundle (no {MAGIC.decode()} header)")
-    _, size, _, toc_size, version, _ = HEADER.unpack_from(data)
+    _, size, toc_size, version, _ = HEADER.unpack_from(data)
     if version not in (VERSION, 3):
         raise BundleError(f"unsupported bundle version {version}")
     data_start = HEADER.size + toc_size
-    if toc_size % (ENTRY if version == VERSION else ENTRY_V3).size or data_start > len(data):
-        raise BundleError(f"invalid TOC size {toc_size} (file size {len(data)})")
+    if toc_size % (ENTRY if version == VERSION else ENTRY_V3).size or data_start > file_size:
+        raise BundleError(f"invalid TOC size {toc_size} (file size {file_size})")
     return BundleHeader(size, data_start, version)
 
 
-def read_bundle(data: bytes) -> list[BundleEntry]:
-    """The files in a bundle, in TOC order. Contents are checked when read (BundleEntry.content)."""
-    data_start, version = read_header(data)[1:]
+def _parse_toc(data: bytes, header: BundleHeader, file_size: int) -> list[TocEntry]:
+    """The TOC entries in data (the bundle's start, up to at least header.data_start), in TOC order"""
     entries = []
-    for at in range(HEADER.size, data_start, (ENTRY if version == VERSION else ENTRY_V3).size):
-        if version == VERSION:
-            raw_path, _hash, offset, _, size, stored_size, crc, compression = ENTRY.unpack_from(data, at)
+    for at in range(HEADER.size, header.data_start, (ENTRY if header.version == VERSION else ENTRY_V3).size):
+        if header.version == VERSION:
+            raw_path, _hash, offset, size, stored_size, crc, compression = ENTRY.unpack_from(data, at)
         else:
             raw_path, _hash, _, size, stored_size, offset, _time, crc, compression = ENTRY_V3.unpack_from(data, at)
         name = raw_path.split(b"\0", 1)[0]
         if len(name) == PATH_SIZE:
             raise BundleError(f"TOC entry at {at:#x}: path is not NUL-terminated")
         try:
-            path = name.decode("ascii")
+            # Nearly always ASCII, but the game's own bob.bundle has a UTF-8 path (reginald’s.w2mesh)
+            path = name.decode("utf-8")
         except UnicodeDecodeError:
-            raise BundleError(f"TOC entry at {at:#x}: path is not ASCII: {name!r}") from None
-        if offset < data_start or offset + stored_size > len(data):
+            raise BundleError(f"TOC entry at {at:#x}: path is not UTF-8: {name!r}") from None
+        if offset < header.data_start or offset + stored_size > file_size:
             raise BundleError(f"{path}: data at {offset:#x}+{stored_size:#x} is outside the bundle's data "
-                              f"({data_start:#x}-{len(data):#x})")
-        entries.append(BundleEntry(path, size, crc, compression, bytes(data[offset:offset + stored_size]), offset))
+                              f"({header.data_start:#x}-{file_size:#x})")
+        entries.append(TocEntry(path, size, crc, compression, offset, stored_size))
     return entries
+
+
+def read_bundle(data: bytes) -> list[BundleEntry]:
+    """The files in a bundle, in TOC order. Contents are checked when read (BundleEntry.content)."""
+    return [BundleEntry(e.path, e.size, e.crc, e.compression, bytes(data[e.offset:e.offset + e.stored_size]), e.offset)
+            for e in _parse_toc(data, read_header(data), len(data))]
+
+
+def read_toc(path: Path) -> list[TocEntry]:
+    """The files in a bundle file, in TOC order, reading only its header and TOC: fast even for big
+    texture mods. read_entry then reads the files needed."""
+    with open(path, "rb") as f:
+        file_size = f.seek(0, os.SEEK_END)
+        f.seek(0)
+        data = f.read(HEADER.size)
+        header = read_header(data, file_size)
+        data += f.read(header.data_start - len(data))
+    if len(data) < header.data_start:
+        raise BundleError(f"{path}: the file ended inside its TOC")
+    try:
+        return _parse_toc(data, header, file_size)
+    except BundleError as e:
+        raise BundleError(f"{path}: {e}") from None
+
+
+def read_entry(f: BinaryIO, entry: TocEntry) -> BundleEntry:
+    """One file of a bundle open for reading in binary mode, by its TOC entry (see read_toc). Its content is
+    checked when read (BundleEntry.content)."""
+    f.seek(entry.offset)
+    stored = f.read(entry.stored_size)
+    if len(stored) != entry.stored_size:
+        raise BundleError(f"{entry.path}: the bundle ended inside its data")
+    return BundleEntry(entry.path, entry.size, entry.crc, entry.compression, stored, entry.offset)
 
 
 def make_entry(path: str | Path, content: bytes) -> BundleEntry:
@@ -187,14 +236,12 @@ def write_bundle(entries: Iterable[BundleEntry]) -> bytes:
     out = bytearray(data_start)
     for i, entry in enumerate(entries):
         out += bytes(_align(len(out)))
-        ENTRY.pack_into(out, HEADER.size + i * ENTRY.size, entry.path.encode("ascii"), bytes(16), len(out), 0,
+        ENTRY.pack_into(out, HEADER.size + i * ENTRY.size, entry.path.encode("ascii"), bytes(16), len(out),
                         entry.size, len(entry.stored), entry.crc, entry.compression)
         out += entry.stored
     out += bytes(_align(len(out)))
     out += bytes(max(0, data_start + MIN_DATA_SIZE - len(out)))
-    if len(out) > MAX_BUNDLE_SIZE:
-        raise BundleError(f"bundle would be {len(out)} bytes, more than its 32-bit offsets allow")
-    HEADER.pack_into(out, 0, MAGIC, len(out), 0, data_start - HEADER.size, VERSION, data_start)
+    HEADER.pack_into(out, 0, MAGIC, len(out), data_start - HEADER.size, VERSION, data_start)
     data = bytes(out)
 
     written = read_bundle(data)
