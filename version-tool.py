@@ -1,7 +1,5 @@
-from colorama import just_fix_windows_console
-
 from smoothui.build.version_tool import main
+from smoothui.common import run_cli
 
 if __name__ == "__main__":
-    just_fix_windows_console() # Initialize colorama
-    main()
+    run_cli(main)

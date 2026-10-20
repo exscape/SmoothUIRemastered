@@ -19,6 +19,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+from smoothui.common import run_cli
 from smoothui.patcher.fixes import AFTER_RESCALE, BEFORE_RESCALE, FIXES, apply_fixes
 from smoothui.patcher.swf import (
     SWF_COMPRESSED_SIGS,
@@ -58,4 +59,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

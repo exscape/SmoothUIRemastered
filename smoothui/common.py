@@ -4,13 +4,27 @@ import subprocess
 import sys
 from functools import cache
 from pathlib import Path
+from typing import NoReturn
 
-from colorama import Back, Fore, Style
+from colorama import Back, Fore, Style, just_fix_windows_console
 
 
-def fail(msg):
-    print(f"{Style.BRIGHT}{Fore.RED} ERROR: {msg}{Style.RESET_ALL}", file=sys.stderr, flush=True)
-    sys.exit(1)
+class SmoothUIError(Exception):
+    """An expected failure with a message for the user (bad input, config or environment), raised by fail()."""
+
+def fail(msg) -> NoReturn:
+    raise SmoothUIError(msg)
+
+def run_cli(main):
+    """Run a command-line entry point: print the message of a SmoothUIError (see fail()) and exit with
+    code 1, without a traceback. Any other exception keeps its traceback."""
+    just_fix_windows_console()  # Initialize colorama
+    try:
+        main()
+    except SmoothUIError as e:
+        sys.stdout.flush()
+        print(f"{Style.BRIGHT}{Fore.RED} ERROR: {e}{Style.RESET_ALL}", file=sys.stderr, flush=True)
+        sys.exit(1)
 
 def print_step_header(msg):
     _print_header(msg, f"{Back.BLACK}{Fore.GREEN}", "=", 130)

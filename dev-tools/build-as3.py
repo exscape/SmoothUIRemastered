@@ -24,10 +24,15 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from smoothui.build.shared import load_config  # noqa: E402
-from smoothui.common import IN_WSL, fail, to_native, to_windows  # noqa: E402
-from smoothui.patcher.swf_patcher.abc_file import encode_u30, parse_abc  # noqa: E402
-from smoothui.patcher.swf_patcher.swf_tags import TagCode, encode_tag_header, parse_tags, split_do_abc  # noqa: E402
+from smoothui.build.shared import load_config
+from smoothui.common import IN_WSL, fail, run_cli, to_native, to_windows
+from smoothui.patcher.swf_patcher.abc_file import encode_u30, parse_abc
+from smoothui.patcher.swf_patcher.swf_tags import (
+    TagCode,
+    encode_tag_header,
+    parse_tags,
+    split_do_abc,
+)
 
 # ABC 46.16, as Flash and FFDec write it
 ABC_MINOR, ABC_MAJOR = 16, 46
@@ -179,4 +184,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)
