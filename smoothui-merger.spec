@@ -1,11 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Build from the repo root, on Windows Python (env_pyi), never under WSL:
-#     env_pyi/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec
+# Build from the repo root, on 64-bit Windows Python (env_gui, see requirements_gui.txt), never under WSL:
+#     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec
 # Output: dist/SmoothUIMerger/ with SmoothUILauncher.exe, SmoothUIMerger.exe, _internal/
+import hashlib
 import shutil
 from fnmatch import fnmatch
 from pathlib import Path
 
+from PyInstaller import HOMEPATH, PLATFORM
+from PyInstaller import __version__ as PYINSTALLER_VERSION
 from PyInstaller.utils.hooks import collect_data_files
 from PyInstaller.utils.win32.versioninfo import (
     FixedFileInfo, StringFileInfo, StringStruct, StringTable, VarFileInfo, VarStruct, VSVersionInfo,
@@ -16,6 +19,39 @@ TOOL_VERSION = (0, 1, 0, 0)
 COMPANY = "Aeluwas"
 PRODUCT = "Smooth UI Remastered"
 ICON = Path(SPECPATH) / "smoothui.ico"  # optional: used only if the file exists
+
+# SHA-256 of the bootloaders that come prebuilt with each PyInstaller version (the same in its wheel and its
+# sdist). A release must use one compiled here; dev-tools/pyinstaller-hashes.py prints a new version's entry.
+PREBUILT_BOOTLOADERS = {
+    "6.22.3": {
+        "run.exe": "581ea23eb35cee8f9df8835c892e91416df95ca629b1a6050289aea19390e08d",
+        "run_d.exe": "61569642ef07b9f3c730eb6f2ab21350e74062ff409ef200bad63d038c510387",
+        "runw.exe": "2291f269c3a3804fde1079462239e09a8b32fffbeeaa8f628a531faf5be77d41",
+        "runw_d.exe": "d85a1689b986222f6950f3ba878d791068725d789c1a8e4a783a520f788c4560",
+    },
+}
+
+
+def check_bootloader():
+    """Refuse to build with a prebuilt bootloader, e.g. when the pyinstaller.exe in PATH runs rather than
+    env_gui's, or when env_gui's PyInstaller was installed without compiling one"""
+    if PLATFORM != "Windows-64bit-intel":
+        raise SystemExit(f"ERROR: build on 64-bit Windows Python, not {PLATFORM}")
+    prebuilt = PREBUILT_BOOTLOADERS.get(PYINSTALLER_VERSION)
+    if prebuilt is None:
+        raise SystemExit(f"ERROR: can't tell whether PyInstaller {PYINSTALLER_VERSION}'s bootloader was compiled "
+                         f"here: add its prebuilt ones to PREBUILT_BOOTLOADERS (python dev-tools/pyinstaller-hashes.py "
+                         f"{PYINSTALLER_VERSION} prints them)")
+    folder = Path(HOMEPATH) / "PyInstaller" / "bootloader" / PLATFORM
+    found = [name for name, sha256 in prebuilt.items()
+             if (folder / name).is_file() and hashlib.sha256((folder / name).read_bytes()).hexdigest() == sha256]
+    if found:
+        raise SystemExit(f"ERROR: {', '.join(found)} in {folder} came prebuilt with PyInstaller, not compiled here. "
+                         "Use env_gui's pyinstaller.exe, or reinstall PyInstaller as requirements_gui.txt says.")
+    print("Bootloader hash verified: self-built bootloader is being used")
+
+
+check_bootloader()
 
 
 def version_info(file_description, original_filename):

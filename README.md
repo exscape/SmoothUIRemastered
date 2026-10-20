@@ -26,7 +26,7 @@ WSL (Windows Subsystem for Linux) is supported, but entirely optional. I use it 
 | --- | --- | --- |
 | 1 |  `py -m venv env` | `python3 -m venv env` |
 | 2 | `env/Scripts/activate.bat` | `. env/bin/activate (note the space!)` |
-| 3 | `py -m pip install -r requirements.txt` | `pip install -r requirements` |
+| 3 | `py -m pip install -r requirements.txt` | `pip install -r requirements.txt` |
 | 4 | edit `config/config.toml` in any editor | Same |
 
 **Step 4 is required before the first run.** The shipped `config/config.toml` holds the paths
