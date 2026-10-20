@@ -6,7 +6,6 @@ import logging
 import re
 import shutil
 import subprocess
-import sys
 import zipfile
 
 try:
@@ -20,26 +19,25 @@ from ..common import fail, normalize_version, to_native, to_windows
 from ..log import HEADING, SUBHEADING
 from ..patcher.fixes import APPLIED
 from ..patcher.swf_patcher import format_fix
+from ..paths import FROZEN, MANIFEST_DIR, MANIFEST_DIRS, REPO_ROOT
 from ..witcher3.bundle import BundleError, make_entry, write_bundle
 from ..witcher3.metadata_store import MetadataStoreError, make_metadata_store
 
 log = logging.getLogger(__name__)
 
-REPO_ROOT = Path.cwd() if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
-
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
 REVIEWED_WARNINGS = REPO_ROOT / "config" / "reviewed_warnings.txt"
-MANIFEST_DIR = REPO_ROOT / "manifests"
 # Manifests of the compat patches built with build-compat.py (see compat.py's write_patch_manifest)
 COMPAT_MANIFEST_DIR = MANIFEST_DIR / "compat"
 # Files the main mod ships as they are (scripts, the settings menu), laid out as in its zip:
 # mods/<the mod's folder>/, and bin/ (for the game's bin/ folder)
 MOD_FILES = REPO_ROOT / "mod_files"
 
-REQUIRED_CONFIG_KEYS = ("working_dir", "wcc_lite")
+REQUIRED_CONFIG_KEYS = ("working_dir",)
 
-# While metadata_store.py is new: also have wcc_lite make metadata.store, and fail unless both are identical
-COMPARE_STORE_WITH_WCC_LITE = True
+# While metadata_store.py is new, the command-line tools also have wcc_lite make metadata.store, and fail
+# unless both are identical. Never in the frozen tool: users don't have wcc_lite.
+COMPARE_STORE_WITH_WCC_LITE = not FROZEN
 
 # A build's version: the base version (created_mod_version in config.toml), then the frame rate
 BUILD_VERSION = re.compile(r"(v.+?)-(\d+)fps")
@@ -147,7 +145,8 @@ def load_config(path=None, section=None):
 def validate_config(config, path):
     """Validate a config file; fail if not valid"""
     paths = config.get("paths", {})
-    missing = [k for k in REQUIRED_CONFIG_KEYS if k not in paths]
+    required = REQUIRED_CONFIG_KEYS + (("wcc_lite",) if COMPARE_STORE_WITH_WCC_LITE else ())
+    missing = [k for k in required if k not in paths]
     if missing:
         fail(f"missing in [paths] of {path}: {', '.join(missing)}")
 
@@ -258,6 +257,8 @@ def sha256_file(path):
 def patcher_commit():
     """(commit, uncommitted) for the code doing the build: the git commit hash of this checkout, and
     whether tracked files have uncommitted changes. (None, None) if git can't tell (e.g. no checkout)."""
+    if FROZEN:
+        return None, None   # no checkout, and the tool's folder may be inside someone else's
     def git(*args):
         # --no-optional-locks: don't let `git status` refresh the index, so nothing is written
         return subprocess.run(["git", "--no-optional-locks", *args], cwd=REPO_ROOT,
@@ -296,10 +297,22 @@ def build_fps(version):
     """The frame rate of the build a version names"""
     return split_build_version(version)[1] or OLD_MANIFEST_FPS
 
+def release_manifest_paths():
+    """{version: path} of every release manifest (<version>.json) in MANIFEST_DIRS. A version found in
+    several of them (a downloaded copy of one the tool also ships) uses the copy built last."""
+    def created_at(path):
+        return (load_manifest(path) or {}).get("created_at") or ""
+    found = {}
+    for directory in MANIFEST_DIRS:
+        for path in directory.glob("*.json"):
+            if path.stem not in found or created_at(path) > created_at(found[path.stem]):
+                found[path.stem] = path
+    return found
+
 def release_manifests(fps):
-    """(version, path) of each release manifest in manifests/ of a build at fps, oldest first"""
-    found = [(path.stem, path) for path in MANIFEST_DIR.glob("*.json")
-             if version_key(path.stem) is not None and build_fps(path.stem) == fps]
+    """(version, path) of each release manifest of a build at fps, oldest first"""
+    found = [(version, path) for version, path in release_manifest_paths().items()
+             if version_key(version) is not None and build_fps(version) == fps]
     return sorted(found, key=lambda item: version_key(item[0]))
 
 def latest_manifests():
@@ -307,13 +320,17 @@ def latest_manifests():
     return {fps: manifests[-1][1] for fps in RELEASE_FPS if (manifests := release_manifests(fps))}
 
 def manifest_path(version):
-    """Where a mod release's manifest lives: manifests/<version>.json"""
+    """Where build-main.py writes a mod release's manifest: manifests/<version>.json"""
     return MANIFEST_DIR / f"{normalize_version(version)}.json"
 
 def load_manifest(version_or_path):
-    """A manifest, given its version (manifests/<version>.json) or a path to it; None if it doesn't exist"""
-    path = Path(version_or_path) if str(version_or_path).endswith(".json") else manifest_path(version_or_path)
-    if not path.is_file():
+    """A manifest, given a release's version (see release_manifest_paths) or a path to it; None if it
+    doesn't exist"""
+    if str(version_or_path).endswith(".json"):
+        path = Path(version_or_path)
+    else:
+        path = release_manifest_paths().get(normalize_version(version_or_path))
+    if path is None or not path.is_file():
         return None
     with open(path, encoding="utf-8") as f:
         return json.load(f)

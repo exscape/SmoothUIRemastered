@@ -34,13 +34,14 @@ from ..patcher.swf_patcher import (
     parse_speed,
     parse_sprite_pattern,
 )
+from ..paths import APP_DIR
 from ..witcher3.bundle import BundleError, extract, read_bundle
 from ..witcher3.redswf import swf_sha256
 from .compat_status import newest_compat_patches
 from .profile import apply_overrides
 from .reviewed_warnings import WarningReview, print_warning_summary, review_of
 from .shared import (
-    MANIFEST_DIR,
+    COMPARE_STORE_WITH_WCC_LITE,
     REPO_ROOT,
     build_version,
     compat_manifest_path,
@@ -55,6 +56,7 @@ from .shared import (
     patcher_commit,
     print_file_result,
     print_rule_issues,
+    release_manifest_paths,
     split_build_version,
     version_key,
     write_json,
@@ -65,11 +67,12 @@ log = logging.getLogger(__name__)
 
 
 # rarfile looks for an external unrar in PATH and in the current directory. When neither has it,
-# point it at the UnRAR.exe bundled in this repo, so .rar mods work from any working directory.
+# point it at our UnRAR.exe (in the repo, or next to the frozen tool's exes), so .rar mods work from
+# any working directory.
 def setup_rar_tool():
     if shutil.which(rarfile.UNRAR_TOOL):
         return # a system unrar is preferred (e.g. under WSL)
-    bundled_unrar = REPO_ROOT / "UnRAR.exe"
+    bundled_unrar = APP_DIR / "UnRAR.exe"
     if bundled_unrar.is_file():
         rarfile.UNRAR_TOOL = str(bundled_unrar)
 
@@ -233,14 +236,14 @@ def load_release_manifest(smooth_version, fps):
 def check_not_outdated(smooth_version, force):
     """Fail if smooth_version (without a frame rate specified) is older than the most recent release with a
     manifest, unless force. Dev versions (e.g. v0.4dev) don't count as releases."""
-    releases = {split_build_version(path.stem)[0] for path in MANIFEST_DIR.glob("*.json")}
+    releases = {split_build_version(version)[0] for version in release_manifest_paths()}
     releases = [version for version in releases if version_key(version) is not None and not is_dev_version(version)]
     newest = max(releases, key=version_key, default=None)
     if newest is None or version_key(smooth_version) is None or version_key(smooth_version) >= version_key(newest):
         return
     if not force:
-        fail(f"--smooth-version {smooth_version} is older than {newest}, the most recent release in "
-             f"{MANIFEST_DIR}. Use --force to build for it anyway")
+        fail(f"--smooth-version {smooth_version} is older than {newest}, the most recent release with a "
+             "manifest. Use --force to build for it anyway")
     log.warning(f"building for {smooth_version}, which is older than {newest}, the most recent release (--force)")
 
 def profile_from_manifest(manifest):
@@ -332,7 +335,7 @@ def main():
         fail(f"game_path is not set to a valid directory in config/config.toml: {game_path} is not an existing directory")
     if not (parent := work_dir.parent.parent).is_dir():
         fail(f"working directory parent {parent} does not exist")
-    if not paths["wcc_lite"].is_file():
+    if COMPARE_STORE_WITH_WCC_LITE and not paths["wcc_lite"].is_file():
         fail(f"wcc_lite setting in config/config.toml is not set to a valid wcc_lite.exe path: {paths['wcc_lite']} does not exist")
 
     log.info(f"Mod folder: {mod_name}")
