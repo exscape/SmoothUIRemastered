@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import struct
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-from ..common import print_substep_header, profile_key
-from ..witcher3.redswf import replace_swf
+from ..common import SmoothUIError, print_substep_header, profile_key
+from ..witcher3.redswf import RedSwfError, replace_swf
 from .dev_mode import dev_make_body_hook, resolve_dev_target
 from .fixes import AFTER_RESCALE, BEFORE_RESCALE, apply_fixes
 from .swf import (
@@ -27,6 +28,11 @@ from .swf_patcher import (
     report_settings,
     rescale_body,
 )
+from .swf_patcher.movie import RescaleError
+
+# The errors the patcher raises on purpose, whose message says what is wrong with the file. Anything else
+# (a plain ValueError too) may well be a bug, so its traceback goes into the failure message.
+EXPECTED_ERRORS = (SmoothUIError, RescaleError, RedSwfError)
 
 
 @dataclass(frozen=True)
@@ -50,8 +56,12 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
 
     Returns (patched, kept, failed): patched holds {"path", "fps", "report"} dicts (fps: the file's
     frame rate now), kept holds {"path", "report"} dicts, and failed holds (rel, message) tuples.
-    Raises NotADirectoryError / ValueError for invalid directories, and MalformedSwfError (naming the
-    file) if a file's SWF can't be read: that is not a per-file failure, as the whole mod is suspect.
+    Raises NotADirectoryError / ValueError for invalid directories.
+
+    A file fails on any exception: input the patcher can't read, doesn't support or misunderstands
+    (e.g. a failed verification), or a bug. The other files are still patched, so that all problems
+    are reported, but the caller must treat any failure as a failure of the whole mod: never leave a
+    failed file out and ship the rest.
     """
     src, dst = Path(src).resolve(), Path(dst).resolve()
     if not src.is_dir():
@@ -76,15 +86,15 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
         try:
             assert 1 <= settings.target_fps <= 256
             rescale_report, new_swf_bytes = process(redswf_bytes, settings, dev_make_body_hook(rel))
-        except MalformedSwfError as e:
-            # Not skipped like the ValueErrors below: the build of this file's whole mod must fail
-            raise MalformedSwfError(f"{rel.as_posix()}: malformed SWF: {e}") from e
-        except ValueError as e:
-            failed.append((rel, str(e)))
-            report(rel, "failed", error=str(e))
+            # Also on a dry run, as this reads (and checks) the .redswf container
+            out_data = None if new_swf_bytes is None else replace_swf(redswf_bytes, new_swf_bytes)
+        except Exception as e:  # noqa: BLE001 (see the docstring: the caller fails the mod)
+            error = _failure_message(e)
+            failed.append((rel, error))
+            report(rel, "failed", error=error)
             continue
 
-        if new_swf_bytes is None:
+        if out_data is None:
             kept.append({"path": rel, "report": rescale_report})
             report(rel, "kept", rescale_report)
             continue
@@ -92,7 +102,6 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
         if not dry_run:
             out = dst / rel
             out.parent.mkdir(parents=True, exist_ok=True)
-            out_data = replace_swf(redswf_bytes, new_swf_bytes)
             out.write_bytes(out_data)
 
         fps = rescale_report["new_fps"] or rescale_report["old_fps"]    # not rescaled: only fixed
@@ -100,6 +109,12 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
         report(rel, "patched", rescale_report)
 
     return patched, kept, failed
+
+def _failure_message(e: Exception) -> str:
+    if isinstance(e, EXPECTED_ERRORS):
+        return str(e)
+    trace = "".join(traceback.format_exception(type(e), e, e.__traceback__)).rstrip()
+    return f"unexpected {type(e).__name__}: {e} (a bug, or a file the patcher doesn't understand)\n{trace}"
 
 class RuleIssues(NamedTuple):
     """Messages about explicit settings (speed, include, exclude, ...); see find_rule_issues"""
@@ -147,8 +162,8 @@ def process(redswf_bytes, settings, body_hook=None):
     """Find the SWF payload embedded in redswf_bytes, apply its fixes and rescale it.
 
     Returns (report, new_swf_bytes): the rescale report, and the new SWF (None if the file was left
-    unchanged). Raises MalformedSwfError if there is no readable SWF, and ValueError if there is more
-    than one, or the file can't be patched.
+    unchanged). Raises MalformedSwfError unless there is exactly one SWF it can read, and RescaleError
+    (or anything else; see patch_files) if it can't be patched.
     """
     result = None
     new_swf_bytes = None
@@ -163,7 +178,7 @@ def process(redswf_bytes, settings, body_hook=None):
             end, found, returned_bytes = payload
             if found is not None:
                 if result is not None:
-                    raise ValueError("found more than 1 payload (expected 1)")
+                    raise MalformedSwfError("found more than 1 payload (expected 1)")
                 result = found
                 new_swf_bytes = returned_bytes
             pos = redswf_bytes.find(sig, end)
@@ -180,8 +195,7 @@ def read_and_patch_swf(redswf_bytes, pos, sig, settings, body_hook=None):
         return None
 
     if sig not in SWF_COMPRESSED_SIGS:
-        raise ValueError("SWF was not compressed: please open a GitHub issue that uncompressed SWFs needs to be supported!")
-
+        raise MalformedSwfError("SWF was not compressed: please contact me (GitHub/Nexus Mods) about this and I'll add support.")
     return patch_fps(redswf_bytes, pos, settings, body_hook)
 
 def patch_fps(redswf_bytes, pos, settings, body_hook=None):

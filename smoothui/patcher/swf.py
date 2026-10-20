@@ -7,8 +7,7 @@ from ..common import SmoothUIError
 
 
 class MalformedSwfError(SmoothUIError):
-    """The SWF data can't be read: it's broken, not merely unsupported or impossible to patch.
-    Not a ValueError, so the patcher doesn't skip the file: the build of its whole mod fails."""
+    """The SWF data can't be read: it's broken, or in a form the patcher doesn't support"""
 
 # Every SWF/GFX file starts with: 3-byte signature, 1-byte version, 4-byte total length
 SWF_HEADER_SIZE = 8

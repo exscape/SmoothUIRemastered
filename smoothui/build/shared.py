@@ -157,7 +157,7 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
     """on_file callback for patcher_core.patch_files: the result, and anything to check by hand.
     Bind is_reviewed(rel, warning) (see reviewed_warnings.py) to hide warnings already checked."""
     if status == "failed":
-        print(f"{Style.BRIGHT}{Fore.RED}SKIP {rel}: {error}{Style.RESET_ALL}", file=sys.stderr, flush=True)
+        print(f"{Style.BRIGHT}{Fore.RED}FAILED {rel}: {error}{Style.RESET_ALL}", file=sys.stderr, flush=True)
         return
     if status == "kept":
         print(f"KEEP {rel}: {report['old_fps']:g} fps, already at or above the target "
@@ -202,11 +202,10 @@ def print_rule_issues(issues):
             print(f"{Style.BRIGHT}{Fore.RED}  {error}{Style.RESET_ALL}", flush=True)
         print(flush=True)
 
-def enforce_strict(failed, kept, rule_errors, unreviewed_warnings=()):
-    """--strict: fail unless every file was patched, exactly as configured, with no unreviewed warnings"""
+def enforce_strict(kept, rule_errors, unreviewed_warnings=()):
+    """--strict: fail unless every file was patched, exactly as configured, with no unreviewed warnings.
+    (A file that failed fails the build even without --strict.)"""
     problems = []
-    if failed:
-        problems.append(f"{len(failed)} file(s) could not be patched")
     if kept:
         problems.append(f"{len(kept)} file(s) left unchanged, as they are already at or above their target frame rate")
     if rule_errors:

@@ -71,9 +71,9 @@ def parse_args():
     ap.add_argument("--launch", action="store_true",
                     help="launch the game after build and install success")
     ap.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True,
-                    help="fail unless every file is patched exactly as configured: no file failed or left "
-                         "unchanged, every explicit rule followed, and no unreviewed warnings (default: on; "
-                         "use --no-strict to build anyway, e.g. while experimenting)")
+                    help="fail unless every file is patched exactly as configured: no file left unchanged, "
+                         "every explicit rule followed, and no unreviewed warnings (default: on; use --no-strict "
+                         "to build anyway, e.g. while experimenting). A file that fails always fails the build")
     ap.add_argument("--accept-warnings", action="store_true",
                     help="mark all current patcher warnings as reviewed (adds them to config/reviewed_warnings.txt); "
                          "only after checking them by hand")
@@ -204,7 +204,7 @@ def build(args, config, paths, version, fps):
     except (NotADirectoryError, ValueError) as e:
         fail(str(e))
     print()
-    print(f"Done ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} skipped.")
+    print(f"Done ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
 
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     if args.accept_warnings and warnings.unreviewed:
@@ -215,8 +215,10 @@ def build(args, config, paths, version, fps):
     print_warnings()
     rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings)
     print_rule_issues(rule_issues)
+    if failed:
+        fail(f"{len(failed)} file(s) could not be patched, see above")
     if args.strict:
-        enforce_strict(failed, kept, rule_issues.errors, warnings.unreviewed)
+        enforce_strict(kept, rule_issues.errors, warnings.unreviewed)
 
     def print_issues():
         print_warnings()

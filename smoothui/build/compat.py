@@ -101,9 +101,9 @@ def parse_args(argv=None):
     ap.add_argument("--launch", action="store_true",
                     help="launch the game after build and install success")
     ap.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True,
-                    help="fail unless every file is patched exactly as configured: no file failed or left "
-                         "unchanged, every explicit rule followed, and no unreviewed warnings (default: on; "
-                         "use --no-strict to build anyway, e.g. while experimenting)")
+                    help="fail unless every file is patched exactly as configured: no file left unchanged, "
+                         "every explicit rule followed, and no unreviewed warnings (default: on; use --no-strict "
+                         "to build anyway, e.g. while experimenting). A file that fails always fails the build")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
     ap.add_argument("--force", action="store_true",
@@ -416,13 +416,12 @@ def make_patch(version, manifest, unbundled_dir, patched_dir, args):
     print_warnings()
     rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings, recorded)
     print_rule_issues(rule_issues)
-    if args.strict:
-        enforce_strict(failed, kept, rule_issues.errors, warnings.unreviewed)
-
     # A conflicting file missing from the patch would let our main mod's version
     # override the other mod's changes to that screen.
     if failed:
         fail(f"{len(failed)} conflicting file(s) could not be patched, see above")
+    if args.strict:
+        enforce_strict(kept, rule_issues.errors, warnings.unreviewed)
     if not patched:
         fail("no patched files were produced, aborting.")
 
