@@ -23,7 +23,8 @@ from ..patcher.swf_patcher import format_fix
 from ..witcher3.bundle import BundleError, make_entry, write_bundle
 from ..witcher3.metadata_store import MetadataStoreError, make_metadata_store
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path.cwd() if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
+
 DEFAULT_PROFILE = REPO_ROOT / "config" / "profile_default.txt"
 REVIEWED_WARNINGS = REPO_ROOT / "config" / "reviewed_warnings.txt"
 MANIFEST_DIR = REPO_ROOT / "manifests"

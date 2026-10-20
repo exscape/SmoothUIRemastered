@@ -11,3 +11,5 @@ requirements_dev.txt
 manifests/*dev*.json
 *.w3strings
 manifests/compat/
+build/
+dist/
