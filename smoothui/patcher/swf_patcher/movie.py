@@ -6,7 +6,7 @@ import struct
 from collections import defaultdict
 from dataclasses import dataclass
 
-from ..swf import FPS_FIXED_POINT_SCALE, swf_get_header_offsets
+from ..swf import FPS_FIXED_POINT_SCALE, MalformedSwfError, swf_get_header_offsets
 from .abc_bytecode import NO_OP_NAMES, Instruction, disassemble, stack_effect
 from .abc_file import (
     CONSTANT_UTF8,
@@ -72,7 +72,7 @@ class SwfMovie:
         self.body = bytes(body)
         self.fps_offset, self.first_tag_offset = swf_get_header_offsets(self.body)
         if self.fps_offset is None:
-            raise RescaleError("not a valid SWF body")
+            raise MalformedSwfError("not a valid SWF body")
         self.fps = struct.unpack_from("<H", self.body, self.fps_offset)[0] / FPS_FIXED_POINT_SCALE
         self.tags = parse_tags(self.body, self.first_tag_offset)
 

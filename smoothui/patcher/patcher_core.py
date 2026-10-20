@@ -17,6 +17,7 @@ from .swf import (
     SWF_COMPRESSED_SIGS,
     SWF_HEADER_SIZE,
     SWF_SIGS,
+    MalformedSwfError,
     swf_get_header_offsets,
     swf_patch,
     valid_versions,
@@ -49,7 +50,8 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
 
     Returns (patched, kept, failed): patched holds {"path", "fps", "report"} dicts (fps: the file's
     frame rate now), kept holds {"path", "report"} dicts, and failed holds (rel, message) tuples.
-    Raises NotADirectoryError / ValueError for invalid directories.
+    Raises NotADirectoryError / ValueError for invalid directories, and MalformedSwfError (naming the
+    file) if a file's SWF can't be read: that is not a per-file failure, as the whole mod is suspect.
     """
     src, dst = Path(src).resolve(), Path(dst).resolve()
     if not src.is_dir():
@@ -74,6 +76,9 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
         try:
             assert 1 <= settings.target_fps <= 256
             rescale_report, new_swf_bytes = process(redswf_bytes, settings, dev_make_body_hook(rel))
+        except MalformedSwfError as e:
+            # Not skipped like the ValueErrors below: the build of this file's whole mod must fail
+            raise MalformedSwfError(f"{rel.as_posix()}: malformed SWF: {e}") from e
         except ValueError as e:
             failed.append((rel, str(e)))
             report(rel, "failed", error=str(e))
@@ -142,7 +147,8 @@ def process(redswf_bytes, settings, body_hook=None):
     """Find the SWF payload embedded in redswf_bytes, apply its fixes and rescale it.
 
     Returns (report, new_swf_bytes): the rescale report, and the new SWF (None if the file was left
-    unchanged). Raises ValueError if there isn't exactly one valid SWF.
+    unchanged). Raises MalformedSwfError if there is no readable SWF, and ValueError if there is more
+    than one, or the file can't be patched.
     """
     result = None
     new_swf_bytes = None
@@ -163,7 +169,7 @@ def process(redswf_bytes, settings, body_hook=None):
             pos = redswf_bytes.find(sig, end)
 
     if result is None:
-        raise ValueError("found 0 payloads (expected 1); corrupt file?")
+        raise MalformedSwfError("found 0 payloads (expected 1); corrupt file?")
     return result, new_swf_bytes
 
 def read_and_patch_swf(redswf_bytes, pos, sig, settings, body_hook=None):

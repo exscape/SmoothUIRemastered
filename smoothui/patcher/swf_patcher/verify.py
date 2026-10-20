@@ -9,7 +9,7 @@ from __future__ import annotations
 import dataclasses
 import struct
 
-from ..swf import swf_get_header_offsets
+from ..swf import MalformedSwfError, swf_get_header_offsets
 from .abc_bytecode import INTEGER_PUSH_NAMES, PushDouble, disassemble
 from .abc_file import parse_abc
 from .builder import raw_fps
@@ -46,7 +46,12 @@ def verify(movie: SwfMovie, plan: RescalePlan, new_body: bytes) -> list[str]:
     if new_body[fps_offset + 2:first_tag_offset] != movie.body[fps_offset + 2:first_tag_offset]:
         problems.append("root frame count changed")
 
-    new_tags = parse_tags(new_body, first_tag_offset)
+    # Our output, so a parse error is a verification failure, not a malformed input file
+    try:
+        new_tags = parse_tags(new_body, first_tag_offset)
+    except MalformedSwfError as e:
+        problems.append(f"new tag list does not parse: {e}")
+        return problems
     if len(new_tags) != len(movie.tags):
         problems.append("tag count changed")
         return problems
@@ -94,7 +99,10 @@ def _verify_stretched_sprite(sprite: Sprite, new: Tag, retiming: Retiming, tween
        new frame, except for the planned samples of tweened objects: those are the same objects, with
        the same display options, at their interpolated states, which lie between their two keyframes"""
     cid = sprite.character_id
-    new_sprite_tags = parse_sprite_tags(new)
+    try:
+        new_sprite_tags = parse_sprite_tags(new)
+    except MalformedSwfError as e:
+        return [f"sprite {cid}: new tag list does not parse: {e}"]
     old_frames, old_trailing = _split_frames(sprite.tags)
     new_frames, new_trailing = _split_frames(new_sprite_tags)
     if len(new_frames) != retiming.tick(len(old_frames)) or parse_sprite_header(new)[1] != len(new_frames):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
-from ..swf import swf_get_header_offsets
+from ..swf import MalformedSwfError, swf_get_header_offsets
 from ..swf_patcher.abc_file import AbcFile, PoolAdditions, parse_abc, serialize_abc
 from ..swf_patcher.swf_tags import (
     Tag,
@@ -41,7 +41,7 @@ class SwfEdit:
     def __init__(self, body: bytes):
         first_tag = swf_get_header_offsets(body)[1]
         if first_tag is None:
-            raise ValueError("not a valid SWF body")
+            raise MalformedSwfError("not a valid SWF body")
         self.header = bytes(body[:first_tag])
         self.tags = parse_tags(body, first_tag)
         self.changed = False

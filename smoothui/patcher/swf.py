@@ -3,7 +3,12 @@
 import struct
 import zlib
 
-from ..common import fail
+from ..common import SmoothUIError
+
+
+class MalformedSwfError(SmoothUIError):
+    """The SWF data can't be read: it's broken, not merely unsupported or impossible to patch.
+    Not a ValueError, so the patcher doesn't skip the file: the build of its whole mod fails."""
 
 # Every SWF/GFX file starts with: 3-byte signature, 1-byte version, 4-byte total length
 SWF_HEADER_SIZE = 8
@@ -60,7 +65,8 @@ def swf_patch(data, pos, patch, body_hook=None):
     (declared_total,) = struct.unpack_from("<I", data, pos + 4)
     declared_body_len = declared_total - SWF_HEADER_SIZE
     if declared_body_len < 0 or declared_body_len > len(body):
-        fail(f"declared length {declared_total} doesn't match the decompressed size {SWF_HEADER_SIZE + len(body)}")
+        raise MalformedSwfError(f"declared length {declared_total} doesn't match the decompressed size "
+                                f"{SWF_HEADER_SIZE + len(body)}")
     del body[declared_body_len:]
 
     outcome = patch(body)

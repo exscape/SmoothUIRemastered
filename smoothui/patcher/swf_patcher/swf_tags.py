@@ -6,7 +6,7 @@ import struct
 from dataclasses import dataclass
 from enum import IntEnum
 
-from ...common import fail
+from ..swf import MalformedSwfError
 
 # Every tag starts with a 16-bit little-endian header: the tag code in the upper 10 bits
 # and the payload length in the lower 6 bits. A length of 0x3F is a marker for the
@@ -58,7 +58,7 @@ def read_tag(body: bytes, offset: int, limit: int) -> tuple[Tag, int]:
 
     Returns the tag and the offset just past it."""
     if offset + SHORT_HEADER_SIZE > limit:
-        fail(f"truncated tag header at offset {offset}")
+        raise MalformedSwfError(f"truncated tag header at offset {offset}")
     (header,) = struct.unpack_from("<H", body, offset)
     code = header >> TAG_LENGTH_BITS
     length = header & TAG_LENGTH_MASK
@@ -67,26 +67,26 @@ def read_tag(body: bytes, offset: int, limit: int) -> tuple[Tag, int]:
     if length == LONG_FORM_MARKER:
         header_size = LONG_HEADER_SIZE
         if offset + LONG_HEADER_SIZE > limit:
-            fail(f"truncated long tag header at offset {offset}")
+            raise MalformedSwfError(f"truncated long tag header at offset {offset}")
         (length,) = struct.unpack_from("<I", body, offset + SHORT_HEADER_SIZE)
 
     payload_start = offset + header_size
     end = payload_start + length
     if end > limit:
-        fail(f"tag {code} at offset {offset} ({length} bytes) extends past the end of its container")
+        raise MalformedSwfError(f"tag {code} at offset {offset} ({length} bytes) extends past the end of its container")
 
     return Tag(code, bytes(body[payload_start:end]), header_size == LONG_HEADER_SIZE), end
 
 def iter_tags(body: bytes, start: int, end: int | None = None):
     """Yield the tags of the tag list stored in body[start:end], up to and including End.
 
-    Fails unless the list is well-formed: it must be terminated by an End tag, and that
-    End tag must be the last thing in the range."""
+    Raises MalformedSwfError unless the list is well-formed: it must be terminated by an End tag,
+    and that End tag must be the last thing in the range."""
     end = len(body) if end is None else end
     offset = start
     while True:
         if offset >= end:
-            fail(f"tag list at offset {start} has no End tag")
+            raise MalformedSwfError(f"tag list at offset {start} has no End tag")
         tag_start = offset
         tag, offset = read_tag(body, offset, end)
         yield tag
@@ -94,7 +94,7 @@ def iter_tags(body: bytes, start: int, end: int | None = None):
             if offset != end:
                 # I'm not sure if this is still possible after changing the parser to ignore data after
                 # the declared end, but let's keep it just in case
-                fail(f"{end - offset} unexpected bytes after the End tag at offset {tag_start}")
+                raise MalformedSwfError(f"{end - offset} unexpected bytes after the End tag at offset {tag_start}")
             return
 
 def parse_tags(body: bytes, start: int, end: int | None = None) -> list[Tag]:
