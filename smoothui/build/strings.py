@@ -7,13 +7,17 @@ Uses w3stringsr.exe: https://www.nexusmods.com/witcher3/mods/13094
 First checks that every name in the settings menu's XML has a string (as the menu looks it up: see
 strings/en.csv), so that the menu never shows a raw key."""
 
+import logging
 import re
 import subprocess
 import tempfile
 from pathlib import Path
 
-from ..common import fail, print_step_header, to_windows
+from ..common import fail, to_windows
+from ..log import HEADING
 from .shared import MOD_FILES, REPO_ROOT
+
+log = logging.getLogger(__name__)
 
 SOURCE = REPO_ROOT / "strings" / "en.csv"
 ID_SPACE = "13526"
@@ -66,7 +70,7 @@ def check_menu_strings(source: str, xml_path: Path):
 def build_strings(tool: Path, work_dir: Path, mod_name: str, dry_run=False):
     """Check the strings against the mod's settings menu, then (unless dry_run) replace the mod's .w3strings
     files with new ones; tool is w3stringsr, work_dir a folder for temporary files"""
-    print_step_header("Building the settings menu's strings")
+    log.info("Building the settings menu's strings", extra=HEADING)
     source = SOURCE.read_text(encoding="utf-8")
     if len(LANGUAGE_META.findall(source)) != 1:
         fail(f"{SOURCE} should have one ;meta[language=..] line")

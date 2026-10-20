@@ -10,9 +10,11 @@ format, so only their files are compared.
 
 from __future__ import annotations
 
+import logging
 from collections import Counter, defaultdict
 
-from ..common import fail, normalize_version, print_step_header
+from ..common import fail, normalize_version
+from ..log import HEADING
 from ..patcher.swf_patcher import format_unmet_rule, report_settings
 from .shared import (
     OLD_MANIFEST_FPS,
@@ -21,6 +23,8 @@ from .shared import (
     release_manifests,
     version_key,
 )
+
+log = logging.getLogger(__name__)
 
 # What file_changes compares, in the order it reports them
 FILE_ASPECTS = ("source", "frame rate", "settings", "fixes", "warnings", "unmet rules", "code edits", "clips")
@@ -43,7 +47,7 @@ def print_manifest_diff(old, new):
         if manifest is None:
             fail(f"manifest not found: {version_or_path}")
         manifests.append(manifest)
-    print_step_header(f"Changes from {manifests[0]['created_mod_version']} to {manifests[1]['created_mod_version']}")
+    log.info(f"Changes from {manifests[0]['created_mod_version']} to {manifests[1]['created_mod_version']}", extra=HEADING)
     print("\n".join(diff_manifests(*manifests)), flush=True)
 
 

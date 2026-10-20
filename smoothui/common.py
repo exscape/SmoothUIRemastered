@@ -1,3 +1,4 @@
+import logging
 import platform
 import re
 import subprocess
@@ -6,8 +7,9 @@ from functools import cache
 from pathlib import Path
 from typing import NoReturn
 
-from colorama import Back, Fore, Style, just_fix_windows_console
+from .log import setup_console
 
+log = logging.getLogger(__name__)
 
 class SmoothUIError(Exception):
     """An expected failure with a message for the user (bad input, config or environment), raised by fail()."""
@@ -16,34 +18,14 @@ def fail(msg) -> NoReturn:
     raise SmoothUIError(msg)
 
 def run_cli(main):
-    """Run a command-line entry point: print the message of a SmoothUIError (see fail()) and exit with
-    code 1, without a traceback. Any other exception keeps its traceback."""
-    just_fix_windows_console()  # Initialize colorama
+    """Run a command-line entry point with console output (see log.py): log the message of a SmoothUIError
+    (see fail()) and exit with code 1, without a traceback. Any other exception keeps its traceback."""
+    setup_console()
     try:
         main()
     except SmoothUIError as e:
-        sys.stdout.flush()
-        print(f"{Style.BRIGHT}{Fore.RED} ERROR: {e}{Style.RESET_ALL}", file=sys.stderr, flush=True)
+        log.error(str(e))
         sys.exit(1)
-
-def print_step_header(msg):
-    _print_header(msg, f"{Back.BLACK}{Fore.GREEN}", "=", 130)
-
-def print_substep_header(msg):
-    _print_header(msg, f"{Fore.CYAN}", "-", 90, align_start=True)
-
-def _print_header(msg, color, symbol, width, align_start=False):
-    if align_start:
-        NUM_SYMBOLS = max(width - 1 - len(msg), 5)
-        symbols = symbol * NUM_SYMBOLS
-        text = f"{msg} {symbols}"
-    else:
-        NUM_SYMBOLS = max(5, (width - len(msg) - 2)// 2)
-        symbols = symbol * NUM_SYMBOLS
-        text = f"{symbols} {msg} {symbols}"
-
-    if len(text) % 2 != 0: text += symbol
-    print(f"\n{color}{text}{Style.RESET_ALL}", flush=True)
 
 WIN_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 

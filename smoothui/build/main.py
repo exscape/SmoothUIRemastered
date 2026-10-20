@@ -7,11 +7,13 @@
 
 import argparse
 import datetime
+import logging
 import re
 import shutil
 from functools import partial
 
-from ..common import fail, print_step_header
+from ..common import fail
+from ..log import HEADING
 from ..patcher import dev_mode, patcher_core
 from ..witcher3.redswf import swf_sha256
 from .compat_status import print_compat_status
@@ -44,6 +46,8 @@ from .shared import (
     zip_tree,
 )
 from .strings import build_strings, check_tool
+
+log = logging.getLogger(__name__)
 
 OUTPUT_MOD_NAME = "modSmoothUIRemastered"
 DEFAULT_FPS = 120
@@ -150,7 +154,7 @@ def main():
     # Before building: a release build replaces the latest manifest with one made from these very files
     game_file_lines, game_files_changed = [], 0
     if latest := latest_manifests():
-        print_step_header(f"Game files against {', '.join(path.stem for path in latest.values())}")
+        log.info(f"Game files against {', '.join(path.stem for path in latest.values())}", extra=HEADING)
         game_file_lines, game_files_changed = game_file_report(paths['uncooked_files'], latest.values())
         print("\n".join(game_file_lines), flush=True)
 
@@ -164,10 +168,10 @@ def main():
 
     # Repeated for every build, as the output of the builds has likely scrolled the issues away
     for version, print_issues in zip(versions, issue_printers):
-        print_step_header(f"Warnings and errors: {version}")
+        log.info(f"Warnings and errors: {version}", extra=HEADING)
         print_issues()
     if game_files_changed:
-        print_step_header("Game files changed since the latest builds (checked before building)")
+        log.info("Game files changed since the latest builds (checked before building)", extra=HEADING)
         print("\n".join(game_file_lines), flush=True)
 
     if args.make_release and not args.dry_run:
@@ -175,12 +179,12 @@ def main():
             print_compat_status(version)
 
     if args.dry_run:
-        print_step_header("DRY RUN: exiting")
+        log.info("DRY RUN: exiting", extra=HEADING)
 
 def build(args, config, paths, version, fps):
     """Patch, check, pack and zip one build (and for a release, write its manifest). Returns a function
     that prints the build's warnings and rule issues."""
-    print_step_header(f"Building {version}: every file patched to {fps} fps")
+    log.info(f"Building {version}: every file patched to {fps} fps", extra=HEADING)
     profile, shared_settings = load_profile(args.profile, fps)
     work_dir = paths['working_dir'] / f"main_{fps}fps"
     patched_dir = work_dir / "1_patched"
@@ -191,11 +195,11 @@ def build(args, config, paths, version, fps):
 
     if not args.dry_run:
         # Clean out stale output
-        print_step_header(f"Cleaning {patched_dir}")
+        log.info(f"Cleaning {patched_dir}", extra=HEADING)
         shutil.rmtree(patched_dir, ignore_errors=True)
         output_content_path.mkdir(parents=True, exist_ok=True)
 
-    print_step_header(f"Running FPS patcher ({version})")
+    log.info(f"Running FPS patcher ({version})", extra=HEADING)
     review = WarningReview(load_reviewed())
     try:
         patched, kept, failed = patcher_core.patch_files(
@@ -229,7 +233,7 @@ def build(args, config, paths, version, fps):
     if not patched:
         fail("no patched files were produced, aborting.")
 
-    print_step_header(f"Removing the old output folder ({version})")
+    log.info(f"Removing the old output folder ({version})", extra=HEADING)
     shutil.rmtree(output_dir, ignore_errors=True)
     if output_dir.exists():
         fail(f"could not remove the old output folder {output_dir}")
@@ -241,7 +245,7 @@ def build(args, config, paths, version, fps):
     zip_tree(output_dir, zip_out)
 
     if args.make_release:
-        print_step_header(f"Writing mod manifest ({version})")
+        log.info(f"Writing mod manifest ({version})", extra=HEADING)
         uncooked_files = paths['uncooked_files']
         records = {}
         for entry in sorted(patched, key=lambda e: e["path"]):

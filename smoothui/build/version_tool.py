@@ -12,10 +12,12 @@ Exit status: 0, or 1 if a check found something outdated, or 2 for an invalid co
 """
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
-from ..common import normalize_version, print_step_header
+from ..common import normalize_version
+from ..log import HEADING
 from .compat_status import newest_compat_patches, print_compat_status
 from .game_files import game_file_report
 from .manifest_diff import print_manifest_diff
@@ -30,6 +32,8 @@ from .shared import (
     load_manifest,
     manifest_path,
 )
+
+log = logging.getLogger(__name__)
 
 EXAMPLES = """examples:
   version-tool.py --check-all-compat-patches
@@ -87,7 +91,7 @@ def main(argv=None):
         uncooked_dir = Path(args.check_game_files) if args.check_game_files else config_paths(load_config())["uncooked_files"]
         if not uncooked_dir.is_dir():
             ap.error(f"not a directory: {uncooked_dir}")
-        print_step_header(f"Game files against {', '.join(path.stem for path in targets.values())}")
+        log.info(f"Game files against {', '.join(path.stem for path in targets.values())}", extra=HEADING)
         lines, changed = game_file_report(uncooked_dir, targets.values())
         print("\n".join(lines), flush=True)
         sys.exit(1 if changed else 0)

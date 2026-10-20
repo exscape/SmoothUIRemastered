@@ -2,11 +2,14 @@
 
 import hashlib
 import json
+import logging
 import re
 import shutil
 import subprocess
 import sys
 import zipfile
+
+log = logging.getLogger(__name__)
 
 try:
     import tomllib
@@ -17,7 +20,8 @@ from pathlib import Path
 
 from colorama import Back, Fore, Style
 
-from ..common import fail, normalize_version, print_step_header, to_native, to_windows
+from ..common import fail, normalize_version, to_native, to_windows
+from ..log import HEADING
 from ..patcher.fixes import APPLIED
 from ..patcher.swf_patcher import format_fix
 from ..witcher3.bundle import BundleError, make_entry, write_bundle
@@ -95,7 +99,7 @@ def wcc_lite(*args):
 
 def pack_content(patched_dir, content_dir):
     """Pack the patched files into blob0.bundle and create metadata.store"""
-    print_step_header("Packing blob0.bundle")
+    log.info("Packing blob0.bundle", extra=HEADING)
     files = sorted(p for p in patched_dir.rglob("*") if p.is_file())
     bundle = content_dir / "blob0.bundle"
     try:
@@ -106,12 +110,12 @@ def pack_content(patched_dir, content_dir):
 
     store_path = content_dir / "metadata.store"
     if COMPARE_STORE_WITH_WCC_LITE:
-        print_step_header("Running wcc_lite metadatastore (to compare)")
+        log.info("Running wcc_lite metadatastore (to compare)", extra=HEADING)
         wcc_lite("metadatastore", "-noui", f"-path={to_windows(content_dir)}")
         if not store_path.is_file():
             fail("wcc_lite did not produce metadata.store.")
 
-    print_step_header("Writing metadata.store")
+    log.info("Writing metadata.store", extra=HEADING)
     try:
         store = make_metadata_store([(bundle.name, bundle.read_bytes())])
     except MetadataStoreError as e:
@@ -229,7 +233,7 @@ def copy_files(src_dir, dst_dir):
 
 def add_mod_files(output_dir, mod_name):
     """Copy MOD_FILES into the mod's output tree (mods/mod_name/, bin/)"""
-    print_step_header("Adding scripts and settings menu")
+    log.info("Adding scripts and settings menu", extra=HEADING)
     unexpected = [p.relative_to(MOD_FILES).as_posix() for p in [*MOD_FILES.iterdir(), *(MOD_FILES / "mods").iterdir()]
                   if p.relative_to(MOD_FILES).as_posix() not in ("mods", "bin", f"mods/{mod_name}")]
     if unexpected:
@@ -239,7 +243,7 @@ def add_mod_files(output_dir, mod_name):
 
 def zip_tree(src_dir, zip_out):
     """Zip every file under src_dir, keeping the tree's layout at the root of the archive"""
-    print_step_header("Creating output .zip")
+    log.info("Creating output .zip", extra=HEADING)
     zip_out.parent.mkdir(parents=True, exist_ok=True)
     zip_out.unlink(missing_ok=True)
     with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
@@ -354,7 +358,7 @@ def write_json(path, data):
 def install_mod(mod_dir, game_path, bin_dir=None):
     """Copy <mod_dir> (a directory whose name is the mod's name) into <game_path>/mods, and the files
     in bin_dir (the settings menu), if given, into <game_path>/bin"""
-    print_step_header("Installing mod to game folder")
+    log.info("Installing mod to game folder", extra=HEADING)
     if not game_path.is_dir():
         fail(f"game path not found: {game_path}")
     dest = game_path / "mods" / Path(mod_dir).name
@@ -367,7 +371,7 @@ def install_mod(mod_dir, game_path, bin_dir=None):
 
 def launch_game(game_path):
     """Attempt to launch the game executable"""
-    print_step_header("Launching game")
+    log.info("Launching game", extra=HEADING)
     exe_path = game_path / "bin/x64_dx12/witcher3.exe"
     run_command([exe_path], cwd=exe_path.parent, detach=True)
 
@@ -392,5 +396,5 @@ def finish_work_dir(work_dir, keep_work):
     if keep_work:
         print(f"Keeping work files in {work_dir}")
     else:
-        print_step_header(f"Removing {work_dir}")
+        log.info(f"Removing {work_dir}", extra=HEADING)
         shutil.rmtree(work_dir, ignore_errors=True)

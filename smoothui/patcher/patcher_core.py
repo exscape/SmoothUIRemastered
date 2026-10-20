@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import struct
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-from ..common import SmoothUIError, print_substep_header, profile_key
+from ..common import SmoothUIError, profile_key
+from ..log import SUBHEADING
 from ..witcher3.redswf import RedSwfError, replace_swf
 from .dev_mode import dev_make_body_hook, resolve_dev_target
 from .fixes import AFTER_RESCALE, BEFORE_RESCALE, apply_fixes
@@ -29,6 +31,8 @@ from .swf_patcher import (
     rescale_body,
 )
 from .swf_patcher.movie import RescaleError
+
+log = logging.getLogger(__name__)
 
 # The errors the patcher raises on purpose, whose message says what is wrong with the file. Anything else
 # (a plain ValueError too) may well be a bug, so its traceback goes into the failure message.
@@ -82,7 +86,7 @@ def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
         orig = (src / rel).read_bytes()
         redswf_bytes = bytearray(orig)
 
-        print_substep_header(rel.as_posix())
+        log.info(rel.as_posix(), extra=SUBHEADING)
         try:
             assert 1 <= settings.target_fps <= 256
             rescale_report, new_swf_bytes = process(redswf_bytes, settings, dev_make_body_hook(rel))

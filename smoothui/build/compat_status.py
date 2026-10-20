@@ -14,9 +14,12 @@ a new version of the other mod that didn't change any of the files it shares wit
 
 from __future__ import annotations
 
+import logging
+
 from colorama import Fore, Style
 
-from ..common import fail, print_step_header, profile_key
+from ..common import fail, profile_key
+from ..log import HEADING
 from .manifest_diff import describe_commit, file_changes
 from .shared import (
     COMPAT_MANIFEST_DIR,
@@ -26,6 +29,8 @@ from .shared import (
     load_manifest,
     version_key,
 )
+
+log = logging.getLogger(__name__)
 
 
 def newest_compat_patches(version: str, mod_name: str | None = None, exclude=None) -> list[tuple]:
@@ -88,7 +93,7 @@ def print_compat_status(version_or_path, patches: list[tuple] | None = None, mod
     if release is None:
         fail(f"manifest not found: {version_or_path}")
     version = release["created_mod_version"]
-    print_step_header(f"Compat patches for {version}" + (" (a dev build)" if is_dev_version(version) else ""))
+    log.info(f"Compat patches for {version}", extra=HEADING)
     if patches is None:
         patches = newest_compat_patches(version, mod_name)
     if not patches:

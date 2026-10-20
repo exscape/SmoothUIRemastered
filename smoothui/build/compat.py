@@ -14,6 +14,7 @@
 
 import argparse
 import datetime
+import logging
 import shutil
 import zipfile
 from functools import partial
@@ -23,7 +24,8 @@ import py7zr
 import rarfile
 from colorama import Fore, Style
 
-from ..common import fail, normalize_version, print_step_header, profile_key
+from ..common import fail, normalize_version, profile_key
+from ..log import HEADING
 from ..patcher import dev_mode, patcher_core
 from ..patcher.fixes import check_fix_name
 from ..patcher.patcher_core import PatchSettings
@@ -59,6 +61,8 @@ from .shared import (
     write_json,
     zip_tree,
 )
+
+log = logging.getLogger(__name__)
 
 
 # rarfile looks for an external unrar in PATH and in the current directory. When neither has it,
@@ -335,14 +339,14 @@ def main():
 
     print(f"Mod folder: {mod_name}")
 
-    print_step_header(f"Cleaning {work_dir}")
+    log.info(f"Cleaning {work_dir}", extra=HEADING)
     shutil.rmtree(work_dir, ignore_errors=True)
     work_dir.mkdir(parents=True)
 
-    print_step_header(f"Unpacking {args.mod_archive}")
+    log.info(f"Unpacking {args.mod_archive}", extra=HEADING)
     unpack(args.mod_archive, unpacked_dir)
 
-    print_step_header("Unbundling the other mod")
+    log.info("Unbundling the other mod", extra=HEADING)
     unbundle(find_content_dir(unpacked_dir), unbundled_dir)
 
     # The patches are made one after the other; a failure stops the run, leaving the earlier ones as they are
@@ -350,7 +354,7 @@ def main():
     issue_printers, unneeded = [], []
     for version, fps in zip(versions, fps_list):
         zip_out = REPO_ROOT / f"SmoothUIRemastered_{version}_{args.mod_name}_{mod_version}_Compat.zip"
-        print_step_header(f"Compat patch for Smooth UI Remastered {version}: {zip_out.name}")
+        log.info(f"Compat patch for Smooth UI Remastered {version}: {zip_out.name}", extra=HEADING)
         patched_dir = work_dir / f"{fps}fps" / "3_patched"
         mod_root = work_dir / f"{fps}fps" / "4_mod"
         content_dir = mod_root / mod_name / "content"
@@ -372,7 +376,7 @@ def main():
 
     # Repeated for every patch, as the output of the builds has likely scrolled the issues away
     for version, print_issues in zip(versions, issue_printers):
-        print_step_header(f"Warnings and errors: {version}")
+        log.info(f"Warnings and errors: {version}", extra=HEADING)
         print_issues()
     print(f"\nCreated {len(versions)} compat patch(es): " + ", ".join(versions))
     for warning in unneeded:
@@ -381,7 +385,7 @@ def main():
 def make_patch(version, manifest, unbundled_dir, patched_dir, args):
     """Patch the files the other mod shares with one build of the release (version, e.g. v0.3-60fps) into
     patched_dir, and check the result. Returns a function that prints the warnings and rule issues."""
-    print_step_header(f"Finding files in common with Smooth UI Remastered {version}")
+    log.info(f"Finding files in common with Smooth UI Remastered {version}", extra=HEADING)
     print(f"Files are patched to {manifest['fps']} fps, as in that build")
     shared = find_shared_files(unbundled_dir, manifest, version)
     shared_keys = {rel.as_posix().lower() for rel in shared}
@@ -391,7 +395,7 @@ def make_patch(version, manifest, unbundled_dir, patched_dir, args):
     if args.overrides:
         shared_profile, shared_settings, reviewed = apply_overrides(shared_profile, args.overrides)
 
-    print_step_header(f"Running FPS patcher ({version})")
+    log.info(f"Running FPS patcher ({version})", extra=HEADING)
 
     # The release's reports; warnings it had for a file were already there in the vanilla version.
     # They stay hidden where the other mod's code is the same (see reviewed_warnings.py).
@@ -437,7 +441,7 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundle
     file differently (other settings, fixes or patcher code) makes the patch outdated; so does one that
     starts patching a file the other mod ships. See compat_status.py's compat_patch_problems.
     Returns a warning if the patch is identical to the mod's newest earlier one, so not needed."""
-    print_step_header(f"Writing compat patch manifest ({version})")
+    log.info(f"Writing compat patch manifest ({version})", extra=HEADING)
     release_files = {profile_key(key): record for key, record in manifest["files"].items()}
     files = {}
     for entry in sorted(patched, key=lambda e: e["path"]):
