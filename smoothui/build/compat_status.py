@@ -6,6 +6,10 @@ A patch is outdated when the release patches a file the patch ships differently 
 patch was made from (other settings, fixes or patcher code: the output differs), no longer patches one
 of them, or patches a file the other mod ships that the patch lacks. Only those files count: version
 names don't, and neither do changes to other files.
+
+The other way around, build-compat.py tells when a new patch is not needed: when it ships the same files
+with the same output as the other mod's newest earlier patch (see compare_with_earlier_patch), e.g. for
+a new version of the other mod that didn't change any of the files it shares with Smooth UI Remastered.
 """
 
 from __future__ import annotations
@@ -24,15 +28,17 @@ from .shared import (
 )
 
 
-def newest_compat_patches(version: str, mod_name: str | None = None) -> list[tuple]:
+def newest_compat_patches(version: str, mod_name: str | None = None, exclude=None) -> list[tuple]:
     """(path, manifest) of the newest compat patch of each other mod (or only of mod_name), among those
     built for this build's frame rate from this release or an earlier one (a patch built for a later
     release, e.g. a dev build, says nothing about this one). Newest: for the mod's latest version (mod
     versions version_key can't read count as the oldest), then built for the latest release, then the
-    most recently built."""
+    most recently built. Leaves out the manifest at exclude."""
     key, fps = version_key(version), build_fps(version)
     newest: dict[str, tuple] = {}  # mod name -> (rank, path, manifest)
     for path in COMPAT_MANIFEST_DIR.glob("*.json"):
+        if path == exclude:
+            continue
         patch = load_manifest(path)
         built_for = version_key(patch["smooth_version"])
         if built_for is None or key is None or built_for > key or build_fps(patch["smooth_version"]) != fps:

@@ -9,6 +9,7 @@
 # config/compat_overrides_example.txt).
 # Unless --only-fps or a dev hook is given, each patch also gets a manifest in manifests/compat/.
 # build-main.py and version-tool.py use these to tell which compat patches a new release makes outdated.
+# Each patch is also compared with the mod's newest earlier patch, with a warning if it is identical (not needed).
 # Example usage: python build-compat.py modOtherUI.zip --mod-name OtherMod --mod-version 1.0 --smooth-version 0.3
 
 import argparse
@@ -34,6 +35,7 @@ from ..patcher.swf_patcher import (
 )
 from ..witcher3.bundle import BundleError, extract, read_bundle
 from ..witcher3.redswf import swf_sha256
+from .compat_status import newest_compat_patches
 from .profile import apply_overrides
 from .reviewed_warnings import WarningReview, print_warning_summary, review_of
 from .shared import (
@@ -345,7 +347,7 @@ def main():
 
     # The patches are made one after the other; a failure stops the run, leaving the earlier ones as they are
     versions = [build_version(smooth_version, fps) for fps in fps_list]
-    issue_printers = []
+    issue_printers, unneeded = [], []
     for version, fps in zip(versions, fps_list):
         zip_out = REPO_ROOT / f"SmoothUIRemastered_{version}_{args.mod_name}_{mod_version}_Compat.zip"
         print_step_header(f"Compat patch for Smooth UI Remastered {version}: {zip_out.name}")
@@ -360,8 +362,8 @@ def main():
         zip_tree(mod_root, zip_out)
         # Builds of one frame rate are for testing, and dev hooks change the files by hand
         if not (args.only_fps or args.dev_dump or args.dev_insert or args.dev_pause):
-            write_patch_manifest(version, manifests[fps], args, mod_version, zip_out,
-                                 unbundled_dir, patched_dir, patched)
+            unneeded += write_patch_manifest(version, manifests[fps], args, mod_version, zip_out,
+                                                         unbundled_dir, patched_dir, patched)
 
     if args.only_fps:
         install_and_launch(mod_root / mod_name, game_path, args.install, args.launch)
@@ -373,6 +375,8 @@ def main():
         print_step_header(f"Warnings and errors: {version}")
         print_issues()
     print(f"\nCreated {len(versions)} compat patch(es): " + ", ".join(versions))
+    for warning in unneeded:
+        print(warning)
 
 def make_patch(version, manifest, unbundled_dir, patched_dir, args):
     """Patch the files the other mod shares with one build of the release (version, e.g. v0.3-60fps) into
@@ -432,7 +436,8 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundle
     release (version, e.g. v0.3-60fps; manifest is its manifest), replacing any earlier one: what the
     patch holds, and the release's own output for each of those files. A later release that patches a
     file differently (other settings, fixes or patcher code) makes the patch outdated; so does one that
-    starts patching a file the other mod ships. See compat_status.py's compat_patch_problems."""
+    starts patching a file the other mod ships. See compat_status.py's compat_patch_problems.
+    Returns a warning if the patch is identical to the mod's newest earlier one, so not needed."""
     print_step_header(f"Writing compat patch manifest ({version})")
     release_files = {profile_key(key): record for key, record in manifest["files"].items()}
     files = {}
@@ -445,6 +450,15 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundle
         }
     commit, uncommitted = patcher_commit()
     path = compat_manifest_path(version, args.mod_name, mod_version)
+    # Identical: neither the other mod's files nor our patching of them changed
+    outputs = lambda files: {profile_key(p): record["output_swf_sha256"] for p, record in files.items()}
+    earlier = newest_compat_patches(version, args.mod_name, exclude=path)
+    unneeded = [f"{Style.BRIGHT}{Fore.YELLOW}Warning: {zip_out.name} is not needed, it is identical to "
+                f"{earlier[0][1]['output_zip']}. Unless you release it anyway, delete it and "
+                f"{path.relative_to(REPO_ROOT)}{Style.RESET_ALL}"] \
+        if earlier and outputs(earlier[0][1]["files"]) == outputs(files) else []
+    for warning in unneeded:
+        print(warning)
     write_json(path, {
         "mod_name": args.mod_name,
         "mod_version": mod_version,
@@ -462,3 +476,4 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundle
         "files": files,
     })
     print(f"Wrote compat patch manifest {path} ({len(files)} files)")
+    return unneeded

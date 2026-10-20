@@ -68,7 +68,10 @@ If a mod changes identifiers in an incompatible way, or needs more control, `--o
 **Does a new Smooth UI Remastered release need a new compat patch?**  
 Not always. After updating this repository (to download the new release's manifests), run `python version-tool.py --check-compat-patch YourModName`.  
 This only reads the manifests: for your mod's patches (those of its latest version), it tells whether they still work with that release as they are, or need a rebuild because the release patches their files differently (or now patches more of your mod's files).  
-This needs the manifests that build-compat.py wrote in your copy's `manifests/compat/`, so keep those around. It also can't tell when the other mod (your mod) has been updated; if it has, **a new compat patch is always needed** if a .redswf patched by Smooth UI was changed.
+This needs the manifests that build-compat.py wrote in your copy's `manifests/compat/`, so keep those around. It doesn't know about new versions of your mod; for those, see below.
+
+**Does a new version of your mod need a new compat patch?**
+Only if it changed a .redswf file that Smooth UI Remastered patches. Just build the patch: build-compat.py compares it with the newest earlier patch for your mod (from its manifest in `manifests/compat/`), and warns if the new one is identical, meaning neither your files nor the patching changed. The earlier patch then works with the new version as it is.
 
 Run `python3 build-compat.py --help` for basic help. I'm considering making a simple (and optional) GUI to streamline things further, and a binary release (likely PyInstaller-based) to go with it.  
 Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwas?gameId=952), or create a GitHub issue if something is wrong or unclear.
