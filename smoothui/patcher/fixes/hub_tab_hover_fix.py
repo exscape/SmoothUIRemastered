@@ -21,9 +21,11 @@ from ..swf_patcher.abc_bytecode import (
     disassemble,
 )
 from ..swf_patcher.abc_file import AbcFile, encode_u30
-from .swf_edit import CantApply, FixResult, SwfEdit
+from .swf_edit import CantApply, FixKind, FixResult, SwfEdit
 
 NAME = "hub-tab-hover-fix"
+CONSEQUENCE = "in the tab bar at the top of some menus, several tabs can be highlighted at once"
+KIND = FixKind.GAME_BUG
 CLASS = "red.game.witcher3.menus.common_menu.TopBarNew"
 METHOD = "onTabItemMouseOut"
 

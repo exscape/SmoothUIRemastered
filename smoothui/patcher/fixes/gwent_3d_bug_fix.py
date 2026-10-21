@@ -12,9 +12,11 @@ so. The animator finds no target and does nothing.
 from __future__ import annotations
 
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
-from .swf_edit import CantApply, FixResult, SwfEdit
+from .swf_edit import CantApply, FixKind, FixResult, SwfEdit
 
 NAME = "gwent-3d-bug-fix"
+CONSEQUENCE = "in Gwent, weather effects can draw far outside their rows, and causes flicker"
+KIND = FixKind.GAME_BUG
 FOG_BG_CLASS = r"gwint_game_fla\.Fog_loop_bg_\d+"
 CHILD_NAME = "__id0_"
 

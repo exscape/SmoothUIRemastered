@@ -17,9 +17,11 @@ from __future__ import annotations
 from ..swf_patcher.interpolation import DisplayState, simulate_timeline
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
 from ..swf_patcher.swf_tags import TagCode
-from .swf_edit import AFTER_RESCALE, CantApply, FixResult, SwfEdit
+from .swf_edit import AFTER_RESCALE, CantApply, FixKind, FixResult, SwfEdit
 
 NAME = "gwent-rain-loop-fix"
+CONSEQUENCE = "in Gwent, the falling rain stops for a frame on every loop"
+KIND = FixKind.GAME_BUG
 PHASE = AFTER_RESCALE
 RAIN_CLASS = "CardFXRain_Ongoing"
 

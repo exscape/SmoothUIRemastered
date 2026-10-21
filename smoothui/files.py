@@ -1,0 +1,85 @@
+"""How the merger writes files outside its own folder (the package in Mods\\, mods.settings): only ordinary
+operations, each checked.
+
+These rules come from MO2's virtual file system, where exists() and is_dir() often say no for files that
+are there, Path.mkdir(exist_ok=True) fails, and exclusive creates misbehave.
+They work the same without MO2, with any mod manager or none:
+- folders are made one level at a time, with os.mkdir, and one that exists already is fine
+- files are written with plain overwriting writes, under fixed names (no temporary name and rename),
+  then read back
+- a missing file is found by trying to open or delete it, never by checking first
+"""
+
+from __future__ import annotations
+
+import errno
+import os
+from pathlib import Path
+
+from .common import fail
+
+# Windows' error for a file another process has open (ERROR_SHARING_VIOLATION), and for one that is
+# locked (ERROR_LOCK_VIOLATION)
+IN_USE_ERRORS = (32, 33)
+
+
+def make_dirs(path: Path):
+    """Make a folder and any missing parents"""
+    path = Path(path)
+    for folder in reversed([path, *path.parents]):
+        if folder == folder.parent:
+            continue    # the root
+        try:
+            os.mkdir(folder)
+        except FileExistsError:
+            pass
+        except OSError as e:
+            fail(f"can't create the folder {folder}: {e}")
+
+
+def read_file(path: Path) -> bytes | None:
+    """A file's content, or None if there is no such file"""
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except OSError as e:
+        fail(f"can't read {path}: {_describe(e)}")
+
+
+def write_file(path: Path, data: bytes):
+    """Write a file, replacing any file there, and check it by reading it back"""
+    try:
+        with open(path, "wb") as f:
+            f.write(data)
+    except OSError as e:
+        fail(f"can't write {path}: {_describe(e)}")
+    if read_file(path) != data:
+        fail(f"{path} doesn't read back as written")
+
+
+def delete_file(path: Path) -> bool:
+    """Delete a file; returns whether there was one"""
+    try:
+        os.remove(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError as e:
+        fail(f"can't delete {path}: {_describe(e)}")
+    return True
+
+
+def remove_empty_dir(path: Path):
+    """Remove a folder if it is empty; anything else (not empty, missing) leaves it as it is"""
+    try:
+        os.rmdir(path)
+    except OSError:
+        pass
+
+
+def _describe(e: OSError) -> str:
+    if getattr(e, "winerror", None) in IN_USE_ERRORS or isinstance(e, PermissionError) or e.errno == errno.EBUSY:
+        return (f"{e.strerror or e}. Another program may be using it: most likely the game, so close it and try "
+                "again; otherwise, a mod manager or an antivirus scan")
+    return str(e.strerror or e)

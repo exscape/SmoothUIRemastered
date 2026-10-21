@@ -17,8 +17,10 @@ from pathlib import Path
 
 from ..build.shared import (
     BUILD_RECORD,
+    MANIFEST_FORMAT,
     is_dev_version,
     load_manifest,
+    manifest_format,
     release_manifest_paths,
     version_key,
 )
@@ -87,8 +89,14 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
 
     files: {profile key: (size, crc32)} of every file in its bundles; record_text: its BUILD_RECORD, or None;
     manifests: {version: manifest} of the release manifests the merger has (see
-    release_manifest_paths), dev versions included."""
+    release_manifest_paths), dev versions included. Those of a newer format than the merger can read
+    (see MANIFEST_FORMAT) only tell that the merger needs an update."""
+    too_new = {version for version, manifest in manifests.items() if manifest_format(manifest) > MANIFEST_FORMAT}
+    manifests = {version: manifest for version, manifest in manifests.items() if version not in too_new}
     record_version = _record_version(record_text)
+    if record_version in too_new:
+        return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, which needs a newer version "
+                         "of the merger: update the merger", folder=folder, version=record_version)
     if record_version is not None:
         manifest = manifests.get(record_version)
         if manifest is None:

@@ -184,11 +184,20 @@ def _failure_message(e: Exception) -> str:
     trace = "".join(traceback.format_exception(type(e), e, e.__traceback__)).rstrip()
     return f"unexpected {type(e).__name__}: {e} (a bug, or a file the patcher doesn't understand)\n{trace}"
 
+class RuleIssue(NamedTuple):
+    """A message about one explicit setting; str() gives it with its file"""
+    path: str | None        # the file, as patch_files names it; None for a setting of a profile's "*" block
+    message: str            # starting with the setting, as written in a profile
+    fix: str | None = None  # the fix's name, if the setting is a fix
+
+    def __str__(self):
+        return f"{self.path}: {self.message}" if self.path is not None else f"* {self.message}"
+
 class RuleIssues(NamedTuple):
-    """Messages about explicit settings (speed, include, exclude, ...); see find_rule_issues"""
-    errors: list[str]       # settings that were not followed: the output is NOT as configured
-    warnings: list[str]     # inherited settings that matched in the release but no longer match
-                            # anything: the output is as configured, but may need a look
+    """Issues with explicit settings (speed, include, exclude, ...); see find_rule_issues"""
+    errors: list[RuleIssue]     # settings that were not followed: the output is NOT as configured
+    warnings: list[RuleIssue]   # inherited settings that matched in the release but no longer match
+                                # anything: the output is as configured, but may need a look
 
 def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
     """Check explicit settings against the reports in patch_files' patched and kept lists.
@@ -204,13 +213,15 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
     matched_anywhere = set()
     for entry in [*patched, *kept]:
         path, report = entry["path"], entry["report"]
-        errors += [f"{path}: {format_unmet_rule(unmet)}" for unmet in report["unmet_rules"]]
+        errors += [RuleIssue(path, format_unmet_rule(unmet)) for unmet in report["unmet_rules"]]
         unmet = {unmet["rule"] for unmet in report["unmet_rules"]}   # already reported
         release = (recorded or {}).get(profile_key(path))
         inherited = dict(report_settings(release)) if release else {}
         # Why a fix changed nothing, in place of "matched no sprite"
-        fix_details = {f"fix: {fix['name']}": f"{fix['result']}: {fix['detail']}" for fix in report.get("fixes", [])}
+        fixes = {f"fix: {fix['name']}": fix for fix in report.get("fixes", [])}
+        fix_details = {setting: f"{fix['result']}: {fix['detail']}" for setting, fix in fixes.items()}
         for setting, matched in report_settings(report):
+            fix = fixes[setting]["name"] if setting in fixes else None
             if matched:
                 matched_anywhere.add(setting)
             elif setting in unmet:
@@ -218,11 +229,12 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
             elif setting in inherited:
                 if inherited[setting]:
                     detail = f" ({fix_details[setting]})" if setting in fix_details else ""
-                    warnings.append(f"{path}: {setting}: matched sprite(s) {inherited[setting]} in the "
-                                    f"Smooth UI release, but nothing in this mod's version of the file{detail}")
+                    warnings.append(RuleIssue(path, f"{setting}: matched sprite(s) {inherited[setting]} in the "
+                                              f"Smooth UI release, but nothing in this mod's version of the file{detail}",
+                                              fix))
             elif setting not in shared:
-                errors.append(f"{path}: {setting}: {fix_details.get(setting, 'matched no sprite')}")
-    errors += [f"* {setting}: matched no sprite in any file" for setting in shared
+                errors.append(RuleIssue(path, f"{setting}: {fix_details.get(setting, 'matched no sprite')}", fix))
+    errors += [RuleIssue(None, f"{setting}: matched no sprite in any file") for setting in shared
                if setting not in matched_anywhere]
     return RuleIssues(errors, warnings)
 

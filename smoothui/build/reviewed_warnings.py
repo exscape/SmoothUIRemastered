@@ -42,8 +42,17 @@ def check_review(text: str) -> str:
     return text
 
 
+class Occurrence(NamedTuple):
+    """One occurrence of a warning; str() gives it as "file: message" """
+    path: str           # the file, as patch_files names it
+    message: str
+
+    def __str__(self):
+        return f"{self.path}: {self.message}"
+
+
 class WarningSummary(NamedTuple):
-    unreviewed: dict[str, list[str]]    # review that would cover it -> "file: message" for each occurrence
+    unreviewed: dict[str, list[Occurrence]]     # review that would cover it -> each occurrence
     hidden: int                         # occurrences of reviewed warnings
     stale: list[str]                    # reviews that no longer match a warning in any file
     unchecked: int                      # files that could not be checked, so stale may be wrong
@@ -69,7 +78,7 @@ class WarningReview:
                 if self.is_reviewed(entry["path"], warning):
                     hidden += 1
                 else:
-                    unreviewed[review_of(warning)].append(f"{entry['path']}: {warning['message']}")
+                    unreviewed[review_of(warning)].append(Occurrence(entry["path"], warning["message"]))
         return WarningSummary(dict(unreviewed), hidden, sorted(self.reviewed - seen), unchecked)
 
 
@@ -87,11 +96,11 @@ def load_reviewed(path: Path = REVIEWED_WARNINGS) -> set[str]:
     return reviewed
 
 
-def accept_warnings(unreviewed: dict[str, list[str]], path: Path = REVIEWED_WARNINGS):
+def accept_warnings(unreviewed: dict[str, list[Occurrence]], path: Path = REVIEWED_WARNINGS):
     """Add reviews to the reviewed list, each with a comment naming the files it occurs in"""
     with open(path, "a", encoding="utf-8") as f:
         for review, occurrences in sorted(unreviewed.items()):
-            files = sorted({Path(occurrence.split(":", 1)[0]).name for occurrence in occurrences})
+            files = sorted({Path(occurrence.path).name for occurrence in occurrences})
             f.write(f"{review}    # {', '.join(files)}\n")
     log.info(f"Added {len(unreviewed)} review(s) to {path}; consider noting why each one is harmless")
 

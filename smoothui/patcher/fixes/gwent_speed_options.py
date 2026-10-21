@@ -45,9 +45,11 @@ from ..swf_patcher.abc_file import (
 from ..swf_patcher.code_analysis import CodeAnalysis
 from ..swf_patcher.movie import SwfMovie
 from ..swf_patcher.swf_tags import Tag, TagCode
-from .swf_edit import AFTER_RESCALE, CantApply, FixResult, SwfEdit
+from .swf_edit import AFTER_RESCALE, CantApply, FixKind, FixResult, SwfEdit
 
 NAME = "gwent-speed-options"
+CONSEQUENCE = "Smooth UI's Gwent speed settings do nothing"
+KIND = FixKind.SMOOTHUI_FEATURE
 PHASE = AFTER_RESCALE
 
 ABC_PATH = Path(__file__).with_name("gwent_speed.abc")

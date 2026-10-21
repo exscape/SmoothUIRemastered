@@ -14,9 +14,11 @@ from __future__ import annotations
 
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
 from ..swf_patcher.swf_tags import TagCode
-from .swf_edit import CantApply, FixResult, SwfEdit, label_frames
+from .swf_edit import CantApply, FixKind, FixResult, SwfEdit, label_frames
 
 NAME = "gwent-frost-flicker-fix"
+CONSEQUENCE = "in Gwent, the frost effect flickers slightly while it loops"
+KIND = FixKind.GAME_BUG
 FROST_CLASS = "CardFXFrost_Ongoing"
 REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
 

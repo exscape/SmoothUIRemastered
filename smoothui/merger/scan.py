@@ -74,9 +74,15 @@ class FileResult:
         """The mod whose copy the game loads now"""
         return self.shippers[0] if self.shippers else None
 
+    @property
+    def loaded_without_package(self) -> Mod | None:
+        """The mod whose copy the game loads where the package doesn't hold the file"""
+        return next((mod for mod in self.shippers if not is_package_folder(mod.folder)), None)
+
 
 @dataclass(slots=True)
 class Scan:
+    mods_dir: Path | None                       # the game's Mods\ folder, None if it has none
     installed: Installed
     order: list[Mod]                            # the enabled mods, in load order, ours included
     files: dict[str, FileResult]                # by profile key; empty unless installed is usable
@@ -85,7 +91,11 @@ class Scan:
 
 def is_own_folder(name: str) -> bool:
     """Whether a mod folder is ours: Smooth UI itself, the package, or a compat patch"""
-    return is_smoothui_folder(name) or name.lower() == PACKAGE_FOLDER.lower() or COMPAT_PATCH.fullmatch(name) is not None
+    return is_smoothui_folder(name) or is_package_folder(name) or COMPAT_PATCH.fullmatch(name) is not None
+
+
+def is_package_folder(name: str) -> bool:
+    return name.lower() == PACKAGE_FOLDER.lower()
 
 
 def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None, manifests=None) -> Scan:
@@ -100,7 +110,7 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
     order = load_order(mods)
     installed = installed_build(mods_dir, folders, mods, manifests)
     if not installed.usable:
-        return Scan(installed, order, {}, [])
+        return Scan(mods_dir, installed, order, {}, [])
 
     keys = {profile_key(key) for key in installed.manifest["files"]}
     problems = []
@@ -108,8 +118,9 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
     mods_dir_length = windows_path_length(mods_dir)
     for mod in order:
         if COMPAT_PATCH.fullmatch(mod.folder):
-            problems.append(Problem(ProblemKind.COMPAT_INSTALLED, f"{mod.folder} is not needed while the package is used, and is "
-                                    "safe to remove", mod=mod.folder))
+            # Whether it can be removed depends on what the package holds: see builder.compat_notes
+            problems.append(Problem(ProblemKind.COMPAT_INSTALLED, f"{mod.folder} is a Smooth UI compat patch: the package "
+                                    "replaces it for every file the package holds", mod=mod.folder))
         shipped[mod] = _mod_files(mods_dir / mod.folder, mod, keys, problems, mods_dir_length)
 
     files = {}
@@ -118,9 +129,12 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
         others = [mod for mod in result.shippers if not is_own_folder(mod.folder)]
         result.undetermined = undetermined_for(others)
         if COMPAT_PATCH.fullmatch(result.loaded.folder if result.loaded else "") and not others:
+            # Not necessarily a mistake: a mod that only ships .redswf files works through its compat patch alone
             problems.append(Problem(ProblemKind.ORPHANED_COMPAT, f"{result.loaded.folder} ships {key}, which no other "
-                                    "enabled mod ships (the mod it was made for may be disabled or removed), and "
-                                    "the game loads its copy. Remove the compat patch", result.loaded.folder, key))
+                                    "enabled mod ships, and the game loads its copy. That is fine if you use the "
+                                    "compat patch in place of the mod it was made for. If that mod was disabled or "
+                                    "removed by mistake, enable it again, or remove the compat patch",
+                                    result.loaded.folder, key))
         if result.undetermined:
             names = ", ".join(mod.folder for mod in result.undetermined)
             problems.append(Problem(ProblemKind.UNDETERMINED, f"the load order can't be determined for {key}: it is shipped by "
@@ -130,7 +144,7 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
             winner = others[0]
             result.winner = SourceFile.in_bundle(key, winner.folder, *shipped[winner][key])
     problems += modio_problems(keys, modio_root)
-    return Scan(installed, order, files, problems)
+    return Scan(mods_dir, installed, order, files, problems)
 
 
 def _mods_dir(game_path):

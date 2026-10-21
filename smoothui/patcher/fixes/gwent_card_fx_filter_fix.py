@@ -29,9 +29,11 @@ from ..swf_patcher.place_object import (
     rewrite_place_object,
 )
 from ..swf_patcher.swf_tags import Tag
-from .swf_edit import CantApply, FixResult, SwfEdit
+from .swf_edit import CantApply, FixKind, FixResult, SwfEdit
 
 NAME = "gwent-card-fx-filter-fix"
+CONSEQUENCE = "in Gwent, the Hero and Decoy card effects have graphical issues"
+KIND = FixKind.GAME_BUG
 HERO_CLASS = "CardFXHero"
 DUMMY_CLASS = "CardFXDummy"
 FILTER_LIST = 0x01      # the display option that holds the filter list

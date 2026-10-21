@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from enum import Enum
 from typing import NamedTuple
 
 from ..swf import MalformedSwfError, swf_get_header_offsets
@@ -24,6 +25,18 @@ from ..swf_patcher.swf_tags import (
 # rescale, or on the rescaled file (or the game's, if it isn't rescaled), for a fix that must keep the
 # in-between frames the rescale adds. Fixes that run before are covered by the rescale's verification.
 BEFORE_RESCALE, AFTER_RESCALE = "before rescale", "after rescale"
+
+
+class FixKind(Enum):
+    """What a fix is, for users (a fix module's KIND). Its value is the header of a message about it
+    missing, e.g. "Game bug fix missing: " + its CONSEQUENCE; a message may leave the header out."""
+    GAME_BUG = "Game bug fix missing:"              # a bug in the game's own file
+    SMOOTHUI_FIX = "Smooth UI fix missing:"         # a problem Smooth UI's rescale causes (e.g. by interpolating)
+    SMOOTHUI_FEATURE = "Smooth UI feature missing:"  # something Smooth UI adds
+
+    @property
+    def header(self) -> str:
+        return self.value
 
 
 class CantApply(ValueError):

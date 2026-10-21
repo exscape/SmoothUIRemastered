@@ -8,6 +8,7 @@ import platform
 import re
 import shutil
 import sys
+import tomllib
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -19,7 +20,6 @@ from PyInstaller.utils.win32.versioninfo import (
 )
 
 APP_DIR_NAME = "SmoothUIMerger"  # the folder in dist/
-TOOL_VERSION = (0, 1, 0, 0)
 COMPANY = "Aeluwas"
 PRODUCT = "Smooth UI Remastered"
 ICON = Path(SPECPATH) / "smoothui.ico"  # optional: used only if the file exists
@@ -56,6 +56,26 @@ def check_bootloader():
 
 
 check_bootloader()
+
+
+def read_merger_version():
+    """[versions] merger_version in config/config.toml: X.Y.Z (see smoothui/merger/__init__.py)"""
+    path = Path(SPECPATH) / "config" / "config.toml"
+    with open(path, "rb") as f:
+        version = tomllib.load(f).get("versions", {}).get("merger_version")
+    if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        raise SystemExit(f"ERROR: [versions] merger_version in {path} must be X.Y.Z, not {version!r}")
+    return version
+
+
+# The version of the exes, and of the merger, which reads it from the file written here (in _internal\, at
+# the path of smoothui/merger/, whose VERSION_FILE it is): a frozen tool has no config.toml
+MERGER_VERSION = read_merger_version()
+TOOL_VERSION = (*map(int, MERGER_VERSION.split(".")), 0)
+merger_version_file = Path(workpath) / "merger_version.txt"
+merger_version_file.parent.mkdir(parents=True, exist_ok=True)
+merger_version_file.write_text(MERGER_VERSION + "\n", encoding="utf-8")
+print(f"Merger version {MERGER_VERSION}")
 
 
 def is_lgpl(dist):
@@ -107,7 +127,8 @@ merger_a = Analysis(
     ["merger-gui.py"],
     pathex=[],
     binaries=[],
-    datas=collect_data_files("customtkinter"),  # themes/fonts; it fails at startup without these
+    # customtkinter's themes and fonts (it fails at startup without them), and the merger's version
+    datas=[*collect_data_files("customtkinter"), (str(merger_version_file), "smoothui/merger")],
     hiddenimports=[],
     # pybcj, pyppmd and inflate64 (for py7zr) fall back to importing importlib_metadata on Python < 3.8;
     # PyInstaller resolves that to setuptools' vendored copy, which pulls in all of setuptools.

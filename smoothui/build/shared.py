@@ -96,16 +96,27 @@ def write_patched_files(patched, out_dir):
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(entry["entry"].content())
 
+def pack_entries(entries, bundle_name="blob0.bundle"):
+    """(the bundle, its metadata.store) holding entries (BundleEntries), as bytes; bundle_name is the
+    bundle's file name, which the store records"""
+    try:
+        bundle = write_bundle(entries)
+    except BundleError as e:
+        fail(f"can't pack the patched files: {e}")
+    try:
+        store = make_metadata_store([(bundle_name, bundle)])
+    except MetadataStoreError as e:
+        fail(f"can't make metadata.store for {bundle_name}: {e}")
+    return bundle, store
+
 def pack_content(patched, content_dir):
     """Pack the patched files (patcher_core.patch_files' patched list) into blob0.bundle and create
     metadata.store"""
     log.info("Packing blob0.bundle", extra=HEADING)
     bundle = content_dir / "blob0.bundle"
-    try:
-        bundle.write_bytes(write_bundle(entry["entry"] for entry in patched))
-    except BundleError as e:
-        fail(f"can't pack the patched files: {e}")
-    log.info(f"Packed {len(patched)} files into {bundle} ({bundle.stat().st_size / 2**20:.1f} MiB)")
+    bundle_data, store = pack_entries((entry["entry"] for entry in patched), bundle.name)
+    bundle.write_bytes(bundle_data)
+    log.info(f"Packed {len(patched)} files into {bundle} ({len(bundle_data) / 2**20:.1f} MiB)")
 
     store_path = content_dir / "metadata.store"
     if COMPARE_STORE_WITH_WCC_LITE:
@@ -115,10 +126,6 @@ def pack_content(patched, content_dir):
             fail("wcc_lite did not produce metadata.store.")
 
     log.info("Writing metadata.store", extra=HEADING)
-    try:
-        store = make_metadata_store([(bundle.name, bundle.read_bytes())])
-    except MetadataStoreError as e:
-        fail(f"can't make metadata.store for {bundle}: {e}")
     if COMPARE_STORE_WITH_WCC_LITE:
         if store_path.read_bytes() != store:
             store_path.with_name("metadata.store.ours").write_bytes(store)
@@ -338,6 +345,15 @@ def load_manifest(version_or_path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
+# The format of the release manifests this code writes and can read (their "manifest_format"; one without
+# it is format 1). Increased when a change means that older code can't use a manifest, e.g. a new kind of
+# setting: a merger that gets a manifest of a newer format (shipped with a newer Smooth UI, or downloaded)
+# must be updated before it can patch for that release.
+MANIFEST_FORMAT = 1
+
+def manifest_format(manifest: dict) -> int:
+    return manifest.get("manifest_format", 1)
+
 # Which build a Smooth UI mod folder holds (its version and frame rate), next to content\ (the game only
 # reads content\). The merger identifies the installed build by it, checked against that build's manifest.
 BUILD_RECORD = "smoothui_build.json"
@@ -351,7 +367,7 @@ def write_manifest(version, records, extra=None):
     rate it was patched to) and "report" (its full rescale report, see patcher/swf_patcher/report.py),
     which includes the speed rules and include/exclude lists it was patched with. extra holds the
     top-level fields, including "fps", the build's frame rate."""
-    manifest = {"created_mod_version": normalize_version(version)}
+    manifest = {"created_mod_version": normalize_version(version), "manifest_format": MANIFEST_FORMAT}
     if extra:
         manifest.update(extra)
     manifest["files"] = records

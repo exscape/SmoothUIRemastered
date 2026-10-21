@@ -14,9 +14,11 @@ from __future__ import annotations
 
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
 from ..swf_patcher.swf_tags import TagCode, parse_remove_object_depth
-from .swf_edit import CantApply, FixResult, SwfEdit
+from .swf_edit import CantApply, FixKind, FixResult, SwfEdit
 
 NAME = "gwent-coin-shadow-fix"
+CONSEQUENCE = "in Gwent, the coin toss's shadow isn't in sync with the coin itself"
+KIND = FixKind.SMOOTHUI_FIX
 COIN_CLASSES = (r"gwint_game_fla\.COINA_\d+", r"gwint_game_fla\.COINB_\d+")
 SHADOW_DEPTH = 1
 REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
