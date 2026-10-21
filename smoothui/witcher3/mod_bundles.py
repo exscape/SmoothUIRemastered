@@ -14,8 +14,7 @@ from .bundle import BundleError, TocEntry, read_entry, read_toc
 
 def list_bundles(content_dir: Path) -> list[Path]:
     """The .bundle files in content_dir, sorted. Listed with os.scandir, which works through MO2's virtual
-    file system (unlike exists() and is_dir(); see "MO2 findings" in docs/plan-local-patcher.md). Raises
-    OSError if content_dir can't be listed."""
+    file system."""
     return sorted(Path(content_dir) / entry.name for entry in os.scandir(content_dir)
                   if entry.name.lower().endswith(".bundle"))
 

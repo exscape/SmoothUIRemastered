@@ -1,7 +1,8 @@
 """Patching other mods' files as a Smooth UI release patched the game's: with the settings its manifest
 records for each file (see shared.py's write_manifest).
 
-Used by the compat build (build-compat.py) and the merger's package builder.
+Used by the compat build (build-compat.py) and the merger's package builder, to
+build ONE compat patch, and a full compat package for all conflicts, respectively.
 """
 
 import logging
