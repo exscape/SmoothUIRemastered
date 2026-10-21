@@ -5,6 +5,7 @@ __pycache__/
 
 /build/
 /config/profile_dev*.txt
+/dev-tools/debug/
 /dist/
 /env*/
 /manifests/compat/
