@@ -27,7 +27,9 @@ does write_bundle: LZ4 decompresses several times faster than zlib, which matter
 wcc_lite skips empty files; write_bundle refuses them.
 
 read_bundle reads a whole bundle in memory. read_toc reads only a bundle file's header and TOC (paths, sizes,
-CRCs, where each file's data is), and read_entry then reads single files from it.
+CRCs, where each file's data is), and read_entry then reads single files from it. Asked for the files of one
+type only, read_toc finds them by searching the TOC, and parses only their entries: mods can have tens of
+thousands of files, and parsing each entry is what takes the time.
 
 A mod's metadata.store repeats the offset, sizes and compression of every file in its bundles, so
 it must be made again whenever a bundle changes (see metadata_store.py).
@@ -143,10 +145,13 @@ def read_header(data: bytes, file_size: int | None = None) -> BundleHeader:
     return BundleHeader(size, data_start, version)
 
 
-def _parse_toc(data: bytes, header: BundleHeader, file_size: int) -> list[TocEntry]:
-    """The TOC entries in data (the bundle's start, up to at least header.data_start), in TOC order"""
+def _parse_toc(data: bytes, header: BundleHeader, file_size: int, offsets=None) -> list[TocEntry]:
+    """The TOC entries in data (the bundle's start, up to at least header.data_start), in TOC order; with
+    offsets, only the entries at those offsets in data"""
     entries = []
-    for at in range(HEADER.size, header.data_start, (ENTRY if header.version == VERSION else ENTRY_V3).size):
+    if offsets is None:
+        offsets = range(HEADER.size, header.data_start, (ENTRY if header.version == VERSION else ENTRY_V3).size)
+    for at in offsets:
         if header.version == VERSION:
             raw_path, _hash, offset, size, stored_size, crc, compression = ENTRY.unpack_from(data, at)
         else:
@@ -172,9 +177,10 @@ def read_bundle(data: bytes) -> list[BundleEntry]:
             for e in _parse_toc(data, read_header(data), len(data))]
 
 
-def read_toc(path: Path) -> list[TocEntry]:
+def read_toc(path: Path, extension: str | None = None) -> list[TocEntry]:
     """The files in a bundle file, in TOC order, reading only its header and TOC: fast even for big
-    texture mods. read_entry then reads the files needed."""
+    texture mods. read_entry then reads the files needed. With extension (e.g. ".redswf"), only the files
+    whose paths end with it, in any case; the other entries aren't checked."""
     with open(path, "rb") as f:
         file_size = f.seek(0, os.SEEK_END)
         f.seek(0)
@@ -184,9 +190,28 @@ def read_toc(path: Path) -> list[TocEntry]:
     if len(data) < header.data_start:
         raise BundleError(f"{path}: the file ended inside its TOC")
     try:
-        return _parse_toc(data, header, file_size)
+        if extension is None:
+            return _parse_toc(data, header, file_size)
+        entries = _parse_toc(data, header, file_size, _entries_ending(data, header, extension))
     except BundleError as e:
         raise BundleError(f"{path}: {e}") from None
+    return [entry for entry in entries if entry.path.lower().endswith(extension.lower())]
+
+
+def _entries_ending(data: bytes, header: BundleHeader, extension: str) -> list[int]:
+    """The offsets in data of the TOC entries whose paths may end with extension (see read_toc): those with
+    extension and a NUL in their path field. The caller checks each path."""
+    size = (ENTRY if header.version == VERSION else ENTRY_V3).size
+    toc = data[HEADER.size:header.data_start].lower()
+    needle = extension.lower().encode() + b"\0"
+    offsets = []
+    found = toc.find(needle)
+    while found != -1:
+        at = HEADER.size + found - found % size
+        if found % size + len(needle) <= PATH_SIZE and (not offsets or offsets[-1] != at):
+            offsets.append(at)
+        found = toc.find(needle, found + 1)
+    return offsets
 
 
 def read_entry(f: BinaryIO, entry: TocEntry) -> BundleEntry:

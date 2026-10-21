@@ -29,7 +29,8 @@ def run_cli(main):
 
 WIN_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
-IN_WSL = (platform.system() == "Linux"
+# sys.platform first: on Windows, platform.system() takes tens of milliseconds
+IN_WSL = (sys.platform == "linux" and platform.system() == "Linux"
           and "microsoft" in platform.uname().release.lower())
 
 @cache

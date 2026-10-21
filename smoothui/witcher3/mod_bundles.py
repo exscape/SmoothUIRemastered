@@ -22,12 +22,15 @@ def list_bundles(content_dir: Path) -> list[Path]:
 def read_bundle_tocs(content_dir: Path, keys=None) -> dict[str, tuple[Path, TocEntry]]:
     """{profile key: (bundle file, TocEntry)} for the files in the bundle(s) in content_dir, reading only
     their tables of contents (see read_entry_content for a file's content). With keys (profile keys), only
-    those files. Fails (SmoothUIError) if a bundle can't be read, or if two bundles hold different copies
-    of one file: which one the game would use is unknown."""
+    those files; if they all have one extension, the other files' entries aren't read (see
+    bundle.read_toc). Fails (SmoothUIError) if a bundle can't be read, or if two bundles hold different
+    copies of one file: which one the game would use is unknown."""
+    extensions = {os.path.splitext(key)[1] for key in keys} if keys is not None else set()
+    extension = (extensions.pop() or None) if len(extensions) == 1 else None
     try:
         files = {}
         for bundle in list_bundles(content_dir):
-            for entry in read_toc(bundle):
+            for entry in read_toc(bundle, extension):
                 key = profile_key(entry.path)
                 if keys is not None and key not in keys:
                     continue

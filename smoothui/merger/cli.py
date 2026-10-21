@@ -2,22 +2,24 @@
 
 # merge.py -- the merger's command line, for development and tests: a thin layer over the library (see
 # builder.py). --scan (read-only) shows which Smooth UI build is installed, which mod's copy of each file it
-# patches the game loads, and what keeps mods or files from being patched. --build builds the package.
+# patches the game loads, whether the package is up to date (see state.py), and what keeps mods or files
+# from being patched. --build builds the package.
 
 import argparse
 import logging
 import sys
 import time
-from pathlib import Path
 
 from ..build.shared import config_paths, load_config
 from ..common import fail, to_native
 from ..log import HEADING
+from ..paths import DATA_DIR
 from ..witcher3.user_files import mods_settings_path
 from .builder import build_package
 from .installed import is_smoothui_folder
 from .load_order import Group
-from .scan import scan
+from .scan import is_package_folder, scan
+from .state import State, package_state
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +41,9 @@ def parse_args():
                     help=r"the mods.settings file (default: the one in Documents\The Witcher 3)")
     ap.add_argument("--out", type=to_native, default=None,
                     help="--build: write the package into this folder instead, and leave mods.settings alone")
+    ap.add_argument("--data-dir", type=to_native, default=DATA_DIR,
+                    help="the merger's data folder, with the mods.settings backup and the records of packages "
+                         r"that hold no files (default: data\ in the repo); use another one for test setups")
     ap.add_argument("--force", action="append", default=[], metavar="FILE",
                     help="--build: put this file (e.g. gameplay/gui_new/swf/hud/hud_minimap2.redswf) in the package "
                          "even though its rescale had problems; repeatable")
@@ -56,10 +61,10 @@ def main():
     if args.build:
         build(args, game_path, mods_settings)
     else:
-        show_scan(game_path, mods_settings)
+        show_scan(game_path, mods_settings, args.data_dir)
 
 
-def show_scan(game_path, mods_settings):
+def show_scan(game_path, mods_settings, data_dir):
     start = time.perf_counter()
     result = scan(game_path, mods_settings)
     elapsed = time.perf_counter() - start
@@ -75,23 +80,22 @@ def show_scan(game_path, mods_settings):
         if mod in relevant or is_smoothui_folder(mod.folder):
             log.info(f"{position:4}. {mod.folder} ({_entry(mod)})")
 
-    log.info("The copy each file is patched from (and the one the game loads now, if another)", extra=HEADING)
-    for key, file in result.files.items():
+    log.info("Files: what the package holds, and what a build would change", extra=HEADING)
+    states = package_state(result, data_dir)
+    for state in states:
+        file = result.files[state.path]
         loaded = file.loaded.folder if file.loaded else None
-        if file.undetermined:
-            log.warning(f"{key}: can't be determined ({', '.join(mod.folder for mod in file.undetermined)})")
-            continue
-        if file.winner:
-            text = f"{key}: {file.winner.origin} ({Path(file.winner.file).name})"
-            source = file.winner.origin
-        else:
-            text, source = f"{key}: Smooth UI's own copy", result.installed.folder
-        if loaded and loaded != source:
+        text = f"{state.path}: {state.state.value}: {state.message}"
+        if loaded and state.state.needs_build and loaded != state.winner:
             text += f"; loaded now: {loaded}"
         # Smooth UI ships every file
-        others = [mod.folder for mod in file.shippers
-                  if mod.folder not in (loaded, source) and not is_smoothui_folder(mod.folder)]
-        log.info(text + (f"; also shipped by {', '.join(others)}" if others else ""))
+        others = [mod.folder for mod in file.shippers if mod.folder not in (loaded, state.winner)
+                  and not is_smoothui_folder(mod.folder) and not is_package_folder(mod.folder)]
+        attention = state.state.needs_build or state.state in (State.NOT_LOADED, State.UNDETERMINED)
+        log.log(logging.WARNING if attention else logging.INFO,
+                text + (f"; also shipped by {', '.join(others)}" if others else ""))
+    to_build = sum(state.state.needs_build for state in states)
+    log.info(f"\nA build is needed: it would change {to_build} file(s)" if to_build else "\nNo build is needed")
 
     _show_problems(result.problems)
     log.info(f"\nScanned in {elapsed:.2f} s")
@@ -99,9 +103,16 @@ def show_scan(game_path, mods_settings):
 
 def build(args, game_path, mods_settings):
     start = time.perf_counter()
-    result = build_package(game_path, mods_settings, force=args.force, leave_out=args.leave_out, out_dir=args.out)
-    elapsed = time.perf_counter() - start
+    result = build_package(game_path, mods_settings, force=args.force, leave_out=args.leave_out, out_dir=args.out,
+                           data_dir=args.data_dir)
+    show_build(result)
+    log.info(f"\nBuilt in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
+    if not result.clean:
+        sys.exit(2)
 
+
+def show_build(result):
+    """Log what build_package did"""
     log.info("Installed Smooth UI Remastered", extra=HEADING)
     log.info(result.scan.installed.message)
     log.info("Files", extra=HEADING)
@@ -114,7 +125,14 @@ def build(args, game_path, mods_settings):
     log.info("Package", extra=HEADING)
     installation = result.installation
     held = sum(file.status.included for file in result.files)
-    log.info(f"Wrote {installation.package_dir} ({held} file(s))")
+    if not installation.written.empty:
+        log.info(f"Wrote {installation.package_dir} ({held} file(s))")
+    elif installation.written.removed:
+        log.info(f"The package holds no files, so there is none ({installation.package_dir} removed, if it was there); "
+                 "mods.settings left as it is")
+    else:
+        log.warning(f"The package holds no files, but {installation.package_dir} holds files the merger didn't write, "
+                    "so it stays")
     for name in installation.written.unknown_files:
         log.warning(f"{name} in the package folder wasn't written by the merger: remove it")
     if installation.entry_changed is not None:
@@ -123,9 +141,6 @@ def build(args, game_path, mods_settings):
         log.error(problem)
     for note in result.notes:
         log.info(note)
-    log.info(f"\nBuilt in {elapsed:.2f} s" + ("" if result.clean else "; see the problems above"))
-    if not result.clean:
-        sys.exit(2)
 
 
 def _show_problems(problems):

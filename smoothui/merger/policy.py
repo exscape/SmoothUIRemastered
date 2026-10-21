@@ -106,7 +106,7 @@ class PackageFile:
             summary = f"patched ({mod}'s copy)" + (", but not entirely" if self.issues else "")
             details = [*self._fix_lines()]
             if self.issues:
-                details.append(f"To use {mod}'s own copy instead, at its original frame rate, leave this file out.")
+                details.append(f"If you leave this file out instead, the game shows {self._fallback()}.")
         elif status == FileStatus.UNCHANGED:
             if self.issues:
                 summary = (f"{mod}'s copy is already at the target frame rate, and is used as it is, without these "
@@ -127,7 +127,7 @@ class PackageFile:
         elif status == FileStatus.FAILED:
             summary = f"NOT patched: Smooth UI can't patch {mod}'s copy, so all of {mod}'s files are left out. {self._fallback_text()}"
             details = [f"Why: {self.error}",
-                       (f"This is a limitation or a bug of Smooth UI, not a mistake of {mod}: please report it at "
+                       (f"This is most likely a limitation or a bug of Smooth UI, not a mistake of {mod}: please report it at "
                         f"{REPORT_URL}, with this log.")]
         else:
             summary = f"NOT patched: Smooth UI can't patch {mod}'s copy entirely, so it is left out. {self._fallback_text()}"
@@ -146,14 +146,18 @@ class PackageFile:
                 for issue in self.issues if issue.kind == IssueKind.FIX]
 
     def _fallback_text(self):
+        return f"The game shows {self._fallback()}."
+
+    def _fallback(self):
+        """The copy the game shows unless the package holds the file"""
         if self.fallback is None or self.fallback == self.mod:
-            return f"The game shows {self.mod}'s own copy, at its original frame rate."
+            return f"{self.mod}'s own copy, at its original frame rate"
         if is_smoothui_folder(self.fallback):
-            return (f"The game shows Smooth UI's own copy, which comes before {self.mod}'s in the load order, "
-                    f"without {self.mod}'s changes to this screen.")
+            return (f"Smooth UI's own copy, which comes before {self.mod}'s in the load order, without {self.mod}'s "
+                    "changes to this screen")
         if COMPAT_PATCH.fullmatch(self.fallback):
-            return f"The game shows the copy of {self.fallback} (a Smooth UI compat patch)."
-        return f"The game shows {self.fallback}'s copy, which comes before {self.mod}'s in the load order."
+            return f"the copy of {self.fallback} (a Smooth UI compat patch)"
+        return f"{self.fallback}'s copy, which comes before {self.mod}'s in the load order"
 
 
 def decide(scan: Scan, patch: ReleasePatch, *, force=(), leave_out=()) -> list[PackageFile]:
@@ -180,15 +184,19 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=(), leave_out=()) -> list[P
         if status == FileStatus.FAILED:
             files.append(PackageFile(path, source, status, error=result["error"], fallback=fallback))
             continue
+        file_issues = issues[path]
+        if status == FileStatus.UNCHANGED:
+            # Not rescaled, so its rescale settings (which then match nothing) and warnings don't apply
+            file_issues = [issue for issue in file_issues if issue.kind == IssueKind.FIX]
         if source.origin in failed_mods:
             status = FileStatus.MOD_FAILED
         elif status == FileStatus.PATCHED:
-            keeps_out = any(issue.keeps_out for issue in issues[path])
+            keeps_out = any(issue.keeps_out for issue in file_issues)
             if path in leave_out:
                 status = FileStatus.NOT_WANTED
             elif keeps_out:
                 status = FileStatus.FORCED if path in force else FileStatus.LEFT_OUT
-        files.append(PackageFile(path, source, status, issues[path], result, fallback=fallback))
+        files.append(PackageFile(path, source, status, file_issues, result, fallback=fallback))
     return files
 
 

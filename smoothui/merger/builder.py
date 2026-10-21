@@ -19,14 +19,14 @@ from ..files import make_dirs
 from ..patcher.patcher_core import RuleIssues
 from ..paths import DATA_DIR
 from ..witcher3.mods_settings import write_entry
-from .package import Written, write_package
+from .package import Written, record_path, write_package
 from .policy import PackageFile, decide
 from .scan import PACKAGE_FOLDER, ProblemKind, Scan, is_package_folder, scan
 
 log = logging.getLogger(__name__)
 
-# mods.settings as it was before the merger last changed it
-MODS_SETTINGS_BACKUP = DATA_DIR / "mods.settings.bak"
+# mods.settings as it was before the merger last changed it, in the merger's data folder
+MODS_SETTINGS_BACKUP = "mods.settings.bak"
 
 
 def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> ReleasePatch:
@@ -48,20 +48,27 @@ class Installation:
     """What install returns"""
     package_dir: Path
     written: Written
-    entry_changed: bool | None      # whether mods.settings changed; None if the package went elsewhere
+    entry_changed: bool | None      # whether mods.settings changed; None if it was left alone: the package
+                                    # went elsewhere, or holds no files
 
 
 def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_dir: Path | None = None,
-            backup: Path | None = MODS_SETTINGS_BACKUP) -> Installation:
+            data_dir: Path | None = DATA_DIR) -> Installation:
     """Write the package into the game's Mods\\ folder and give it its mods.settings entry (the file at
-    mods_settings; its old content goes to backup first, if it changes). With out_dir, write the package
-    there instead, for a look at it, and leave mods.settings alone."""
+    mods_settings; its old content goes to MODS_SETTINGS_BACKUP in data_dir first, if it changes). With
+    out_dir, write the package there instead, for a look at it, and leave mods.settings alone. A package
+    that holds no files is removed instead, with a record in data_dir (see package.py), and mods.settings
+    is left alone: an entry it has stays, as a later build would write it again. data_dir None: no
+    backup and no record."""
     package_dir = Path(out_dir or result.mods_dir) / PACKAGE_FOLDER
-    written = write_package(package_dir, result.installed, files)
-    if out_dir is not None:
+    record = record_path(data_dir, result.mods_dir) if data_dir is not None and out_dir is None else None
+    written = write_package(package_dir, result.installed, files, record)
+    if out_dir is not None or written.empty:
         return Installation(package_dir, written, None)
-    if backup is not None:
-        make_dirs(Path(backup).parent)
+    backup = None
+    if data_dir is not None:
+        make_dirs(data_dir)
+        backup = Path(data_dir) / MODS_SETTINGS_BACKUP
     return Installation(package_dir, written, write_entry(mods_settings, PACKAGE_FOLDER, backup=backup))
 
 
@@ -125,15 +132,16 @@ class BuildResult:
 
 
 def build_package(game_path: Path, mods_settings: Path, *, force=(), leave_out=(), out_dir: Path | None = None,
-                  pool=None, on_file=print_file_result, **scan_options) -> BuildResult:
-    """Scan, patch, decide (force and leave_out: see policy.decide), install (out_dir: see install) and
-    check. scan_options go to scan.scan (for tests). Fails (SmoothUIError) if the installed Smooth UI
-    build can't be used, or the package or mods.settings can't be written; problems with files or mods are
-    in the result."""
+                  data_dir: Path | None = DATA_DIR, pool=None, on_file=print_file_result,
+                  **scan_options) -> BuildResult:
+    """Scan, patch, decide (force and leave_out: see policy.decide), install (out_dir and data_dir: see
+    install) and check. scan_options go to scan.scan (for tests). Fails (SmoothUIError) if the installed
+    Smooth UI build can't be used, or the package or mods.settings can't be written; problems with files
+    or mods are in the result."""
     before = scan(game_path, mods_settings, **scan_options)
     patch = patch_winners(before, pool=pool, on_file=on_file)
     files = decide(before, patch, force=force, leave_out=leave_out)
-    installation = install(before, files, mods_settings, out_dir=out_dir)
+    installation = install(before, files, mods_settings, out_dir=out_dir, data_dir=data_dir)
     check_problems = [] if out_dir is not None else check_package(files, scan(game_path, mods_settings, **scan_options))
     return BuildResult(before, files, installation, check_problems, compat_notes(before, files))
 

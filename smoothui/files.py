@@ -70,12 +70,16 @@ def delete_file(path: Path) -> bool:
     return True
 
 
-def remove_empty_dir(path: Path):
-    """Remove a folder if it is empty; anything else (not empty, missing) leaves it as it is"""
+def remove_empty_dir(path: Path) -> bool:
+    """Remove a folder if it is empty; anything else (not empty, can't be removed) leaves it as it is.
+    Returns whether it is gone (also if it never was there)."""
     try:
         os.rmdir(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return True
     except OSError:
-        pass
+        return False
+    return True
 
 
 def _describe(e: OSError) -> str:

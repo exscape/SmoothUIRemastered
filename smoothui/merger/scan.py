@@ -171,7 +171,7 @@ def _mod_files(mod_dir, mod, keys, problems, mods_dir_length):
     content = mod_dir / "content"
     content_length = mods_dir_length + len(f"\\{mod.folder}\\content\\")
     try:
-        names = {name.lower() for name in _list_names(content)}
+        listing = _list_names(content)
     except (FileNotFoundError, NotADirectoryError):
         return {}   # not a mod folder, or one without files the game loads
     except OSError as e:
@@ -181,12 +181,13 @@ def _mod_files(mod_dir, mod, keys, problems, mods_dir_length):
             problems.append(Problem(ProblemKind.UNREADABLE, f"{mod.folder} can't be read, and is left out: {e}", mod=mod.folder))
         return {}
 
+    names = {name.lower() for name in listing}
     longest = max((name for name in names if name.endswith(".bundle") or name == "metadata.store"), key=len, default="")
     if longest and content_length + len(longest) > MAX_PATH_LENGTH:
         problems.append(_long_path(mod, longest, content_length + len(longest)))
         return {}
 
-    for loose in _loose_files(content, keys):
+    for loose in _loose_files(content, listing, keys):
         problems.append(Problem(ProblemKind.LOOSE_FILES, f"{mod.folder} ships {loose} as a loose file, which the game ignores "
                                 "(only files in bundles are loaded), so it isn't patched", mod.folder, loose))
     if not any(name.endswith(".bundle") for name in names):
@@ -208,15 +209,30 @@ def _long_path(mod, file, length):
                    "its screens blank. Give the folder a shorter name", mod=mod.folder)
 
 
-def _loose_files(content, keys):
-    """The files in keys that a content folder holds as loose files"""
+def _loose_files(content, listing, keys):
+    """The files in keys that a content folder (whose names are listing) holds as loose files. Only the
+    folders on the way to a key are listed: on a hard disk, each folder listed costs a seek, and script
+    mods have many."""
+    on_the_way = {}     # a folder (relative to content, lowercased, "" for content): the names in it that lead to keys
+    for key in keys:
+        parts = key.split("/")
+        for depth in range(len(parts)):
+            on_the_way.setdefault("/".join(parts[:depth]), set()).add(parts[depth])
     found = []
-    for folder, _, names in os.walk(content):
+    pending = [(Path(content), "", listing)]
+    while pending:
+        folder, relative, names = pending.pop()
         for name in names:
-            if name.lower().endswith(".redswf"):
-                key = profile_key(Path(folder, name).relative_to(content))
-                if key in keys:
-                    found.append(key)
+            if name.lower() not in on_the_way.get(relative, ()):
+                continue
+            path = f"{relative}/{name.lower()}" if relative else name.lower()
+            if path in keys:
+                found.append(path)
+                continue
+            try:
+                pending.append((folder / name, path, _list_names(folder / name)))
+            except OSError:
+                pass    # not a folder, or one that can't be read (as os.walk would skip it)
     return sorted(found)
 
 
@@ -230,7 +246,7 @@ def modio_problems(keys, modio_root=None) -> list[Problem]:
             return []
         problems = []
         for bundle in _modio_bundles(root):
-            for entry in read_toc(bundle):
+            for entry in read_toc(bundle, ".redswf"):
                 key = profile_key(entry.path)
                 if key in keys:
                     problems.append(Problem(ProblemKind.MODIO, f"a mod.io mod ships {key} ({bundle}); mod.io mods always load "
