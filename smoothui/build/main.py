@@ -7,6 +7,7 @@
 
 import argparse
 import datetime
+import hashlib
 import logging
 import re
 import shutil
@@ -15,6 +16,7 @@ from functools import partial
 from ..common import fail
 from ..log import HEADING
 from ..patcher import dev_mode, patcher_core
+from ..patcher.patcher_core import GAME_FILES, SourceFile
 from ..witcher3.redswf import swf_sha256
 from .compat_status import print_compat_status
 from .game_files import game_file_report
@@ -41,8 +43,8 @@ from .shared import (
     patcher_commit,
     print_file_result,
     print_rule_issues,
-    sha256_file,
     write_manifest,
+    write_patched_files,
     zip_tree,
 )
 from .strings import build_strings, check_tool
@@ -181,6 +183,16 @@ def main():
     if args.dry_run:
         log.info("DRY RUN: exiting", extra=HEADING)
 
+def read_game_files(uncooked_files, profile):
+    """The files the profile patches, as SourceFiles read from the uncooked game files"""
+    inputs = []
+    for path in profile:
+        try:
+            inputs.append(SourceFile(path, (uncooked_files / path).read_bytes(), GAME_FILES))
+        except OSError as e:
+            fail(f"can't read {path} from the uncooked files: {e}")
+    return inputs
+
 def build(args, config, paths, version, fps):
     """Patch, check, pack and zip one build (and for a release, write its manifest). Returns a function
     that prints the build's warnings and rule issues."""
@@ -201,13 +213,15 @@ def build(args, config, paths, version, fps):
 
     log.info(f"Running FPS patcher ({version})", extra=HEADING)
     review = WarningReview(load_reviewed())
+    inputs = read_game_files(paths['uncooked_files'], profile)
     try:
         patched, kept, failed = patcher_core.patch_files(
-            paths['uncooked_files'], patched_dir, profile,
-            dry_run=args.dry_run, on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
-    except (NotADirectoryError, ValueError) as e:
+            inputs, profile, on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
+    except ValueError as e:
         fail(str(e))
     log.info(f"\nDone ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
+    if not args.dry_run:
+        write_patched_files(patched, patched_dir)
 
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     if args.accept_warnings and warnings.unreviewed:
@@ -238,26 +252,24 @@ def build(args, config, paths, version, fps):
         fail(f"could not remove the old output folder {output_dir}")
     output_content_path.mkdir(parents=True)
 
-    pack_content(patched_dir, output_content_path)
+    pack_content(patched, output_content_path)
     add_mod_files(output_dir, OUTPUT_MOD_NAME)
 
     zip_tree(output_dir, zip_out)
 
     if args.make_release:
         log.info(f"Writing mod manifest ({version})", extra=HEADING)
-        uncooked_files = paths['uncooked_files']
+        sources = {source.path: source.data for source in inputs}
         records = {}
         for entry in sorted(patched, key=lambda e: e["path"]):
-            relative_path = entry["path"]
-            src = uncooked_files / relative_path
-            dst = patched_dir / relative_path
-            records[relative_path.as_posix()] = {
-                "source_sha256": sha256_file(src),
-                "output_sha256": sha256_file(dst),
-                "source_swf_sha256": swf_sha256(src.read_bytes()),
-                "output_swf_sha256": swf_sha256(dst.read_bytes()),
-                "source_size": src.stat().st_size, # for v0.2, source_size == output_size for all files
-                "output_size": dst.stat().st_size,
+            src, dst = sources[entry["path"]], entry["data"]
+            records[entry["path"]] = {
+                "source_sha256": hashlib.sha256(src).hexdigest(),
+                "output_sha256": hashlib.sha256(dst).hexdigest(),
+                "source_swf_sha256": swf_sha256(src),
+                "output_swf_sha256": swf_sha256(dst),
+                "source_size": len(src), # for v0.2, source_size == output_size for all files
+                "output_size": len(dst),
                 "fps": entry["fps"],
                 "report": entry["report"],
             }

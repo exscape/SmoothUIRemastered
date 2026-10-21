@@ -27,7 +27,7 @@ from ..common import fail, normalize_version, profile_key
 from ..log import HEADING
 from ..patcher import dev_mode, patcher_core
 from ..patcher.fixes import check_fix_name
-from ..patcher.patcher_core import PatchSettings
+from ..patcher.patcher_core import PatchSettings, SourceFile
 from ..patcher.swf_patcher import (
     SpeedRule,
     SpriteRef,
@@ -35,7 +35,7 @@ from ..patcher.swf_patcher import (
     parse_sprite_pattern,
 )
 from ..paths import APP_DIR
-from ..witcher3.bundle import BundleError, extract, read_bundle
+from ..witcher3.bundle import BundleError, read_entry, read_toc
 from ..witcher3.redswf import swf_sha256
 from .compat_status import newest_compat_patches
 from .profile import apply_overrides
@@ -60,6 +60,7 @@ from .shared import (
     split_build_version,
     version_key,
     write_json,
+    write_patched_files,
     zip_tree,
 )
 
@@ -202,23 +203,35 @@ def find_content_dir(unpacked_dir):
              "If these are optional parts, build from an archive holding only the part to support.")
     return content_dirs[0]
 
-def unbundle(content_dir, out_dir):
-    """Extract the bundle(s) in content_dir into loose files under out_dir, at their depot paths"""
-    entries = {}    # lowercase path -> (bundle name, entry)
+def read_bundle_tocs(content_dir):
+    """{profile key: (bundle file, TocEntry)} for the files in the bundle(s) in content_dir, reading only
+    their tables of contents (see read_entry_content for a file's content)"""
+    files = {}
+    bundles = sorted(content_dir.glob("*.bundle"))
     try:
-        for bundle in sorted(content_dir.glob("*.bundle")):
-            for entry in read_bundle(bundle.read_bytes()):
-                key = entry.path.lower()
-                if key in entries and entries[key][1].content() != entry.content():
+        for bundle in bundles:
+            for entry in read_toc(bundle):
+                key = profile_key(entry.path)
+                if key in files and read_entry_content(*files[key]) != read_entry_content(bundle, entry):
                     # Which copy the game would use is unknown
-                    fail(f"{entry.path} is in both {entries[key][0]} and {bundle.name}, with different contents")
-                entries[key] = (bundle.name, entry)
-        written = extract((entry for _, entry in entries.values()), out_dir)
+                    fail(f"{entry.path} is in both {files[key][0].name} and {bundle.name}, with different contents")
+                files[key] = (bundle, entry)
     except BundleError as e:
-        fail(f"can't unbundle {content_dir}: {e}")
-    log.info(f"Extracted {len(written)} files into {out_dir}")
-    if not any(out_dir.rglob("*.redswf")):
-        fail(f"no .redswf files found after unbundling into {out_dir}")
+        fail(f"can't read the bundles in {content_dir}: {e}")
+    log.info(f"Found {len(files)} files in {len(bundles)} bundle(s)")
+    if not any(key.endswith(".redswf") for key in files):
+        fail(f"no .redswf files found in the bundles in {content_dir}")
+    return files
+
+def read_entry_content(bundle, toc_entry):
+    """One file's content, from a bundle file and its TOC entry"""
+    with open(bundle, "rb") as f:
+        return read_entry(f, toc_entry).content()
+
+def their_swf_paths(their_files):
+    """The other mod's .redswf files (read_bundle_tocs' result), / separated, in their spelling"""
+    return sorted(entry.path.replace("\\", "/") for _, entry in their_files.values()
+                  if entry.path.lower().endswith(".redswf"))
 
 def load_release_manifest(smooth_version, fps):
     """The manifest of one build of a Smooth UI release (smooth_version without a frame rate); fails
@@ -276,21 +289,16 @@ def _recorded_tokens(report, kind):
     return tuple(SpriteRef(token.id, recorded_sprites.get(token.id)) if isinstance(token, SpriteRef)
                  else token for token in parsed)
 
-def find_shared_files(their_dir, manifest, smooth_version):
-    """The .redswf files (paths relative to their_dir, in their spelling) that the other mod
-    ships AND that the Smooth UI Remastered release named by manifest patches"""
-    def key(rel):
-        """One comparable spelling for both sides: lowercase, slash-separated"""
-        return rel.as_posix().lower() if isinstance(rel, Path) else rel.lower()
-
-    our_keys = {key(rel) for rel in manifest["files"]}
-    theirs = sorted(f.relative_to(their_dir) for f in their_dir.rglob("*.redswf"))
-    shared = [p for p in theirs if key(p) in our_keys]
+def find_shared_files(theirs, manifest, smooth_version):
+    """The .redswf files (their_swf_paths, in their spelling) that the other mod ships AND that the
+    Smooth UI Remastered release named by manifest patches"""
+    our_keys = {profile_key(rel) for rel in manifest["files"]}
+    shared = [p for p in theirs if profile_key(p) in our_keys]
 
     log.info(f"The other mod has {len(theirs)} .redswf files, {len(shared)} of which "
              f"Smooth UI Remastered {smooth_version} also patches")
     for p in theirs:
-        if key(p) not in our_keys:
+        if profile_key(p) not in our_keys:
             log.info(f"  not patched: {p} (not in our mod)")
 
     if not shared:
@@ -328,7 +336,6 @@ def main():
 
     work_dir = paths["working_dir"] / "compat"
     unpacked_dir = work_dir / "1_unpacked"
-    unbundled_dir = work_dir / "2_unbundled"
 
     # Perform some sanity checks, since every user that didn't change the config will likely get a very, very ugly exception tree otherwise
     if game_path and not game_path.is_dir():
@@ -347,8 +354,9 @@ def main():
     log.info(f"Unpacking {args.mod_archive}", extra=HEADING)
     unpack(args.mod_archive, unpacked_dir)
 
-    log.info("Unbundling the other mod", extra=HEADING)
-    unbundle(find_content_dir(unpacked_dir), unbundled_dir)
+    log.info("Reading the other mod's bundles", extra=HEADING)
+    their_content_dir = find_content_dir(unpacked_dir)
+    their_files = read_bundle_tocs(their_content_dir)
 
     # The patches are made one after the other; a failure stops the run, leaving the earlier ones as they are
     versions = [build_version(smooth_version, fps) for fps in fps_list]
@@ -356,19 +364,20 @@ def main():
     for version, fps in zip(versions, fps_list):
         zip_out = REPO_ROOT / f"SmoothUIRemastered_{version}_{args.mod_name}_{mod_version}_Compat.zip"
         log.info(f"Compat patch for Smooth UI Remastered {version}: {zip_out.name}", extra=HEADING)
-        patched_dir = work_dir / f"{fps}fps" / "3_patched"
-        mod_root = work_dir / f"{fps}fps" / "4_mod"
+        patched_dir = work_dir / f"{fps}fps" / "2_patched"
+        mod_root = work_dir / f"{fps}fps" / "3_mod"
         content_dir = mod_root / mod_name / "content"
         content_dir.mkdir(parents=True)
 
-        print_issues, patched = make_patch(version, manifests[fps], unbundled_dir, patched_dir, args)
+        print_issues, inputs, patched = make_patch(version, manifests[fps], their_files,
+                                                   their_content_dir.parent.name, patched_dir, args)
         issue_printers.append(print_issues)
-        pack_content(patched_dir, content_dir)
+        pack_content(patched, content_dir)
         zip_tree(mod_root, zip_out)
         # Builds of one frame rate are for testing, and dev hooks change the files by hand
         if not (args.only_fps or args.dev_dump or args.dev_insert or args.dev_pause):
             unneeded += write_patch_manifest(version, manifests[fps], args, mod_version, zip_out,
-                                                         unbundled_dir, patched_dir, patched)
+                                             their_files, inputs, patched)
 
     if args.only_fps:
         install_and_launch(mod_root / mod_name, game_path, args.install, args.launch)
@@ -383,13 +392,20 @@ def main():
     for warning in unneeded:
         log.warning(warning)
 
-def make_patch(version, manifest, unbundled_dir, patched_dir, args):
-    """Patch the files the other mod shares with one build of the release (version, e.g. v0.3-60fps) into
-    patched_dir, and check the result. Returns a function that prints the warnings and rule issues."""
+def make_patch(version, manifest, their_files, origin, patched_dir, args):
+    """Patch the files the other mod (their_files: see read_bundle_tocs; origin: its folder) shares with
+    one build of the release (version, e.g. v0.3-60fps), writing them to patched_dir too, and check the
+    result. Returns (a function that prints the warnings and rule issues, the SourceFiles patched,
+    patch_files' patched list)."""
     log.info(f"Finding files in common with Smooth UI Remastered {version}", extra=HEADING)
     log.info(f"Files are patched to {manifest['fps']} fps, as in that build")
-    shared = find_shared_files(unbundled_dir, manifest, version)
-    shared_keys = {rel.as_posix().lower() for rel in shared}
+    shared = find_shared_files(their_swf_paths(their_files), manifest, version)
+    try:
+        inputs = [SourceFile(profile_key(p), read_entry_content(*their_files[profile_key(p)]), origin)
+                  for p in shared]
+    except BundleError as e:
+        fail(f"can't read the other mod's files: {e}")
+    shared_keys = {source.path for source in inputs}
     shared_profile = {key: settings for key, settings in profile_from_manifest(manifest).items()
                       if key in shared_keys}
     shared_settings, reviewed = [], set()
@@ -405,11 +421,11 @@ def make_patch(version, manifest, unbundled_dir, patched_dir, args):
                                       for key, report in recorded.items()})
     try:
         patched, kept, failed = patcher_core.patch_files(
-            unbundled_dir, patched_dir, shared_profile,
-            on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
-    except (NotADirectoryError, ValueError) as e:
+            inputs, shared_profile, on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
+    except ValueError as e:
         fail(str(e))
     log.info(f"\nDone ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
+    write_patched_files(patched, patched_dir)
 
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     how_to_accept = [("These come from the other mod's changes. Once checked, add these lines under * in "
@@ -432,24 +448,25 @@ def make_patch(version, manifest, unbundled_dir, patched_dir, args):
     def print_issues():
         print_warnings()
         print_rule_issues(rule_issues)
-    return print_issues, patched
+    return print_issues, inputs, patched
 
-def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundled_dir, patched_dir, patched):
+def write_patch_manifest(version, manifest, args, mod_version, zip_out, their_files, inputs, patched):
     """Write manifests/compat/<version>_<mod>_<mod version>.json for a patch built for one build of the
     release (version, e.g. v0.3-60fps; manifest is its manifest), replacing any earlier one: what the
     patch holds, and the release's own output for each of those files. A later release that patches a
     file differently (other settings, fixes or patcher code) makes the patch outdated; so does one that
     starts patching a file the other mod ships. See compat_status.py's compat_patch_problems.
-    Returns a warning if the patch is identical to the mod's newest earlier one, so not needed."""
+    their_files, inputs and patched are as make_patch got and returned them. Returns a warning if the
+    patch is identical to the mod's newest earlier one, so not needed."""
     log.info(f"Writing compat patch manifest ({version})", extra=HEADING)
     release_files = {profile_key(key): record for key, record in manifest["files"].items()}
+    sources = {source.path: source.data for source in inputs}
     files = {}
     for entry in sorted(patched, key=lambda e: e["path"]):
-        rel = entry["path"]
-        files[rel.as_posix()] = {
-            "source_swf_sha256": swf_sha256((unbundled_dir / rel).read_bytes()),
-            "output_swf_sha256": swf_sha256((patched_dir / rel).read_bytes()),
-            "release_output_swf_sha256": release_files[profile_key(rel)]["output_swf_sha256"],
+        files[entry["path"]] = {
+            "source_swf_sha256": swf_sha256(sources[entry["path"]]),
+            "output_swf_sha256": swf_sha256(entry["data"]),
+            "release_output_swf_sha256": release_files[entry["path"]]["output_swf_sha256"],
         }
     commit, uncommitted = patcher_commit()
     path = compat_manifest_path(version, args.mod_name, mod_version)
@@ -474,7 +491,7 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, unbundle
         "created_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
         "output_zip": str(zip_out.relative_to(REPO_ROOT)) if zip_out.is_relative_to(REPO_ROOT) else str(zip_out),
         # Every .redswf the other mod ships, patched or not
-        "other_mod_files": sorted(f.relative_to(unbundled_dir).as_posix() for f in unbundled_dir.rglob("*.redswf")),
+        "other_mod_files": their_swf_paths(their_files),
         "files": files,
     })
     log.info(f"Wrote compat patch manifest {path} ({len(files)} files)")

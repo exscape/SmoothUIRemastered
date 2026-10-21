@@ -50,11 +50,11 @@ Example:
 This will:
 
 * Unpack the mod to the work directory (work/compat/1_unpacked)
-* Unbundle the mod (work/compat/2_unbundled)
+* Read the list of files in the mod's bundles
 * For each build of Smooth UI Remastered v0.3 (120 and 60 fps):
   * Figure out the conflicting files between that build and the other mod
-  * Create FPS-patched versions of the conflicting files, based on the other mod's .redswf files (work/compat/120fps/3_patched)
-  * Bundle the FPS-patched files .redswf files *only* (work/compat/120fps/4_mod)
+  * Create FPS-patched versions of the conflicting files, based on the other mod's .redswf files (work/compat/120fps/2_patched)
+  * Bundle the FPS-patched files .redswf files *only* (work/compat/120fps/3_mod)
   * Zip the mod to a release-ready file next to the script
   * Write a manifest of the patch to `manifests/compat/` (not with `--only-fps` considered a dev/testing option), for checking it against later releases (see below)
 * Delete work/compat entirely (use `--keep-work` to keep the files)

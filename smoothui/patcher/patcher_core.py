@@ -5,13 +5,15 @@ from __future__ import annotations
 import logging
 import struct
 import traceback
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
-from pathlib import Path
 from typing import NamedTuple
 
-from ..common import SmoothUIError, profile_key
+from ..common import SmoothUIError, fail, profile_key
 from ..log import SUBHEADING
+from ..parallel import make_pool, replay_records, run_logged, worker_count
 from ..witcher3.redswf import RedSwfError, replace_swf
+from . import dev_mode
 from .dev_mode import dev_make_body_hook, resolve_dev_target
 from .fixes import AFTER_RESCALE, BEFORE_RESCALE, apply_fixes
 from .swf import (
@@ -38,6 +40,16 @@ log = logging.getLogger(__name__)
 # (a plain ValueError too) may well be a bug, so its traceback goes into the failure message.
 EXPECTED_ERRORS = (SmoothUIError, RescaleError, RedSwfError)
 
+# The origin of files from the game itself (see SourceFile)
+GAME_FILES = "game files"
+
+
+class SourceFile(NamedTuple):
+    """One file to patch"""
+    path: str       # its depot path as profiles spell it: lowercase, / separated (see profile_key)
+    data: bytes
+    origin: str     # where it came from: GAME_FILES, or the mod's folder
+
 
 @dataclass(frozen=True)
 class PatchSettings:
@@ -48,71 +60,82 @@ class PatchSettings:
     exclude: tuple = ()
     fixes: tuple = ()       # names of fixes for bugs in the game's file (see fixes/)
 
-def patch_files(src, dst, profile, *, dry_run=False, on_file=None):
-    """Patch the given files (paths relative to src), writing changed ones to dst with the
-    same relative path. profile maps each file's profile key to its PatchSettings; files that are
-    not in it, or that are already at/above their target frame rate and have no fixes to apply, are
-    not written.
+def patch_files(inputs, profile, *, on_file=None, pool=None):
+    """Patch the given files (SourceFiles) in memory, each with its settings in profile ({profile key:
+    PatchSettings}).
 
-    on_file(rel, status, report=None, error=None) is called as soon as each file's result is
+    The files are patched in parallel, in pool if given (see parallel.make_pool), else in a pool made for
+    this call. They are patched in-process instead when there is only one file or one worker (see
+    parallel.worker_count), or a dev hook is active (see dev_mode.py). Either way, the results come in
+    input order, each file's log output in one piece.
+
+    on_file(path, status, report=None, error=None) is called as soon as each file's result is
     known: status is "patched" or "kept" (with the file's rescale report), or "failed" (with the
     error message).
 
-    Returns (patched, kept, failed): patched holds {"path", "fps", "report"} dicts (fps: the file's
-    frame rate now), kept holds {"path", "report"} dicts, and failed holds (rel, message) tuples.
-    Raises NotADirectoryError / ValueError for invalid directories.
+    Returns (patched, kept, failed), lists of dicts with the file's "path" and "origin" (as in its
+    SourceFile). patched ones also hold "data" (the patched file), "fps" (its frame rate now) and "report";
+    kept ones (already at or above their target frame rate, with no fixes to apply) hold "report"; failed
+    ones hold "error" (the message).
 
     A file fails on any exception: input the patcher can't read, doesn't support or misunderstands
     (e.g. a failed verification), or a bug. The other files are still patched, so that all problems
     are reported, but the caller must treat any failure as a failure of the whole mod: never leave a
     failed file out and ship the rest.
     """
-    src, dst = Path(src).resolve(), Path(dst).resolve()
-    if not src.is_dir():
-        raise NotADirectoryError(f"Not a directory: {src}")
-    if dst == src or src in dst.parents:
-        raise ValueError("Output dir must not be inside the input dir.")
-
     resolve_dev_target(profile)
+    jobs = [(source, profile[source.path]) for source in inputs]
 
     patched, kept, failed = [], [], []
-
-    def report(rel, status, rescale_report=None, error=None):
+    for result in _patch_jobs(jobs, pool):
+        status = result.pop("status")
+        {"patched": patched, "kept": kept, "failed": failed}[status].append(result)
         if on_file:
-            on_file(rel, status, rescale_report, error)
-
-    for key, settings in profile.items():
-        rel = Path(key)
-        orig = (src / rel).read_bytes()
-        redswf_bytes = bytearray(orig)
-
-        log.info(rel.as_posix(), extra=SUBHEADING)
-        try:
-            assert 1 <= settings.target_fps <= 256
-            rescale_report, new_swf_bytes = process(redswf_bytes, settings, dev_make_body_hook(rel))
-            # Also on a dry run, as this reads (and checks) the .redswf container
-            out_data = None if new_swf_bytes is None else replace_swf(redswf_bytes, new_swf_bytes)
-        except Exception as e:  # noqa: BLE001 (see the docstring: the caller fails the mod)
-            error = _failure_message(e)
-            failed.append((rel, error))
-            report(rel, "failed", error=error)
-            continue
-
-        if out_data is None:
-            kept.append({"path": rel, "report": rescale_report})
-            report(rel, "kept", rescale_report)
-            continue
-
-        if not dry_run:
-            out = dst / rel
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(out_data)
-
-        fps = rescale_report["new_fps"] or rescale_report["old_fps"]    # not rescaled: only fixed
-        patched.append({"path": rel, "fps": fps, "report": rescale_report})
-        report(rel, "patched", rescale_report)
-
+            on_file(result["path"], status, result.get("report"), result.get("error"))
     return patched, kept, failed
+
+def _patch_jobs(jobs, pool):
+    """_patch_file's result for each (SourceFile, PatchSettings) in jobs, in order"""
+    if dev_mode.DEV_MODE or worker_count(len(jobs)) == 1:
+        for source, settings in jobs:
+            yield _patch_file(source, settings, dev_make_body_hook(source.path))
+    elif pool is None:
+        with make_pool(worker_count(len(jobs))) as own_pool:
+            yield from _patch_in_pool(own_pool, jobs)
+    else:
+        yield from _patch_in_pool(pool, jobs)
+
+def _patch_in_pool(pool, jobs):
+    # The largest files first, so that a slow one starts at once instead of waiting for a free worker
+    order = sorted(range(len(jobs)), key=lambda i: -len(jobs[i][0].data))
+    futures = {i: pool.submit(run_logged, _patch_file, *jobs[i]) for i in order}
+    try:
+        for i in range(len(jobs)):
+            result, records = futures[i].result()
+            replay_records(records)
+            yield result
+    except BrokenProcessPool as e:
+        fail(f"a worker process stopped while patching files: {e}")
+    finally:
+        for future in futures.values():
+            future.cancel()
+
+def _patch_file(source, settings, body_hook=None):
+    """Patch one file; returns its result for patch_files, with its "status" """
+    result = {"path": source.path, "origin": source.origin}
+    redswf_bytes = bytearray(source.data)
+    log.info(source.path, extra=SUBHEADING)
+    try:
+        assert 1 <= settings.target_fps <= 256
+        rescale_report, new_swf_bytes = process(redswf_bytes, settings, body_hook)
+        out_data = None if new_swf_bytes is None else replace_swf(redswf_bytes, new_swf_bytes)
+    except Exception as e:  # noqa: BLE001 (see patch_files: the caller fails the mod)
+        return {**result, "status": "failed", "error": _failure_message(e)}
+
+    if out_data is None:
+        return {**result, "status": "kept", "report": rescale_report}
+    fps = rescale_report["new_fps"] or rescale_report["old_fps"]    # not rescaled: only fixed
+    return {**result, "status": "patched", "data": bytes(out_data), "fps": fps, "report": rescale_report}
 
 def _failure_message(e: Exception) -> str:
     if isinstance(e, EXPECTED_ERRORS):

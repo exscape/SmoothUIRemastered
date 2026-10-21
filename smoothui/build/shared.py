@@ -93,16 +93,24 @@ def wcc_lite(*args):
     wcc_lite_path = paths['wcc_lite']
     run_command([wcc_lite_path] + list(args), cwd=wcc_lite_path.parent, filter_predicate=filter_noise)
 
-def pack_content(patched_dir, content_dir):
-    """Pack the patched files into blob0.bundle and create metadata.store"""
+def write_patched_files(patched, out_dir):
+    """Write the patched files (patcher_core.patch_files' patched list) under out_dir at their paths, for
+    a look at them while the work folder is kept"""
+    for entry in patched:
+        out = out_dir / entry["path"]
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(entry["data"])
+
+def pack_content(patched, content_dir):
+    """Pack the patched files (patcher_core.patch_files' patched list) into blob0.bundle and create
+    metadata.store"""
     log.info("Packing blob0.bundle", extra=HEADING)
-    files = sorted(p for p in patched_dir.rglob("*") if p.is_file())
     bundle = content_dir / "blob0.bundle"
     try:
-        bundle.write_bytes(write_bundle(make_entry(p.relative_to(patched_dir), p.read_bytes()) for p in files))
+        bundle.write_bytes(write_bundle(make_entry(entry["path"], entry["data"]) for entry in patched))
     except BundleError as e:
-        fail(f"can't pack {patched_dir}: {e}")
-    log.info(f"Packed {len(files)} files into {bundle} ({bundle.stat().st_size / 2**20:.1f} MiB)")
+        fail(f"can't pack the patched files: {e}")
+    log.info(f"Packed {len(patched)} files into {bundle} ({bundle.stat().st_size / 2**20:.1f} MiB)")
 
     store_path = content_dir / "metadata.store"
     if COMPARE_STORE_WITH_WCC_LITE:
