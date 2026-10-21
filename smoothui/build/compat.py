@@ -25,20 +25,15 @@ import rarfile
 
 from ..common import fail, normalize_version, profile_key
 from ..log import HEADING
-from ..patcher import dev_mode, patcher_core
-from ..patcher.fixes import check_fix_name
-from ..patcher.patcher_core import PatchSettings, SourceFile
-from ..patcher.swf_patcher import (
-    SpeedRule,
-    SpriteRef,
-    parse_speed,
-    parse_sprite_pattern,
-)
+from ..patcher import dev_mode
+from ..patcher.patcher_core import SourceFile
 from ..paths import APP_DIR
-from ..witcher3.bundle import BundleError, read_entry, read_toc
+from ..witcher3 import mod_bundles
+from ..witcher3.mod_bundles import list_bundles
 from .compat_status import newest_compat_patches
 from .profile import apply_overrides
-from .reviewed_warnings import WarningReview, print_warning_summary, review_of
+from .release import load_release_manifest, patch_as_release, profile_from_manifest
+from .reviewed_warnings import print_warning_summary
 from .shared import (
     COMPARE_STORE_WITH_WCC_LITE,
     REPO_ROOT,
@@ -50,10 +45,8 @@ from .shared import (
     install_and_launch,
     is_dev_version,
     load_config,
-    load_manifest,
     pack_content,
     patcher_commit,
-    print_file_result,
     print_rule_issues,
     release_manifest_paths,
     split_build_version,
@@ -203,47 +196,18 @@ def find_content_dir(unpacked_dir):
     return content_dirs[0]
 
 def read_bundle_tocs(content_dir):
-    """{profile key: (bundle file, TocEntry)} for the files in the bundle(s) in content_dir, reading only
-    their tables of contents (see read_entry_content for a file's content)"""
-    files = {}
-    bundles = sorted(content_dir.glob("*.bundle"))
-    try:
-        for bundle in bundles:
-            for entry in read_toc(bundle):
-                key = profile_key(entry.path)
-                if key in files and read_entry_content(*files[key]) != read_entry_content(bundle, entry):
-                    # Which copy the game would use is unknown
-                    fail(f"{entry.path} is in both {files[key][0].name} and {bundle.name}, with different contents")
-                files[key] = (bundle, entry)
-    except BundleError as e:
-        fail(f"can't read the bundles in {content_dir}: {e}")
-    log.info(f"Found {len(files)} files in {len(bundles)} bundle(s)")
+    """{profile key: (bundle file, TocEntry)} for the files in the bundle(s) in content_dir (see
+    mod_bundles.read_bundle_tocs); fails unless they hold a .redswf file"""
+    files = mod_bundles.read_bundle_tocs(content_dir)
+    log.info(f"Found {len(files)} files in {len(list_bundles(content_dir))} bundle(s)")
     if not any(key.endswith(".redswf") for key in files):
         fail(f"no .redswf files found in the bundles in {content_dir}")
     return files
-
-def read_entry_content(bundle, toc_entry):
-    """One file's content, from a bundle file and its TOC entry"""
-    with open(bundle, "rb") as f:
-        return read_entry(f, toc_entry).content()
 
 def their_swf_paths(their_files):
     """The other mod's .redswf files (read_bundle_tocs' result), / separated, in their spelling"""
     return sorted(entry.path.replace("\\", "/") for _, entry in their_files.values()
                   if entry.path.lower().endswith(".redswf"))
-
-def load_release_manifest(smooth_version, fps):
-    """The manifest of one build of a Smooth UI release (smooth_version without a frame rate); fails
-    unless it is one compat patches can be built from"""
-    version = build_version(smooth_version, fps)
-    manifest = load_manifest(version)
-    too_old = (f"Smooth UI Remastered {smooth_version} is from before the 60 and 120 fps builds, which this "
-               "patcher can't reproduce. Compat patches can be built for v0.3 and later releases")
-    if manifest is None:
-        fail(too_old if load_manifest(smooth_version) else f"no manifest exists for Smooth UI Remastered {version}")
-    if "fps" not in manifest:
-        fail(too_old)
-    return manifest
 
 def check_not_outdated(smooth_version, force):
     """Fail if smooth_version (without a frame rate specified) is older than the most recent release with a
@@ -257,36 +221,6 @@ def check_not_outdated(smooth_version, force):
         fail(f"--smooth-version {smooth_version} is older than {newest}, the most recent release with a "
              "manifest. Use --force to build for it anyway")
     log.warning(f"building for {smooth_version}, which is older than {newest}, the most recent release (--force)")
-
-def profile_from_manifest(manifest):
-    """The settings each file was patched with in a Smooth UI release, from its manifest (see
-    load_release_manifest): a profile ({profile key: PatchSettings}), so compat patches match the release."""
-    profile = {}
-    for key, record in manifest["files"].items():
-        report = record["report"]
-        profile[key] = PatchSettings(record["fps"],
-                                     tuple(SpeedRule(rule["pattern"], parse_speed(rule["speed"])) for rule in report["rules"]),
-                                     _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"),
-                                     _recorded_fixes(key, report))
-    return profile
-
-def _recorded_fixes(key, report):
-    """The names of the fixes a release applied to a file"""
-    names = tuple(fix["name"] for fix in report["fixes"])
-    for name in names:
-        try:
-            check_fix_name(name)
-        except ValueError as e:
-            fail(f"{key}: the release's manifest names {e}; this version of the patcher can't reproduce it")
-    return names
-
-def _recorded_tokens(report, kind):
-    """A report's include or exclude patterns, with sprite ids expecting the class and frame count
-    recorded for them"""
-    recorded_sprites = {sprite["id"]: (sprite["class"], sprite["frames"]) for sprite in report["sprites"]}
-    parsed = (parse_sprite_pattern(setting["pattern"]) for setting in report[kind])
-    return tuple(SpriteRef(token.id, recorded_sprites.get(token.id)) if isinstance(token, SpriteRef)
-                 else token for token in parsed)
 
 def find_shared_files(theirs, manifest, smooth_version):
     """The .redswf files (their_swf_paths, in their spelling) that the other mod ships AND that the
@@ -407,28 +341,17 @@ def make_patch(version, manifest, their_files, origin, patched_dir, args):
         shared_profile, shared_settings, reviewed = apply_overrides(shared_profile, args.overrides)
 
     log.info(f"Running FPS patcher ({version})", extra=HEADING)
-
-    # The release's reports; warnings it had for a file were already there in the vanilla version.
-    # They stay hidden where the other mod's code is the same (see reviewed_warnings.py).
-    recorded = {key: record["report"] for key, record in manifest["files"].items()}
-    review = WarningReview(reviewed, {key: {review_of(warning) for warning in report["warnings"]}
-                                      for key, report in recorded.items()})
-    try:
-        patched, kept, failed = patcher_core.patch_files(
-            inputs, shared_profile, on_file=partial(print_file_result, is_reviewed=review.is_reviewed))
-    except ValueError as e:
-        fail(str(e))
+    patched, kept, failed, warnings, rule_issues = patch_as_release(
+        inputs, shared_profile, manifest, reviewed=reviewed, shared_settings=shared_settings)
     log.info(f"\nDone ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
     write_patched_files(patched, patched_dir)
 
-    warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     how_to_accept = [("These come from the other mod's changes. Once checked, add these lines under * in "
                       "the --overrides file to mark them as reviewed:"),
                      *(f"    reviewed: {review}" for review in warnings.unreviewed)]
     print_warnings = partial(print_warning_summary, warnings, how_to_accept=how_to_accept,
                              reviewed_source=str(args.overrides))
     print_warnings()
-    rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings, recorded)
     print_rule_issues(rule_issues)
     # A conflicting file missing from the patch would let our main mod's version
     # override the other mod's changes to that screen.
