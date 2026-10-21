@@ -13,7 +13,7 @@ The script is tested under WSL (mainly) and in cmd.exe (Windows Terminal). Power
 
 **Dependencies:**
 
-* Python **[3.9 or newer](https://www.python.org/downloads/release/pymanager-263/) (developed/tested on 3.11)**. You can also use **Python install manager** from the Microsoft Store, but **avoid installing Python itself from the Microsoft Store**; use the install manager or a direct download.
+* Python **[3.11 or newer](https://www.python.org/downloads/release/pymanager-263/)**. You can also use **Python install manager** from the Microsoft Store, but **avoid installing Python itself from the Microsoft Store**; use the install manager or a direct download.
 * Witcher 3 REDkit (specifically bin\x64_RedKit\wcc_lite.exe)
 * Some Python packages, see below
 * WSL only: `unrar` (only required for patching .rar mods); see the `rarfile` package documentation (for Linux) if using WSL

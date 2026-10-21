@@ -6,13 +6,8 @@ import logging
 import re
 import shutil
 import subprocess
+import tomllib
 import zipfile
-
-try:
-    import tomllib
-except ImportError:
-    # for Python 3.9 and 3.10, which lack tomllib
-    import tomli as tomllib  # type: ignore
 from pathlib import Path
 
 from ..common import fail, normalize_version, to_native, to_windows

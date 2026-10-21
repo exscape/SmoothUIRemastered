@@ -1,7 +1,6 @@
 colorama
 rarfile
 py7zr
-tomli; python_version < "3.11"
 lz4
 # Only to lint the code (settings in pyproject.toml)
 ruff
