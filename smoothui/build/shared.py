@@ -338,11 +338,16 @@ def load_manifest(version_or_path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
+# Which build a Smooth UI mod folder holds (its version and frame rate), next to content\ (the game only
+# reads content\). The merger identifies the installed build by it, checked against that build's manifest.
+BUILD_RECORD = "smoothui_build.json"
+
 def write_manifest(version, records, extra=None):
     """Write manifests/<version>.json for this mod release.
 
     records maps each patched file's relative path to its record: SHA-256 and size of the source and
-    output files, SHA-256 of the SWF in each (see patcher/redswf.py's swf_sha256), "fps" (the frame
+    output files, SHA-256 of the SWF in each (see patcher/redswf.py's swf_sha256), the output's CRC32
+    (output_crc32, as the bundle's table of contents records it), "fps" (the frame
     rate it was patched to) and "report" (its full rescale report, see patcher/swf_patcher/report.py),
     which includes the speed rules and include/exclude lists it was patched with. extra holds the
     top-level fields, including "fps", the build's frame rate."""
@@ -355,6 +360,12 @@ def write_manifest(version, records, extra=None):
     write_json(path, manifest)
     log.info(f"Wrote manifest {path} ({len(records)} files)")
     return path
+
+def write_build_record(mod_dir, version, fps):
+    """Write BUILD_RECORD into a built mod folder: which build of Smooth UI Remastered it holds"""
+    path = mod_dir / BUILD_RECORD
+    write_json(path, {"created_mod_version": normalize_version(version), "fps": fps})
+    log.info(f"Added {path.name}")
 
 def compat_manifest_path(version, mod_name, mod_version):
     """Where the manifest of a compat patch for one build of a release (version, e.g. v0.3-60fps) lives;

@@ -99,8 +99,8 @@ def patch_files(inputs, profile, *, on_file=None, pool=None):
 
     Returns (patched, kept, failed), lists of dicts with the file's "path" and "origin" (as in its
     SourceFile). patched ones also hold "entry" (the patched file, compressed, as a BundleEntry for
-    write_bundle), "hashes" (sha256, swf_sha256 and size of the source and output files, as manifests
-    record them: source_sha256, output_swf_sha256, ...), "fps" (its frame rate now) and "report"; kept
+    write_bundle), "hashes" (sha256, swf_sha256 and size of the source and output files, and the output's
+    CRC32, as manifests record them: source_sha256, output_swf_sha256, output_crc32, ...), "fps" (its frame rate now) and "report"; kept
     ones (already at or above their target frame rate, with no fixes to apply) hold "report"; failed ones
     hold "error" (the message).
 
@@ -168,6 +168,8 @@ def _patch_file(source, settings, body_hook=None):
                   "source_size": len(data), "output_size": len(out)}
         del data
         entry = make_entry(source.path, out)
+        # As the bundle's table of contents records it, so an installed build can be identified without reading it
+        hashes["output_crc32"] = entry.crc
     except Exception as e:  # noqa: BLE001 (see patch_files: the caller fails the mod)
         return {**result, "status": "failed", "error": _failure_message(e)}
     finally:

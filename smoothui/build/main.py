@@ -41,6 +41,7 @@ from .shared import (
     patcher_commit,
     print_file_result,
     print_rule_issues,
+    write_build_record,
     write_manifest,
     write_patched_files,
     zip_tree,
@@ -252,6 +253,7 @@ def build(args, config, paths, version, fps):
 
     pack_content(patched, output_content_path)
     add_mod_files(output_dir, OUTPUT_MOD_NAME)
+    write_build_record(output_mod_dir, version, fps)
 
     zip_tree(output_dir, zip_out)
 
