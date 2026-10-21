@@ -48,7 +48,7 @@ def swf_patch(data, pos, patch, body_hook=None):
     stream_start = pos + SWF_HEADER_SIZE
     decompressor = zlib.decompressobj()
     try:
-        body = bytearray(decompressor.decompress(bytes(data[stream_start:])))
+        body = bytearray(decompressor.decompress(memoryview(data)[stream_start:]))
     except zlib.error:
         return None
     if not decompressor.eof:

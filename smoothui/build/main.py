@@ -7,7 +7,6 @@
 
 import argparse
 import datetime
-import hashlib
 import logging
 import re
 import shutil
@@ -17,7 +16,6 @@ from ..common import fail
 from ..log import HEADING
 from ..patcher import dev_mode, patcher_core
 from ..patcher.patcher_core import GAME_FILES, SourceFile
-from ..witcher3.redswf import swf_sha256
 from .compat_status import print_compat_status
 from .game_files import game_file_report
 from .manifest_diff import print_changes_since_previous
@@ -184,11 +182,11 @@ def main():
         log.info("DRY RUN: exiting", extra=HEADING)
 
 def read_game_files(uncooked_files, profile):
-    """The files the profile patches, as SourceFiles read from the uncooked game files"""
+    """The files the profile patches, as SourceFiles in the uncooked game files"""
     inputs = []
     for path in profile:
         try:
-            inputs.append(SourceFile(path, (uncooked_files / path).read_bytes(), GAME_FILES))
+            inputs.append(SourceFile.loose(path, GAME_FILES, uncooked_files / path))
         except OSError as e:
             fail(f"can't read {path} from the uncooked files: {e}")
     return inputs
@@ -259,20 +257,9 @@ def build(args, config, paths, version, fps):
 
     if args.make_release:
         log.info(f"Writing mod manifest ({version})", extra=HEADING)
-        sources = {source.path: source.data for source in inputs}
-        records = {}
-        for entry in sorted(patched, key=lambda e: e["path"]):
-            src, dst = sources[entry["path"]], entry["data"]
-            records[entry["path"]] = {
-                "source_sha256": hashlib.sha256(src).hexdigest(),
-                "output_sha256": hashlib.sha256(dst).hexdigest(),
-                "source_swf_sha256": swf_sha256(src),
-                "output_swf_sha256": swf_sha256(dst),
-                "source_size": len(src), # for v0.2, source_size == output_size for all files
-                "output_size": len(dst),
-                "fps": entry["fps"],
-                "report": entry["report"],
-            }
+        # Hashes and sizes of the source and output files (for v0.2, source_size == output_size for all files)
+        records = {entry["path"]: {**entry["hashes"], "fps": entry["fps"], "report": entry["report"]}
+                   for entry in sorted(patched, key=lambda e: e["path"])}
         commit, uncommitted = patcher_commit()
         write_manifest(version, records, extra={
             "fps": fps,

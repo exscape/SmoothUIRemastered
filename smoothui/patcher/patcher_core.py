@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 import struct
 import traceback
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
+from pathlib import Path
 from typing import NamedTuple
 
 from ..common import SmoothUIError, fail, profile_key
 from ..log import SUBHEADING
 from ..parallel import make_pool, replay_records, run_logged, worker_count
-from ..witcher3.redswf import RedSwfError, replace_swf
+from ..witcher3.bundle import BundleError, TocEntry, make_entry, read_entry
+from ..witcher3.redswf import RedSwf, RedSwfError, replace_swf, swf_sha256
 from . import dev_mode
 from .dev_mode import dev_make_body_hook, resolve_dev_target
 from .fixes import AFTER_RESCALE, BEFORE_RESCALE, apply_fixes
@@ -45,10 +49,29 @@ GAME_FILES = "game files"
 
 
 class SourceFile(NamedTuple):
-    """One file to patch"""
+    """One file to patch: where to read it. Whoever patches it (a worker, see patch_files) reads it, so
+    the main process never holds the files' data. Make one with loose() or in_bundle()."""
     path: str       # its depot path as profiles spell it: lowercase, / separated (see profile_key)
-    data: bytes
     origin: str     # where it came from: GAME_FILES, or the mod's folder
+    file: Path      # the loose file, or the bundle holding it
+    size: int       # of its content
+    toc_entry: TocEntry | None = None   # its entry in that bundle (see bundle.read_toc); None for a loose file
+
+    @classmethod
+    def loose(cls, path, origin, file):
+        """A loose file (raises OSError if it can't be read)"""
+        return cls(path, origin, Path(file), os.path.getsize(file))
+
+    @classmethod
+    def in_bundle(cls, path, origin, bundle, toc_entry):
+        """A file in a bundle, by its TOC entry"""
+        return cls(path, origin, Path(bundle), toc_entry.size, toc_entry)
+
+    def read(self) -> bytes:
+        if self.toc_entry is None:
+            return self.file.read_bytes()
+        with open(self.file, "rb") as f:
+            return read_entry(f, self.toc_entry).content()
 
 
 @dataclass(frozen=True)
@@ -74,9 +97,11 @@ def patch_files(inputs, profile, *, on_file=None, pool=None):
     error message).
 
     Returns (patched, kept, failed), lists of dicts with the file's "path" and "origin" (as in its
-    SourceFile). patched ones also hold "data" (the patched file), "fps" (its frame rate now) and "report";
-    kept ones (already at or above their target frame rate, with no fixes to apply) hold "report"; failed
-    ones hold "error" (the message).
+    SourceFile). patched ones also hold "entry" (the patched file, compressed, as a BundleEntry for
+    write_bundle), "hashes" (sha256, swf_sha256 and size of the source and output files, as manifests
+    record them: source_sha256, output_swf_sha256, ...), "fps" (its frame rate now) and "report"; kept
+    ones (already at or above their target frame rate, with no fixes to apply) hold "report"; failed ones
+    hold "error" (the message).
 
     A file fails on any exception: input the patcher can't read, doesn't support or misunderstands
     (e.g. a failed verification), or a bug. The other files are still patched, so that all problems
@@ -107,7 +132,7 @@ def _patch_jobs(jobs, pool):
 
 def _patch_in_pool(pool, jobs):
     # The largest files first, so that a slow one starts at once instead of waiting for a free worker
-    order = sorted(range(len(jobs)), key=lambda i: -len(jobs[i][0].data))
+    order = sorted(range(len(jobs)), key=lambda i: -jobs[i][0].size)
     futures = {i: pool.submit(run_logged, _patch_file, *jobs[i]) for i in order}
     try:
         for i in range(len(jobs)):
@@ -123,19 +148,30 @@ def _patch_in_pool(pool, jobs):
 def _patch_file(source, settings, body_hook=None):
     """Patch one file; returns its result for patch_files, with its "status" """
     result = {"path": source.path, "origin": source.origin}
-    redswf_bytes = bytearray(source.data)
     log.info(source.path, extra=SUBHEADING)
     try:
+        data = source.read()
+    except (OSError, BundleError) as e:
+        return {**result, "status": "failed", "error": f"can't read it from {source.file}: {e}"}
+
+    # Most of a .redswf's data is textures, which pass through unchanged: only the SWF is patched, and
+    # the container's data is copied as few times as possible (big files are 10-20 MiB)
+    try:
         assert 1 <= settings.target_fps <= 256
-        rescale_report, new_swf_bytes = process(redswf_bytes, settings, body_hook)
-        out_data = None if new_swf_bytes is None else replace_swf(redswf_bytes, new_swf_bytes)
+        rescale_report, new_swf_bytes = process(RedSwf(data).swf, settings, body_hook)
+        if new_swf_bytes is None:
+            return {**result, "status": "kept", "report": rescale_report}
+        out = replace_swf(data, new_swf_bytes)
+        hashes = {"source_sha256": hashlib.sha256(data).hexdigest(), "output_sha256": hashlib.sha256(out).hexdigest(),
+                  "source_swf_sha256": swf_sha256(data), "output_swf_sha256": swf_sha256(out),
+                  "source_size": len(data), "output_size": len(out)}
+        del data
+        entry = make_entry(source.path, out)
     except Exception as e:  # noqa: BLE001 (see patch_files: the caller fails the mod)
         return {**result, "status": "failed", "error": _failure_message(e)}
 
-    if out_data is None:
-        return {**result, "status": "kept", "report": rescale_report}
     fps = rescale_report["new_fps"] or rescale_report["old_fps"]    # not rescaled: only fixed
-    return {**result, "status": "patched", "data": bytes(out_data), "fps": fps, "report": rescale_report}
+    return {**result, "status": "patched", "entry": entry, "hashes": hashes, "fps": fps, "report": rescale_report}
 
 def _failure_message(e: Exception) -> str:
     if isinstance(e, EXPECTED_ERRORS):
@@ -185,8 +221,9 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
                if setting not in matched_anywhere]
     return RuleIssues(errors, warnings)
 
-def process(redswf_bytes, settings, body_hook=None):
-    """Find the SWF payload embedded in redswf_bytes, apply its fixes and rescale it.
+def process(data, settings, body_hook=None):
+    """Find the SWF payload in data, apply its fixes and rescale it. data is normally the SWF taken from
+    a .redswf (RedSwf(...).swf); a whole .redswf works too, but more slowly, as it is searched for the SWF.
 
     Returns (report, new_swf_bytes): the rescale report, and the new SWF (None if the file was left
     unchanged). Raises MalformedSwfError unless there is exactly one SWF it can read, and RescaleError
@@ -195,11 +232,11 @@ def process(redswf_bytes, settings, body_hook=None):
     result = None
     new_swf_bytes = None
     for sig in SWF_SIGS:
-        pos = redswf_bytes.find(sig)
+        pos = data.find(sig)
         while pos != -1:
-            payload = read_and_patch_swf(redswf_bytes, pos, sig, settings, body_hook)
+            payload = read_and_patch_swf(data, pos, sig, settings, body_hook)
             if payload is None:
-                pos = redswf_bytes.find(sig, pos + len(sig))
+                pos = data.find(sig, pos + len(sig))
                 continue
 
             end, found, returned_bytes = payload
@@ -208,25 +245,25 @@ def process(redswf_bytes, settings, body_hook=None):
                     raise MalformedSwfError("found more than 1 payload (expected 1)")
                 result = found
                 new_swf_bytes = returned_bytes
-            pos = redswf_bytes.find(sig, end)
+            pos = data.find(sig, end)
 
     if result is None:
         raise MalformedSwfError("found 0 payloads (expected 1); corrupt file?")
     return result, new_swf_bytes
 
-def read_and_patch_swf(redswf_bytes, pos, sig, settings, body_hook=None):
+def read_and_patch_swf(data, pos, sig, settings, body_hook=None):
     """Check for an SWF header at data[pos] and patch the payload if found."""
-    if pos + SWF_HEADER_SIZE > len(redswf_bytes):
+    if pos + SWF_HEADER_SIZE > len(data):
         return None
-    if not redswf_bytes[pos + 3] in valid_versions:
+    if not data[pos + 3] in valid_versions:
         return None
 
     if sig not in SWF_COMPRESSED_SIGS:
         raise MalformedSwfError("SWF was not compressed: please contact me (GitHub/Nexus Mods) about this and I'll add support.")
-    return patch_fps(redswf_bytes, pos, settings, body_hook)
+    return patch_fps(data, pos, settings, body_hook)
 
-def patch_fps(redswf_bytes, pos, settings, body_hook=None):
-    """Set the frame rate of the compressed SWF at redswf_bytes[pos] and interpolate animations,
+def patch_fps(data, pos, settings, body_hook=None):
+    """Set the frame rate of the compressed SWF at data[pos] and interpolate animations,
     applying its fixes before or after that (see fixes/). body_hook (see dev_mode.py) runs on the result.
 
     Returns:
@@ -252,7 +289,7 @@ def patch_fps(redswf_bytes, pos, settings, body_hook=None):
         changed = result.new_fps is not None or fixed is not None or fixed_after is not None
         return changed, {**result.report, "fixes": fix_records}
 
-    return swf_patch(redswf_bytes, pos, patch, body_hook)
+    return swf_patch(data, pos, patch, body_hook)
 
 def patch_fps_in_body(body, new_fps):
     """The method that actually patches the framerate bytes.

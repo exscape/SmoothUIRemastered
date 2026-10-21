@@ -20,7 +20,7 @@ from ..log import HEADING, SUBHEADING
 from ..patcher.fixes import APPLIED
 from ..patcher.swf_patcher import format_fix
 from ..paths import FROZEN, MANIFEST_DIR, MANIFEST_DIRS, REPO_ROOT
-from ..witcher3.bundle import BundleError, make_entry, write_bundle
+from ..witcher3.bundle import BundleError, write_bundle
 from ..witcher3.metadata_store import MetadataStoreError, make_metadata_store
 
 log = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ def write_patched_files(patched, out_dir):
     for entry in patched:
         out = out_dir / entry["path"]
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(entry["data"])
+        out.write_bytes(entry["entry"].content())
 
 def pack_content(patched, content_dir):
     """Pack the patched files (patcher_core.patch_files' patched list) into blob0.bundle and create
@@ -107,7 +107,7 @@ def pack_content(patched, content_dir):
     log.info("Packing blob0.bundle", extra=HEADING)
     bundle = content_dir / "blob0.bundle"
     try:
-        bundle.write_bytes(write_bundle(make_entry(entry["path"], entry["data"]) for entry in patched))
+        bundle.write_bytes(write_bundle(entry["entry"] for entry in patched))
     except BundleError as e:
         fail(f"can't pack the patched files: {e}")
     log.info(f"Packed {len(patched)} files into {bundle} ({bundle.stat().st_size / 2**20:.1f} MiB)")

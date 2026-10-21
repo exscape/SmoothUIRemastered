@@ -83,6 +83,7 @@ class RedSwf:
 
     def __init__(self, data: bytes | bytearray):
         self.data = d = bytes(data)
+        self.view = memoryview(d)   # for slicing big chunks without copying them
         if len(d) < TABLES_START or d[:4] != CR2W_MAGIC:
             raise RedSwfError("not a CR2W file")
         (version,) = struct.unpack_from("<I", d, 4)
@@ -111,7 +112,7 @@ class RedSwf:
             pos += count * TABLE_ENTRY_SIZES[slot]
             if pos > len(d):
                 raise RedSwfError(f"table {slot} runs past the end of the file")
-            if zlib.crc32(d[offset:pos]) != crc:
+            if zlib.crc32(self.view[offset:pos]) != crc:
                 self.stale.add(f"table {slot}")
             self.tables[slot] = (offset, pos - offset)
         for slot in (T_STRINGS, T_NAMES, T_EXPORTS):
@@ -129,7 +130,7 @@ class RedSwf:
             if chunk.offset != pos:
                 raise RedSwfError(f"chunk {i} is at {chunk.offset}, expected {pos}")
             pos += chunk.size
-            if zlib.crc32(d[chunk.offset:pos]) != chunk.crc:
+            if zlib.crc32(self.view[chunk.offset:pos]) != chunk.crc:
                 self.stale.add(f"chunk {i}")
         if pos != len(d):
             raise RedSwfError(f"the chunks end at {pos}, but the file is {len(d)} bytes")
@@ -148,8 +149,9 @@ class RedSwf:
     def class_name(self, chunk: Export) -> str:
         return self.names[chunk.class_idx]
 
-    def chunk_bytes(self, chunk: Export) -> bytes:
-        return self.data[chunk.offset:chunk.offset + chunk.size]
+    def chunk_bytes(self, chunk: Export) -> memoryview:
+        """A chunk's bytes, as a view: texture chunks are big, so they aren't copied"""
+        return self.view[chunk.offset:chunk.offset + chunk.size]
 
     def _parse_names(self) -> list[str]:
         strings_offset, strings_size = self.tables[T_STRINGS]
@@ -213,7 +215,7 @@ class RedSwf:
             raise RedSwfError("the SWF chunk doesn't contain a SWF")
         self.swf_trailer = d[swf_offset + swf_size:end]
 
-    def with_swf(self, swf: bytes) -> bytearray:
+    def with_swf(self, swf: bytes) -> bytes:
         """The file data with the SWF replaced; the other chunks are copied as is"""
         d = self.data
         old = self.chunks[self.swf_chunk]
@@ -229,17 +231,19 @@ class RedSwf:
             chunks.append(chunk_data)
             pos += len(chunk_data)
 
-        # The exports table is the last table, and its size doesn't change
+        # The exports table is the last table, and its size doesn't change. The header and tables are
+        # finished first, then joined with the chunks, so the (mostly texture) data is copied only once.
         exports = b"".join(rows)
-        out = bytearray(d[:self.tables[T_EXPORTS][0]]) + exports + b"".join(chunks)
-        struct.pack_into("<II", out, OFF_FILE_SIZE, len(out), self.buffer_size + len(out) - len(d))
-        struct.pack_into("<I", out, OFF_EXPORTS_CRC, zlib.crc32(exports))
+        head = bytearray(d[:self.tables[T_EXPORTS][0]]) + exports
+        size = len(head) + sum(len(chunk_data) for chunk_data in chunks)
+        struct.pack_into("<II", head, OFF_FILE_SIZE, size, self.buffer_size + size - len(d))
+        struct.pack_into("<I", head, OFF_EXPORTS_CRC, zlib.crc32(exports))
         # Last, as it covers the fields above
-        struct.pack_into("<I", out, OFF_HEADER_CRC, header_crc(out))
-        return out
+        struct.pack_into("<I", head, OFF_HEADER_CRC, header_crc(head))
+        return b"".join([head, *chunks])
 
 
-def replace_swf(redswf: bytes | bytearray, swf: bytes | bytearray) -> bytearray:
+def replace_swf(redswf: bytes | bytearray, swf: bytes | bytearray) -> bytes:
     """Return the .redswf file data with its SWF replaced by swf (a complete CFX/CWS/GFX/FWS file, any size).
 
     The result is re-parsed and checked: only the SWF and the values that depend on its size may differ.
@@ -299,7 +303,14 @@ def check_swf(swf: bytes):
         raise RedSwfError(f"the new SWF is {length} bytes, but its header states {declared}")
 
 
-def verify_replacement(old: RedSwf, out: bytearray, swf: bytes) -> list[str]:
+def _same_bytes(a: memoryview, b: memoryview, block: int = 1 << 20) -> bool:
+    """Whether two views hold the same bytes; compared a block at a time, as comparing memoryviews
+    directly goes element by element (several times slower), and copying them whole costs memory"""
+    return len(a) == len(b) and all(a[i:i + block].tobytes() == b[i:i + block].tobytes()
+                                    for i in range(0, len(a), block))
+
+
+def verify_replacement(old: RedSwf, out: bytes, swf: bytes) -> list[str]:
     """Re-parse the result of old.with_swf(swf), and check that everything except the SWF and the
     values that depend on its size is unchanged. Returns a list of problems; empty if all is well."""
     try:
@@ -317,7 +328,7 @@ def verify_replacement(old: RedSwf, out: bytearray, swf: bytes) -> list[str]:
     for i, (a, b) in enumerate(zip(old.chunks, new.chunks)):
         if (a.class_idx, a.flags, a.parent, a.template) != (b.class_idx, b.flags, b.parent, b.template):
             problems.append(f"chunk {i} metadata changed")
-        elif i != old.swf_chunk and (old.chunk_bytes(a) != new.chunk_bytes(b) or a.crc != b.crc):
+        elif i != old.swf_chunk and (not _same_bytes(old.chunk_bytes(a), new.chunk_bytes(b)) or a.crc != b.crc):
             problems.append(f"chunk {i} ({old.class_name(a)}) changed")
 
     a, b = old.chunks[old.swf_chunk], new.chunks[new.swf_chunk]

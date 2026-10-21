@@ -36,7 +36,6 @@ from ..patcher.swf_patcher import (
 )
 from ..paths import APP_DIR
 from ..witcher3.bundle import BundleError, read_entry, read_toc
-from ..witcher3.redswf import swf_sha256
 from .compat_status import newest_compat_patches
 from .profile import apply_overrides
 from .reviewed_warnings import WarningReview, print_warning_summary, review_of
@@ -369,15 +368,15 @@ def main():
         content_dir = mod_root / mod_name / "content"
         content_dir.mkdir(parents=True)
 
-        print_issues, inputs, patched = make_patch(version, manifests[fps], their_files,
-                                                   their_content_dir.parent.name, patched_dir, args)
+        print_issues, patched = make_patch(version, manifests[fps], their_files, their_content_dir.parent.name,
+                                           patched_dir, args)
         issue_printers.append(print_issues)
         pack_content(patched, content_dir)
         zip_tree(mod_root, zip_out)
         # Builds of one frame rate are for testing, and dev hooks change the files by hand
         if not (args.only_fps or args.dev_dump or args.dev_insert or args.dev_pause):
             unneeded += write_patch_manifest(version, manifests[fps], args, mod_version, zip_out,
-                                             their_files, inputs, patched)
+                                             their_files, patched)
 
     if args.only_fps:
         install_and_launch(mod_root / mod_name, game_path, args.install, args.launch)
@@ -395,16 +394,11 @@ def main():
 def make_patch(version, manifest, their_files, origin, patched_dir, args):
     """Patch the files the other mod (their_files: see read_bundle_tocs; origin: its folder) shares with
     one build of the release (version, e.g. v0.3-60fps), writing them to patched_dir too, and check the
-    result. Returns (a function that prints the warnings and rule issues, the SourceFiles patched,
-    patch_files' patched list)."""
+    result. Returns (a function that prints the warnings and rule issues, patch_files' patched list)."""
     log.info(f"Finding files in common with Smooth UI Remastered {version}", extra=HEADING)
     log.info(f"Files are patched to {manifest['fps']} fps, as in that build")
     shared = find_shared_files(their_swf_paths(their_files), manifest, version)
-    try:
-        inputs = [SourceFile(profile_key(p), read_entry_content(*their_files[profile_key(p)]), origin)
-                  for p in shared]
-    except BundleError as e:
-        fail(f"can't read the other mod's files: {e}")
+    inputs = [SourceFile.in_bundle(profile_key(p), origin, *their_files[profile_key(p)]) for p in shared]
     shared_keys = {source.path for source in inputs}
     shared_profile = {key: settings for key, settings in profile_from_manifest(manifest).items()
                       if key in shared_keys}
@@ -448,24 +442,23 @@ def make_patch(version, manifest, their_files, origin, patched_dir, args):
     def print_issues():
         print_warnings()
         print_rule_issues(rule_issues)
-    return print_issues, inputs, patched
+    return print_issues, patched
 
-def write_patch_manifest(version, manifest, args, mod_version, zip_out, their_files, inputs, patched):
+def write_patch_manifest(version, manifest, args, mod_version, zip_out, their_files, patched):
     """Write manifests/compat/<version>_<mod>_<mod version>.json for a patch built for one build of the
     release (version, e.g. v0.3-60fps; manifest is its manifest), replacing any earlier one: what the
     patch holds, and the release's own output for each of those files. A later release that patches a
     file differently (other settings, fixes or patcher code) makes the patch outdated; so does one that
     starts patching a file the other mod ships. See compat_status.py's compat_patch_problems.
-    their_files, inputs and patched are as make_patch got and returned them. Returns a warning if the
-    patch is identical to the mod's newest earlier one, so not needed."""
+    their_files and patched are as make_patch got and returned them. Returns a warning if the patch is
+    identical to the mod's newest earlier one, so not needed."""
     log.info(f"Writing compat patch manifest ({version})", extra=HEADING)
     release_files = {profile_key(key): record for key, record in manifest["files"].items()}
-    sources = {source.path: source.data for source in inputs}
     files = {}
     for entry in sorted(patched, key=lambda e: e["path"]):
         files[entry["path"]] = {
-            "source_swf_sha256": swf_sha256(sources[entry["path"]]),
-            "output_swf_sha256": swf_sha256(entry["data"]),
+            "source_swf_sha256": entry["hashes"]["source_swf_sha256"],
+            "output_swf_sha256": entry["hashes"]["output_swf_sha256"],
             "release_output_swf_sha256": release_files[entry["path"]]["output_swf_sha256"],
         }
     commit, uncommitted = patcher_commit()
