@@ -47,7 +47,7 @@ class RescaleError(ValueError):
     """The SWF can't be handled, or the rescaled result failed verification"""
 
 
-@dataclass
+@dataclass(slots=True)
 class Sprite:
     character_id: int
     tag_index: int              # index of its DefineSprite in SwfMovie.tags

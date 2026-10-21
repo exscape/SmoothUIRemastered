@@ -6,7 +6,6 @@ that the planned changes came out as intended.
 
 from __future__ import annotations
 
-import dataclasses
 import struct
 
 from ..swf import MalformedSwfError, swf_get_header_offsets
@@ -136,8 +135,8 @@ def _verify_stretched_sprite(sprite: Sprite, new: Tag, retiming: Retiming, tween
                 if max(change_magnitude(step.start, state), change_magnitude(state, step.end)) > \
                         change_magnitude(step.start, step.end) + MAX_INTERPOLATION_OVERSHOOT:
                     problems.append(f"{where} depth {sample.depth}: interpolated state outside its step")
-                expected[sample.depth] = dataclasses.replace(obj, matrix=state.matrix, ratio=state.ratio,
-                                                             color_transform=state.color_transform)
+                expected[sample.depth] = obj._replace(matrix=state.matrix, ratio=state.ratio,
+                                                      color_transform=state.color_transform)
             if new_states[tick] != expected:
                 drifted = sorted(depth for depth in expected.keys() | new_states[tick].keys()
                                  if expected.get(depth) != new_states[tick].get(depth))

@@ -33,7 +33,7 @@ class TagCode(IntEnum):
     SYMBOL_CLASS = 76
     DO_ABC = 82
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Tag:
     """One tag: its code and payload"""
     code: int

@@ -60,7 +60,7 @@ class ArgKind(Enum):
     COMPUTED = "computed"   # a frame number computed at runtime (or unknown)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class FrameArg:
     kind: ArgKind
     value: int | None = None    # for NUMBER: the 1-based frame number
@@ -72,7 +72,7 @@ class ReceiverKind(Enum):
     UNRESOLVED = "unresolved"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Receiver:
     kind: ReceiverKind
     names: frozenset = frozenset()
@@ -81,7 +81,7 @@ THIS = Receiver(ReceiverKind.THIS)
 UNRESOLVED = Receiver(ReceiverKind.UNRESOLVED)
 
 
-@dataclass
+@dataclass(slots=True)
 class GotoCall:
     """A gotoAndStop()/gotoAndPlay() call"""
     method: int
@@ -94,7 +94,7 @@ class GotoCall:
     push_index: int | None = None   # for NUMBER args: the instruction pushing the frame number
 
 
-@dataclass
+@dataclass(slots=True)
 class FrameScripts:
     """The addFrameScript(frame, fn, ...) calls in a class constructor"""
     method: int
@@ -107,7 +107,7 @@ class FrameScripts:
         return {frame for call in self.calls for _, frame in call}
 
 
-@dataclass
+@dataclass(slots=True)
 class FrameHandler:
     """A method registered as an ENTER_FRAME listener"""
     method: int
@@ -118,7 +118,7 @@ class FrameHandler:
     increments: list[tuple[int, float, str]] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(slots=True)
 class FramePropertyUse:
     """A read of totalFrames/currentFrame/..., or a nextFrame()/prevFrame() call"""
     method: int

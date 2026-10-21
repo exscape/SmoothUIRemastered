@@ -58,8 +58,8 @@ MIN_DATA_SIZE = 1024
 
 NONE, ZLIB, SNAPPY, DOBOZ, LZ4, LZ4HC = range(6)
 COMPRESSION_NAMES = {NONE: "none", ZLIB: "zlib", SNAPPY: "snappy", DOBOZ: "doboz", LZ4: "lz4", LZ4HC: "lz4hc"}
-# LZ4's default high compression level; the output is about as small as wcc_lite's
-LZ4HC_LEVEL = 9
+# Compresses in about 60% of the time of level 9, and costs less than 1% of extra space
+LZ4HC_LEVEL = 6
 
 
 class BundleError(ValueError):

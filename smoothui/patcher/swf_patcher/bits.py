@@ -13,14 +13,14 @@ class BitReader:
 
     def read(self, count: int) -> int:
         """Unsigned field of `count` bits"""
-        value = 0
-        for _ in range(count):
-            value = (value << 1) | ((self.data[self.offset] >> (7 - self.bit)) & 1)
-            self.bit += 1
-            if self.bit == 8:
-                self.bit = 0
-                self.offset += 1
-        return value
+        end_bit = self.bit + count
+        size = (end_bit + 7) >> 3    # bytes the field touches
+        if self.offset + size > len(self.data):
+            raise IndexError(f"bit field runs past the end of the data, at offset {self.offset}")
+        chunk = int.from_bytes(self.data[self.offset:self.offset + size], "big")
+        self.offset += end_bit >> 3
+        self.bit = end_bit & 7
+        return (chunk >> (size * 8 - end_bit)) & ((1 << count) - 1)
 
     def read_signed(self, count: int) -> int:
         """Two's complement field of `count` bits"""
@@ -41,19 +41,21 @@ class BitWriter:
     """Builds MSB-first bit fields; the result is zero padded to a whole byte"""
 
     def __init__(self):
-        self.bits: list[int] = []
+        self.value = 0      # the bits written so far, the first one highest
+        self.count = 0
 
     def write(self, value: int, count: int):
-        for i in range(count - 1, -1, -1):
-            self.bits.append((value >> i) & 1)
+        """The low `count` bits of value"""
+        self.value = (self.value << count) | (value & ((1 << count) - 1))
+        self.count += count
 
     def write_signed(self, value: int, count: int):
         if count:
-            self.write(value & ((1 << count) - 1), count)
+            self.write(value, count)
 
     def to_bytes(self) -> bytes:
-        bits = self.bits + [0] * (-len(self.bits) % 8)
-        return bytes(int("".join(map(str, bits[i:i + 8])), 2) for i in range(0, len(bits), 8))
+        padding = -self.count % 8
+        return (self.value << padding).to_bytes((self.count + padding) // 8, "big")
 
 
 def signed_bits_needed(values) -> int:

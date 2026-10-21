@@ -24,6 +24,9 @@ WORKERS_VARIABLE = "SMOOTHUI_WORKERS"
 # GetLogicalProcessorInformationEx: one record per physical core
 RELATION_PROCESSOR_CORE = 0
 
+# More workers stop helping here: it saves no time, but adds 50-120 MiB of RAM usage per extra worker.
+MAX_WORKERS = 4
+
 
 def physical_cores() -> int:
     """The number of physical cores; os.cpu_count() if unknown"""
@@ -73,7 +76,7 @@ def worker_count(tasks: int) -> int:
             return max(1, min(int(forced), tasks))
         except ValueError:
             raise ValueError(f"{WORKERS_VARIABLE} must be a number, not {forced!r}") from None
-    return max(1, min(physical_cores(), tasks))
+    return max(1, min(physical_cores(), MAX_WORKERS, tasks))
 
 
 def make_pool(workers: int) -> ProcessPoolExecutor:

@@ -10,11 +10,11 @@ length may be shown slightly before or after their exact states.
 
 from __future__ import annotations
 
-import dataclasses
 import math
 from collections import defaultdict
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import NamedTuple
 
 from .place_object import (
     FIXED_ONE,
@@ -52,9 +52,8 @@ MAX_ROTATION_DEGREES = 60.0
 LOOP_TOLERANCE = 0.5
 
 
-@dataclass(frozen=True)
-class DisplayState:
-    """One object on the display list"""
+class DisplayState(NamedTuple):
+    """One object on the display list (a NamedTuple, as the timeline simulations make a great many)"""
     instance: int               # counts placements, so a re-placed or swapped object is a new instance
     character_id: int
     matrix: Matrix
@@ -66,7 +65,7 @@ class DisplayState:
 Snapshot = dict  # depth -> DisplayState, after a ShowFrame
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class TweenStep:
     """An object that changes from `start` (frame k) to `end` (frame k + 1) and should be interpolated"""
     depth: int
@@ -74,7 +73,7 @@ class TweenStep:
     end: DisplayState
 
 
-@dataclass
+@dataclass(slots=True)
 class TweenStats:
     changes: int = 0        # object changes between consecutive frames
     interpolated: int = 0
@@ -89,7 +88,7 @@ class TweenStats:
         return self.single_step + self.outlier + self.rotation
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class TweenSample:
     """A tweened object on a new frame (tick) between keyframes: t (0..1) of the way through step"""
     step: TweenStep
@@ -132,7 +131,7 @@ class DisplayList:
                     changes["color_transform"] = place.color_transform
                 if place.ratio is not None:
                     changes["ratio"] = place.ratio
-                current[depth] = dataclasses.replace(current[depth], **changes)
+                current[depth] = current[depth]._replace(**changes)
         elif tag.code in (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2):
             current.pop(parse_remove_object_depth(tag), None)
 
@@ -149,18 +148,24 @@ def simulate_timeline(tags) -> list[Snapshot]:
 
 
 def _merge_options(old: tuple, new: tuple) -> tuple:
+    if not new:
+        return old      # already merged (sorted, one entry per option)
     return tuple(sorted({**dict(old), **dict(new)}.items()))
 
 
 def change_magnitude(a: DisplayState, b: DisplayState) -> float:
     """Size of the change a -> b in roughly pixel-sized units. Used to tell tweens from jumps,
     and to rank how much interpolating a sprite is worth."""
-    dm = [abs(x - y) for x, y in zip(a.matrix, b.matrix)]
-    translation = ((dm[4] / 20.0) ** 2 + (dm[5] / 20.0) ** 2) ** 0.5  # twips -> pixels
-    magnitude = max(translation, max(dm[0], dm[1], dm[2], dm[3]) / FIXED_ONE * 100.0)
+    am, bm = a.matrix, b.matrix
+    translation = ((abs(am[4] - bm[4]) / 20.0) ** 2 + (abs(am[5] - bm[5]) / 20.0) ** 2) ** 0.5  # twips -> pixels
+    magnitude = max(translation, max(abs(am[0] - bm[0]), abs(am[1] - bm[1]), abs(am[2] - bm[2]),
+                                     abs(am[3] - bm[3])) / FIXED_ONE * 100.0)
 
-    dc = [abs(x - y) for x, y in zip(a.color_transform, b.color_transform)]
-    magnitude = max(magnitude, max(dc[:4]) / 256.0 * 100.0, max(dc[4:]) / 255.0 * 50.0)
+    ac, bc = a.color_transform, b.color_transform
+    if ac != bc:
+        magnitude = max(magnitude,
+                        max(abs(ac[0] - bc[0]), abs(ac[1] - bc[1]), abs(ac[2] - bc[2]), abs(ac[3] - bc[3])) / 256.0 * 100.0,
+                        max(abs(ac[4] - bc[4]), abs(ac[5] - bc[5]), abs(ac[6] - bc[6]), abs(ac[7] - bc[7])) / 255.0 * 50.0)
 
     if a.ratio is not None and b.ratio is not None:
         magnitude = max(magnitude, abs(a.ratio - b.ratio) / MAX_RATIO * 100.0)
@@ -242,10 +247,9 @@ def _continues(before: DisplayState, a: DisplayState, b: DisplayState) -> bool:
     take a. A loop that resets instead (the end of a one-shot animation) is not interpolated."""
     extrapolate = lambda x, y: [2 * y_ - x_ for x_, y_ in zip(x, y)]
     ratio = 2 * a.ratio - before.ratio if a.ratio is not None and before.ratio is not None else a.ratio
-    predicted = dataclasses.replace(a, matrix=Matrix(*extrapolate(before.matrix, a.matrix)),
-                                    color_transform=ColorTransform(*extrapolate(before.color_transform,
-                                                                                a.color_transform)),
-                                    ratio=ratio)
+    predicted = a._replace(matrix=Matrix(*extrapolate(before.matrix, a.matrix)),
+                           color_transform=ColorTransform(*extrapolate(before.color_transform, a.color_transform)),
+                           ratio=ratio)
     return change_magnitude(predicted, b) <= LOOP_TOLERANCE * change_magnitude(a, b)
 
 
@@ -270,9 +274,9 @@ def interpolate(a: DisplayState, b: DisplayState, t: float) -> DisplayState:
         return a
     lerp = lambda x, y: round(x + (y - x) * t)
     ratio = lerp(a.ratio, b.ratio) if a.ratio is not None and b.ratio is not None else a.ratio
-    return dataclasses.replace(a, matrix=_interpolate_matrix(a.matrix, b.matrix, t),
-                               color_transform=ColorTransform(*map(lerp, a.color_transform, b.color_transform)),
-                               ratio=ratio)
+    return a._replace(matrix=_interpolate_matrix(a.matrix, b.matrix, t),
+                      color_transform=ColorTransform(*map(lerp, a.color_transform, b.color_transform)),
+                      ratio=ratio)
 
 
 def _interpolate_matrix(a: Matrix, b: Matrix, t: float) -> Matrix:

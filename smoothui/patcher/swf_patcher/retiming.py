@@ -15,7 +15,7 @@ def fps_ratio(source_fps: float, target_fps: float) -> Fraction:
     return Fraction(target_fps).limit_denominator(1000) / Fraction(source_fps).limit_denominator(1000)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Retiming:
     """Holds every original frame for `ratio` ticks, rounding cumulatively: at 60/11, the frames
     are held for 5, 5, 6, 5, 5, 6, ... ticks, so frame k always starts at round(k * ratio)."""
@@ -23,7 +23,9 @@ class Retiming:
 
     def tick(self, frame: int) -> int:
         """The new 0-based frame at which original 0-based frame `frame` starts"""
-        return round_half_up(frame * self.ratio)
+        # round_half_up(frame * self.ratio), without making a Fraction (this runs very often)
+        numerator, denominator = self.ratio.numerator, self.ratio.denominator
+        return (2 * frame * numerator + denominator) // (2 * denominator)
 
     def hold(self, frame: int) -> int:
         """Number of new frames that original frame `frame` lasts"""

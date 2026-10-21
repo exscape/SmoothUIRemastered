@@ -63,19 +63,9 @@ class AbcReader:
         self.offset += 2
         return value
 
-    def s24(self) -> int:
-        value = self.u8() | (self.u8() << 8) | (self.u8() << 16)
-        return value - (1 << 24) if value & 0x800000 else value
-
     def u30(self) -> int:
-        """Variable-length unsigned integer (u30/u32: 7 bits per byte, high bit = more bytes follow)"""
-        value = shift = 0
-        while True:
-            byte = self.u8()
-            value |= (byte & 0x7F) << shift
-            shift += 7
-            if not byte & 0x80:
-                return value & 0xFFFFFFFF
+        value, self.offset = read_u30(self.data, self.offset)
+        return value
 
     def s32(self) -> int:
         value = self.u30()
@@ -85,6 +75,29 @@ class AbcReader:
         value = self.data[self.offset:self.offset + count]
         self.offset += count
         return value
+
+
+# Readers as functions of the data and offset (faster in loops, such as disassembly's)
+
+def read_u30(data: bytes, offset: int) -> tuple[int, int]:
+    """Variable-length unsigned integer (u30/u32: 7 bits per byte, high bit = more bytes follow) at
+    data[offset]; returns it and the offset after it"""
+    byte = data[offset]
+    if byte < 0x80:
+        return byte, offset + 1
+    value, shift = byte & 0x7F, 7
+    while True:
+        offset += 1
+        byte = data[offset]
+        value |= (byte & 0x7F) << shift
+        shift += 7
+        if not byte & 0x80:
+            return value & 0xFFFFFFFF, offset + 1
+
+
+def read_s24(data: bytes, offset: int) -> int:
+    value = data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16)
+    return value - (1 << 24) if value & 0x800000 else value
 
 
 def encode_u30(value: int) -> bytes:
@@ -104,7 +117,7 @@ def encode_s24(value: int) -> bytes:
     return struct.pack("<i", value)[:3]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Multiname:
     kind: int
     name: int = 0               # string index (QName, RTQName, Multiname)
@@ -114,13 +127,13 @@ class Multiname:
     type_params: tuple = ()     # multiname indices (TypeName)
 
 
-@dataclass
+@dataclass(slots=True)
 class MethodInfo:
     param_types: list[int]      # multiname indices (0 = any)
     return_type: int
 
 
-@dataclass
+@dataclass(slots=True)
 class Trait:
     name: int                   # multiname index
     kind: int
@@ -130,7 +143,7 @@ class Trait:
     method: int | None = None   # methods/getters/setters
 
 
-@dataclass
+@dataclass(slots=True)
 class InstanceInfo:
     name: int                   # multiname index
     super_name: int             # multiname index, 0 if none
@@ -138,13 +151,13 @@ class InstanceInfo:
     traits: list[Trait]
 
 
-@dataclass
+@dataclass(slots=True)
 class ClassInfo:
     static_init: int            # method index ("cinit")
     traits: list[Trait]
 
 
-@dataclass
+@dataclass(slots=True)
 class MethodBody:
     method: int
     code: bytes
@@ -155,7 +168,7 @@ class MethodBody:
     splice_end: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PoolSpan:
     """Where a constant pool lives in AbcFile.raw: its count at start, its entries from values_start
     to end. Entry 0 is implicit, so a pool with n entries stores the count n + 1 (or 0 if it's empty)."""
@@ -164,7 +177,7 @@ class PoolSpan:
     end: int = 0
 
 
-@dataclass
+@dataclass(slots=True)
 class AbcFile:
     raw: bytes
     ints: list[int]
@@ -365,7 +378,7 @@ def _read_method_body(r: AbcReader) -> MethodBody:
     return MethodBody(method, code, exceptions, _read_traits(r), splice_start, splice_end)
 
 
-@dataclass
+@dataclass(slots=True)
 class PoolAdditions:
     """Strings, namespaces and multinames to append to an ABC file's constant pools (see serialize_abc),
     for code that names things the file doesn't (yet) name. Each method returns the index to use in

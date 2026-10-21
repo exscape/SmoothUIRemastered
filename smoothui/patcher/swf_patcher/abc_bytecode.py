@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .abc_file import AbcFile, AbcReader, encode_s24, encode_u30
+from .abc_file import AbcFile, encode_s24, encode_u30, read_s24, read_u30
 
 # Operand formats:
 #   ""   none
@@ -74,7 +74,7 @@ SKIPPABLE_NAMES = NO_OP_NAMES | {"label"}
 INTEGER_PUSH_NAMES = ("pushbyte", "pushshort")
 
 
-@dataclass
+@dataclass(slots=True)
 class Instruction:
     offset: int     # within the method's code
     opcode: int
@@ -101,41 +101,55 @@ class Instruction:
         return []
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PushDouble:
     """An edit that replaces a push instruction with pushdouble of this constant pool entry"""
     pool_index: int
 
 
 def disassemble(code: bytes) -> list[Instruction]:
-    r = AbcReader(code)
+    # Reads the code directly rather than through an AbcReader: the patcher disassembles every method
+    # of every file (about 5,000 per file), so this is one of its hot loops
     instructions = []
-    while r.offset < len(code):
-        offset = r.offset
-        opcode = r.u8()
+    offset = 0
+    while offset < len(code):
+        start = offset
+        opcode = code[offset]
+        offset += 1
         if opcode not in OPCODES:
-            raise ValueError(f"unknown opcode 0x{opcode:02x} at {offset}")
+            raise ValueError(f"unknown opcode 0x{opcode:02x} at {start}")
         name, operands = OPCODES[opcode]
-        if operands in ("m", "u"):
-            args = [r.u30()]
+        if not operands:
+            args = []
+        elif operands in ("m", "u"):
+            value, offset = read_u30(code, offset)
+            args = [value]
         elif operands in ("uu", "mu"):
-            args = [r.u30(), r.u30()]
+            first, offset = read_u30(code, offset)
+            second, offset = read_u30(code, offset)
+            args = [first, second]
         elif operands == "b":
-            value = r.u8()
+            value = code[offset]
+            offset += 1
             args = [value - 256 if value > 127 else value]
         elif operands == "B":
-            args = [r.u8()]
+            args = [code[offset]]
+            offset += 1
         elif operands == "s":
-            args = [r.s24()]
+            args = [read_s24(code, offset)]
+            offset += 3
         elif operands == "S":
-            default = r.s24()
-            case_count = r.u30()
-            args = [default, case_count] + [r.s24() for _ in range(case_count + 1)]
-        elif operands == "dbg":
-            args = [r.u8(), r.u30(), r.u8(), r.u30()]
-        else:
-            args = []
-        instructions.append(Instruction(offset, opcode, name, args, r.offset))
+            default = read_s24(code, offset)
+            case_count, offset = read_u30(code, offset + 3)
+            args = [default, case_count] + [read_s24(code, offset + 3 * i) for i in range(case_count + 1)]
+            offset += 3 * (case_count + 1)
+        else:   # "dbg"
+            debug_type = code[offset]
+            index, offset = read_u30(code, offset + 1)
+            register = code[offset]
+            extra, offset = read_u30(code, offset + 1)
+            args = [debug_type, index, register, extra]
+        instructions.append(Instruction(start, opcode, name, args, offset))
     return instructions
 
 

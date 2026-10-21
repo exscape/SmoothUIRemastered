@@ -37,6 +37,7 @@ from .swf_patcher import (
     rescale_body,
 )
 from .swf_patcher.movie import RescaleError
+from .swf_patcher.place_object import clear_parse_cache
 
 log = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class SourceFile(NamedTuple):
             return read_entry(f, self.toc_entry).content()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PatchSettings:
     """How to patch one file; see config/profile_default.txt"""
     target_fps: float
@@ -169,6 +170,8 @@ def _patch_file(source, settings, body_hook=None):
         entry = make_entry(source.path, out)
     except Exception as e:  # noqa: BLE001 (see patch_files: the caller fails the mod)
         return {**result, "status": "failed", "error": _failure_message(e)}
+    finally:
+        clear_parse_cache()
 
     fps = rescale_report["new_fps"] or rescale_report["old_fps"]    # not rescaled: only fixed
     return {**result, "status": "patched", "entry": entry, "hashes": hashes, "fps": fps, "report": rescale_report}

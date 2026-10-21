@@ -34,7 +34,7 @@ def format_speed(speed: Fraction) -> str:
     return f"{float(speed):.{places}f}"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SpeedRule:
     """Play the sprites whose linkage class name matches `pattern` at `speed` times their original
     speed (1 is what every other sprite gets), whatever the target frame rate.
@@ -70,7 +70,7 @@ def speed_rule_text(speed: Fraction, pattern: str) -> str:
     return f"speed {format_speed(speed)}: {pattern}"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SpriteRef:
     """A sprite by character id ("sprite N" in profiles), for include/exclude.
 
@@ -102,7 +102,7 @@ def make_rules(rules) -> tuple[SpeedRule, ...]:
     return tuple(rule if isinstance(rule, SpeedRule) else SpeedRule(*rule) for rule in rules)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RescaleOptions:
     target_fps: float
     # SpeedRules or (pattern, speed) pairs; the first matching rule applies

@@ -48,7 +48,7 @@ SAFE_HANDLER_PREFIXES = (
 )
 
 
-@dataclass
+@dataclass(slots=True)
 class IncrementPatch:
     """A per-frame `obj.prop += K` in an ENTER_FRAME handler, scaled down to keep its speed"""
     handler: str
@@ -57,7 +57,7 @@ class IncrementPatch:
     new: float
 
 
-@dataclass
+@dataclass(slots=True)
 class SpriteTweens:
     steps: dict[int, list[TweenStep]]       # see interpolation.find_tweens
     samples: dict[int, list[TweenSample]]   # see interpolation.sample_tweens
@@ -67,7 +67,7 @@ class SpriteTweens:
     motion: float       # total change magnitude: how noticeable the interpolation is
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PlanWarning:
     """Something the patcher can't check, which may break a stretched clip"""
     key: str        # kind and code location, stable between builds, e.g. "unresolved-goto Class.method"
@@ -75,7 +75,7 @@ class PlanWarning:
     code_hash: str  # of the code at that location (see CodeAnalysis.code_hash), so reviews can be tied to it
 
 
-@dataclass
+@dataclass(slots=True)
 class UnmetRule:
     """An explicit rule that was not followed for a sprite"""
     rule: str           # as written in a profile, e.g. "speed 1.5: pattern" or "include: sprite 338"
@@ -83,7 +83,7 @@ class UnmetRule:
     problem: str
 
 
-@dataclass
+@dataclass(slots=True)
 class RescalePlan:
     source_fps: float
     target_fps: float

@@ -14,7 +14,7 @@ from .verify import verify
 MAX_PROBLEMS_SHOWN = 10
 
 
-@dataclass
+@dataclass(slots=True)
 class RescaleResult:
     body: bytes | None      # the new body; None if the file was left unchanged
     report: dict            # see report.py; report_to_text() makes it readable

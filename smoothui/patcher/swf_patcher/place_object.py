@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import struct
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -73,7 +74,7 @@ IDENTITY_MATRIX = Matrix()
 IDENTITY_COLOR_TRANSFORM = ColorTransform()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PlaceObject:
     depth: int
     is_move: bool                   # modifies the object already at `depth`
@@ -88,18 +89,30 @@ class PlaceObject:
 
 def parse_place_object(tag: Tag) -> PlaceObject:
     """Decode the fields of a PlaceObject2/3 tag that the patcher uses"""
-    data = tag.payload
+    return _parse_place_object(tag.code, tag.payload)
+
+
+def clear_parse_cache():
+    """Free the cached parse_place_object results (the patcher does this after each file)"""
+    _parse_place_object.cache_clear()
+
+
+# The patcher parses each tag several times (loading the movie, finding tweens, building and verifying
+# them), so the results are cached: that saves most of the time it takes. The largest file has about
+# 34,000 different PlaceObject tags.
+@functools.lru_cache(maxsize=1 << 16)
+def _parse_place_object(code: int, data: bytes) -> PlaceObject:
     flags = data[0]
     offset = 1
     flags3 = 0
-    if tag.code == TagCode.PLACE_OBJECT3:
+    if code == TagCode.PLACE_OBJECT3:
         flags3 = data[1]
         offset = 2
 
     (depth,) = struct.unpack_from("<H", data, offset)
     offset += 2
 
-    if tag.code == TagCode.PLACE_OBJECT3 and flags3 & FLAG3_HAS_CLASS_NAME:
+    if code == TagCode.PLACE_OBJECT3 and flags3 & FLAG3_HAS_CLASS_NAME:
         offset = read_cstring(data, offset)[1]
 
     character_id = None
