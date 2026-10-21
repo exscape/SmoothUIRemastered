@@ -20,8 +20,14 @@ from __future__ import annotations
 
 import struct
 
-from ..swf_patcher.place_object import (CXFORM_ONE, FILTER_SIZES, PLACE_OBJECT_CODES, ColorTransform,
-                                        parse_place_object, rewrite_place_object)
+from ..swf_patcher.place_object import (
+    CXFORM_ONE,
+    FILTER_SIZES,
+    PLACE_OBJECT_CODES,
+    ColorTransform,
+    parse_place_object,
+    rewrite_place_object,
+)
 from ..swf_patcher.swf_tags import Tag
 from .swf_edit import CantApply, FixResult, SwfEdit
 

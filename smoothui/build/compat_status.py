@@ -23,7 +23,6 @@ from .shared import (
     COMPAT_MANIFEST_DIR,
     REPO_ROOT,
     build_fps,
-    is_dev_version,
     load_manifest,
     version_key,
 )

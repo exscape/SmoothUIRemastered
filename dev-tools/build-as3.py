@@ -162,7 +162,8 @@ def main():
 
         native = lambda path: to_windows(path) if IN_WSL and ffdec.suffix.lower() == ".exe" else str(path)
         result = subprocess.run([str(ffdec), "-importScript", native(stub), native(out), native(scripts)],
-                                stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="replace")
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="replace",
+                                check=False)    # checked below, to fail with FFDec's output
         output = (result.stdout + result.stderr).strip()
         if result.returncode != 0 or not out.is_file():
             fail(f"FFDec failed (exit code {result.returncode}):\n{output}")
