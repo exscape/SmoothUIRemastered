@@ -47,8 +47,6 @@ def parse_args():
     ap.add_argument("--force", action="append", default=[], metavar="FILE",
                     help="--build: put this file (e.g. gameplay/gui_new/swf/hud/hud_minimap2.redswf) in the package "
                          "even though its rescale had problems; repeatable")
-    ap.add_argument("--leave-out", action="append", default=[], metavar="FILE",
-                    help="--build: leave this file out of the package; repeatable")
     return ap.parse_args()
 
 
@@ -91,20 +89,20 @@ def show_scan(game_path, mods_settings, data_dir):
         # Smooth UI ships every file
         others = [mod.folder for mod in file.shippers if mod.folder not in (loaded, state.winner)
                   and not is_smoothui_folder(mod.folder) and not is_package_folder(mod.folder)]
-        attention = state.state.needs_build or state.state in (State.NOT_LOADED, State.UNDETERMINED)
+        attention = state.state.needs_build or state.state in (State.OVERRIDDEN, State.UNDETERMINED)
         log.log(logging.WARNING if attention else logging.INFO,
                 text + (f"; also shipped by {', '.join(others)}" if others else ""))
     to_build = sum(state.state.needs_build for state in states)
     log.info(f"\nA build is needed: it would change {to_build} file(s)" if to_build else "\nNo build is needed")
 
-    _show_problems(result.problems)
+    _show_problems(result.problems, [f"{folder} is a Smooth UI compat patch: the package replaces it for every file "
+                                     "the package holds" for folder in result.compat_patches])
     log.info(f"\nScanned in {elapsed:.2f} s")
 
 
 def build(args, game_path, mods_settings):
     start = time.perf_counter()
-    result = build_package(game_path, mods_settings, force=args.force, leave_out=args.leave_out, out_dir=args.out,
-                           data_dir=args.data_dir)
+    result = build_package(game_path, mods_settings, force=args.force, out_dir=args.out, data_dir=args.data_dir)
     show_build(result)
     log.info(f"\nBuilt in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
     if not result.clean:
@@ -143,11 +141,12 @@ def show_build(result):
         log.info(note)
 
 
-def _show_problems(problems):
+def _show_problems(problems, notes=()):
+    """Log the scan's problems (see scan.Problem), then notes (warnings that aren't problems)"""
     log.info("Problems", extra=HEADING)
-    for problem in problems:
-        log.warning(problem.message)
-    if not problems:
+    for message in [problem.message for problem in problems] + list(notes):
+        log.warning(message)
+    if not problems and not notes:
         log.info("None")
 
 

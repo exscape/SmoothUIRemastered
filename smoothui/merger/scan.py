@@ -39,12 +39,10 @@ MAX_PATH_LENGTH = 259
 MODIO_MODS = Path("mod.io", "8254", "mods")
 
 class ProblemKind(Enum):
-    UNREADABLE = "unreadable"           # a mod whose bundles can't be read: left out
-    LONG_PATH = "long path"             # a mod whose files' paths are too long for the game: left out
-    NOT_LOADED = "not loaded"           # bundles without metadata.store: the game ignores them
-    LOOSE_FILES = "loose files"         # loose .redswf files in content\: the game ignores them
+    MOD_ISSUE = "mod issue"             # a mod that can't be used, and is left out (the message says why: its
+                                        # bundles can't be read, its paths are too long for the game, or it
+                                        # has bundles but no metadata.store)
     UNDETERMINED = "undetermined"       # the load order doesn't decide a file's winner
-    COMPAT_INSTALLED = "compat patch"   # an installed compat patch: not needed with the package
     ORPHANED_COMPAT = "orphaned compat patch"   # the game loads a compat patch's copy that no other mod ships
     MODIO = "mod.io"                    # a mod.io mod ships a file we patch, or mod.io couldn't be checked
 
@@ -88,6 +86,12 @@ class Scan:
     files: dict[str, FileResult]                # by profile key; empty unless installed is usable
     problems: list[Problem]
 
+    @property
+    def compat_patches(self) -> list[str]:
+        """The installed compat patches (enabled ones, in load order): not needed for the files the package
+        holds (see builder.compat_notes)"""
+        return [mod.folder for mod in self.order if COMPAT_PATCH.fullmatch(mod.folder)]
+
 
 def is_own_folder(name: str) -> bool:
     """Whether a mod folder is ours: Smooth UI itself, the package, or a compat patch"""
@@ -117,10 +121,6 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
     shipped = {}    # Mod: {profile key: (bundle, TocEntry)}
     mods_dir_length = windows_path_length(mods_dir)
     for mod in order:
-        if COMPAT_PATCH.fullmatch(mod.folder):
-            # Whether it can be removed depends on what the package holds: see builder.compat_notes
-            problems.append(Problem(ProblemKind.COMPAT_INSTALLED, f"{mod.folder} is a Smooth UI compat patch: the package "
-                                    "replaces it for every file the package holds", mod=mod.folder))
         shipped[mod] = _mod_files(mods_dir / mod.folder, mod, keys, problems, mods_dir_length)
 
     files = {}
@@ -171,69 +171,37 @@ def _mod_files(mod_dir, mod, keys, problems, mods_dir_length):
     content = mod_dir / "content"
     content_length = mods_dir_length + len(f"\\{mod.folder}\\content\\")
     try:
-        listing = _list_names(content)
+        names = {name.lower() for name in _list_names(content)}
     except (FileNotFoundError, NotADirectoryError):
         return {}   # not a mod folder, or one without files the game loads
     except OSError as e:
         if content_length + len("metadata.store") > MAX_PATH_LENGTH:
             problems.append(_long_path(mod, "metadata.store", content_length + len("metadata.store")))
         else:
-            problems.append(Problem(ProblemKind.UNREADABLE, f"{mod.folder} can't be read, and is left out: {e}", mod=mod.folder))
+            problems.append(Problem(ProblemKind.MOD_ISSUE, f"{mod.folder} can't be read, and is left out: {e}", mod=mod.folder))
         return {}
 
-    names = {name.lower() for name in listing}
     longest = max((name for name in names if name.endswith(".bundle") or name == "metadata.store"), key=len, default="")
     if longest and content_length + len(longest) > MAX_PATH_LENGTH:
         problems.append(_long_path(mod, longest, content_length + len(longest)))
         return {}
-
-    for loose in _loose_files(content, listing, keys):
-        problems.append(Problem(ProblemKind.LOOSE_FILES, f"{mod.folder} ships {loose} as a loose file, which the game ignores "
-                                "(only files in bundles are loaded), so it isn't patched", mod.folder, loose))
     if not any(name.endswith(".bundle") for name in names):
         return {}
     if "metadata.store" not in names:
-        problems.append(Problem(ProblemKind.NOT_LOADED, f"{mod.folder} has bundles but no metadata.store, so the game doesn't "
+        problems.append(Problem(ProblemKind.MOD_ISSUE, f"{mod.folder} has bundles but no metadata.store, so the game doesn't "
                                 "load them; left out", mod=mod.folder))
         return {}
     try:
         return read_bundle_tocs(content, keys)
     except SmoothUIError as e:
-        problems.append(Problem(ProblemKind.UNREADABLE, f"{mod.folder} is left out: {e}", mod=mod.folder))
+        problems.append(Problem(ProblemKind.MOD_ISSUE, f"{mod.folder} is left out: {e}", mod=mod.folder))
         return {}
 
 
 def _long_path(mod, file, length):
-    return Problem(ProblemKind.LONG_PATH, f"{mod.folder} is left out: its folder name is too long. The path of its {file} is "
+    return Problem(ProblemKind.MOD_ISSUE, f"{mod.folder} is left out: its folder name is too long. The path of its {file} is "
                    f"{length} characters, and with paths over {MAX_PATH_LENGTH} the game ignores a mod or shows "
                    "its screens blank. Give the folder a shorter name", mod=mod.folder)
-
-
-def _loose_files(content, listing, keys):
-    """The files in keys that a content folder (whose names are listing) holds as loose files. Only the
-    folders on the way to a key are listed: on a hard disk, each folder listed costs a seek, and script
-    mods have many."""
-    on_the_way = {}     # a folder (relative to content, lowercased, "" for content): the names in it that lead to keys
-    for key in keys:
-        parts = key.split("/")
-        for depth in range(len(parts)):
-            on_the_way.setdefault("/".join(parts[:depth]), set()).add(parts[depth])
-    found = []
-    pending = [(Path(content), "", listing)]
-    while pending:
-        folder, relative, names = pending.pop()
-        for name in names:
-            if name.lower() not in on_the_way.get(relative, ()):
-                continue
-            path = f"{relative}/{name.lower()}" if relative else name.lower()
-            if path in keys:
-                found.append(path)
-                continue
-            try:
-                pending.append((folder / name, path, _list_names(folder / name)))
-            except OSError:
-                pass    # not a folder, or one that can't be read (as os.walk would skip it)
-    return sorted(found)
 
 
 def modio_problems(keys, modio_root=None) -> list[Problem]:

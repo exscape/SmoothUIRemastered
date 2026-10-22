@@ -21,7 +21,7 @@ from ..paths import DATA_DIR
 from ..witcher3.mods_settings import write_entry
 from .package import Written, record_path, write_package
 from .policy import PackageFile, decide
-from .scan import PACKAGE_FOLDER, ProblemKind, Scan, is_package_folder, scan
+from .scan import PACKAGE_FOLDER, Scan, is_package_folder, scan
 
 log = logging.getLogger(__name__)
 
@@ -101,12 +101,10 @@ def compat_notes(result: Scan, files: list[PackageFile]) -> list[str]:
     is used through its compat patch alone, gets no such note.)"""
     held = {file.path for file in files if file.status.included}
     notes = []
-    for problem in result.problems:
-        if problem.kind != ProblemKind.COMPAT_INSTALLED:
-            continue
-        shipped = [key for key, file in result.files.items() if any(mod.folder == problem.mod for mod in file.shippers)]
+    for folder in result.compat_patches:
+        shipped = [key for key, file in result.files.items() if any(mod.folder == folder for mod in file.shippers)]
         if all(key in held for key in shipped):
-            notes.append(f"{problem.mod} is not needed while the package is used, and is safe to remove")
+            notes.append(f"{folder} is not needed while the package is used, and is safe to remove")
     return notes
 
 
@@ -120,8 +118,8 @@ class BuildResult:
 
     @property
     def problems(self) -> list:
-        """The scan's problems (see scan.Problem) that the user needs to see"""
-        return [problem for problem in self.scan.problems if problem.kind != ProblemKind.COMPAT_INSTALLED]
+        """The scan's problems (see scan.Problem)"""
+        return self.scan.problems
 
     @property
     def clean(self) -> bool:
@@ -131,16 +129,16 @@ class BuildResult:
                 and not self.installation.written.unknown_files)
 
 
-def build_package(game_path: Path, mods_settings: Path, *, force=(), leave_out=(), out_dir: Path | None = None,
+def build_package(game_path: Path, mods_settings: Path, *, force=(), out_dir: Path | None = None,
                   data_dir: Path | None = DATA_DIR, pool=None, on_file=print_file_result,
                   **scan_options) -> BuildResult:
-    """Scan, patch, decide (force and leave_out: see policy.decide), install (out_dir and data_dir: see
+    """Scan, patch, decide (force: see policy.decide), install (out_dir and data_dir: see
     install) and check. scan_options go to scan.scan (for tests). Fails (SmoothUIError) if the installed
     Smooth UI build can't be used, or the package or mods.settings can't be written; problems with files
     or mods are in the result."""
     before = scan(game_path, mods_settings, **scan_options)
     patch = patch_winners(before, pool=pool, on_file=on_file)
-    files = decide(before, patch, force=force, leave_out=leave_out)
+    files = decide(before, patch, force=force)
     installation = install(before, files, mods_settings, out_dir=out_dir, data_dir=data_dir)
     check_problems = [] if out_dir is not None else check_package(files, scan(game_path, mods_settings, **scan_options))
     return BuildResult(before, files, installation, check_problems, compat_notes(before, files))

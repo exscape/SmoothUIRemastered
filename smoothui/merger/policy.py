@@ -4,7 +4,7 @@
   A failure means the patcher can't handle that mod's files, so its others are suspect too. This can't
   be overridden.
 - A fix that can't apply keeps nothing out: the file is used without the fix, and the user is told what
-  that means (the fix's CONSEQUENCE). The user may leave such a file out instead (leave_out).
+  that means (the fix's CONSEQUENCE).
 - Other problems with a rescale (a setting that wasn't followed or no longer matches, an unreviewed
   warning) leave out that file only, unless the user forces it (force).
 
@@ -34,7 +34,6 @@ class FileStatus(Enum):
     PATCHED = "patched"             # in the package
     FORCED = "forced"               # in the package although its rescale had problems, as the user asked
     LEFT_OUT = "left out"           # its rescale had problems, so it isn't in the package (it can be forced)
-    NOT_WANTED = "not wanted"       # left out, as the user asked
     UNCHANGED = "unchanged"         # nothing changed it: already at the target frame rate, and each of its
                                     # fixes wasn't needed (or can't apply): not needed in the package
     FAILED = "failed"               # couldn't be patched, so its mod is left out
@@ -90,11 +89,11 @@ class PackageFile:
 
     @property
     def severity(self) -> str:
-        """"ok"; "warning" (not as Smooth UI would patch it, or left out as the user asked); or "error" (not
-        in the package, although it needs to be)"""
+        """"ok"; "warning" (not as Smooth UI would patch it); or "error" (not in the package, although it
+        needs to be)"""
         if self.status in (FileStatus.PATCHED, FileStatus.UNCHANGED) and not self.issues:
             return "ok"
-        if self.status.included or self.status in (FileStatus.UNCHANGED, FileStatus.NOT_WANTED):
+        if self.status.included or self.status == FileStatus.UNCHANGED:
             return "warning"
         return "error"
 
@@ -104,9 +103,7 @@ class PackageFile:
         status, mod = self.status, self.mod
         if status == FileStatus.PATCHED:
             summary = f"patched ({mod}'s copy)" + (", but not entirely" if self.issues else "")
-            details = [*self._fix_lines()]
-            if self.issues:
-                details.append(f"If you leave this file out instead, the game shows {self._fallback()}.")
+            details = self._fix_lines()
         elif status == FileStatus.UNCHANGED:
             if self.issues:
                 summary = (f"{mod}'s copy is already at the target frame rate, and is used as it is, without these "
@@ -118,8 +115,6 @@ class PackageFile:
             summary = (f"patched ({mod}'s copy) as you asked, although Smooth UI can't patch it entirely. It may "
                        "look or behave wrong in places:")
             details = [*self._issue_lines(), *self._fix_lines()]
-        elif status == FileStatus.NOT_WANTED:
-            summary, details = f"NOT patched, as you asked. {self._fallback_text()}", []
         elif status == FileStatus.MOD_FAILED:
             summary = (f"NOT patched: another of {mod}'s files can't be patched (see there), so all of its files "
                        f"are left out. {self._fallback_text()}")
@@ -160,18 +155,16 @@ class PackageFile:
         return f"{self.fallback}'s copy, which comes before {self.mod}'s in the load order"
 
 
-def decide(scan: Scan, patch: ReleasePatch, *, force=(), leave_out=()) -> list[PackageFile]:
+def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
     """A PackageFile for each file patch holds (patch_as_release's result for the scan's winners), by
-    path. force: the files (profile keys) to put in the package despite problems with their rescale;
-    leave_out: those to leave out anyway. Fails (SmoothUIError) for a file in neither patch, or in both."""
-    force, leave_out = set(force), set(leave_out)
+    path. force: the files (profile keys) to put in the package despite problems with their rescale.
+    Fails (SmoothUIError) for a file patch doesn't hold."""
+    force = set(force)
     results = {result["path"]: (status, result) for status, results in
                ((FileStatus.PATCHED, patch.patched), (FileStatus.UNCHANGED, patch.kept), (FileStatus.FAILED, patch.failed))
                for result in results}
-    if unknown := sorted((force | leave_out) - set(results)):
+    if unknown := sorted(force - set(results)):
         fail(f"not a file the package could hold: {', '.join(unknown)}")
-    if both := sorted(force & leave_out):
-        fail(f"both forced and left out: {', '.join(both)}")
 
     issues = _issues(patch)
     failed_mods = {result["origin"] for result in patch.failed}
@@ -190,12 +183,8 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=(), leave_out=()) -> list[P
             file_issues = [issue for issue in file_issues if issue.kind == IssueKind.FIX]
         if source.origin in failed_mods:
             status = FileStatus.MOD_FAILED
-        elif status == FileStatus.PATCHED:
-            keeps_out = any(issue.keeps_out for issue in file_issues)
-            if path in leave_out:
-                status = FileStatus.NOT_WANTED
-            elif keeps_out:
-                status = FileStatus.FORCED if path in force else FileStatus.LEFT_OUT
+        elif status == FileStatus.PATCHED and any(issue.keeps_out for issue in file_issues):
+            status = FileStatus.FORCED if path in force else FileStatus.LEFT_OUT
         files.append(PackageFile(path, source, status, file_issues, result, fallback=fallback))
     return files
 
