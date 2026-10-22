@@ -19,7 +19,7 @@ import traceback
 from pathlib import Path
 
 from .common import SmoothUIError
-from .files import make_dirs
+from .files import check_data_writable, make_dirs
 from .merger import merger_version
 from .merger.game import (
     GameCommand,
@@ -95,6 +95,9 @@ def main(args: list[str], log: Log) -> int:
     if command.note:
         log(f"Note: {command.note}")
 
+    if not check_data_writable(DATA_DIR):
+        log("The data folder can't be written to: starting the game without the check")
+        return start_game(command, log)
     if settings is None:
         log("The merger has never run: opening it")
         if not open_merger(log):

@@ -29,7 +29,7 @@ import traceback
 from pathlib import Path
 
 from ..common import SmoothUIError
-from ..files import make_dirs, stop_writes
+from ..files import check_data_writable, make_dirs, stop_writes
 from ..launcher import ABORT, CLOSED, PLAY
 from ..log import HEADING
 from ..parallel import MAX_WORKERS, kill_workers, make_pool, warm_up, worker_count
@@ -89,6 +89,8 @@ STOP_BUILD = ("The merger is still building the package. Closing now stops it ha
 
 def main() -> int:
     stale = "--stale" in sys.argv[1:]
+    if not check_data_writable(DATA_DIR):
+        return 1
     log_records = setup_logging()
     log.info(f"Smooth UI merger {_version()}; arguments: {subprocess.list2cmdline(sys.argv[1:]) or '(none)'}")
     settings, first_run = _settings()

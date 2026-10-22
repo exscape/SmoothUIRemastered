@@ -17,7 +17,8 @@ import os
 import threading
 from pathlib import Path
 
-from .common import fail
+from .common import SmoothUIError, fail
+from .windows import MB_ICONERROR, msg_box
 
 # Windows' error for a file another process has open (ERROR_SHARING_VIOLATION), and for one that is
 # locked (ERROR_LOCK_VIOLATION)
@@ -47,6 +48,23 @@ def make_dirs(path: Path):
             pass
         except OSError as e:
             fail(f"can't create the folder {folder}: {e}")
+
+
+def check_data_writable(data_dir: Path) -> bool:
+    """Whether the tools' data folder can be written to; if not, says so in a message box. Both exes check
+    this at every start, so that a tool put where Windows denies writes is noticed at once, not when the
+    first mod needs patching."""
+    probe = Path(data_dir) / "write-test.tmp"
+    try:
+        make_dirs(data_dir)
+        probe.write_bytes(b"test")
+        probe.unlink()
+    except (SmoothUIError, OSError) as e:
+        msg_box(f"Smooth UI's tools can't write to their data folder:\n\n{data_dir}\n\n{e}\n\nMove the whole "
+                "Smooth UI Tools folder somewhere you can write to (not directly under C:\\Program Files), "
+                "then start the tool again.", MB_ICONERROR)
+        return False
+    return True
 
 
 def read_file(path: Path) -> bytes | None:
