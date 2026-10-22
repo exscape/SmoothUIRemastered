@@ -75,11 +75,7 @@ def write_package(package_dir: Path, installed: Installed, files: list[PackageFi
     included = sorted((file for file in files if file.status.included), key=lambda file: file.path)
     manifest = package_manifest(installed, files)
     if not included:
-        for name in (BUNDLE, STORE):
-            delete_file(content / name)
-        remove_empty_dir(content)
-        unknown = _unknown_files(package_dir)
-        removed = not unknown and remove_empty_dir(package_dir)
+        removed, unknown = remove_package(package_dir)
         log.info("The package holds no files: " + ("removed it" if removed else "its folder stays, as it holds other files"))
         if record is not None:
             make_dirs(Path(record).parent)
@@ -95,6 +91,20 @@ def write_package(package_dir: Path, installed: Installed, files: list[PackageFi
     if record is not None:
         delete_file(record)
     return Written(manifest, _unknown_files(package_dir))
+
+
+def remove_package(package_dir: Path) -> tuple[bool, list[str]]:
+    """Delete the merger's own files in package_dir (OWN_FILES, the manifest first), then its folders if
+    they are empty; nothing else. mods.settings is left alone: its entry for the package stays, as a later
+    build would write it again. Returns whether the folder is gone (also if it never was there), and the
+    files left in it that the merger didn't write."""
+    package_dir = Path(package_dir)
+    delete_file(package_dir / PACKAGE_MANIFEST)
+    for name in (BUNDLE, STORE):
+        delete_file(package_dir / "content" / name)
+    remove_empty_dir(package_dir / "content")
+    unknown = _unknown_files(package_dir)
+    return not unknown and remove_empty_dir(package_dir), unknown
 
 
 def _manifest_bytes(manifest):

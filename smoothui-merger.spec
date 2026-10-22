@@ -134,12 +134,18 @@ launcher_a = Analysis(
     noarchive=False,
     optimize=0,  # keep asserts
 )
+# Files a module reads next to itself (Path(__file__)), at its path in _internal\: the fixes' compiled
+# ActionScript (gwent_speed.abc). grep -rn __file__ smoothui finds the code that does it.
+module_files = [(str(p), p.parent.relative_to(SPECPATH).as_posix()) for p in sorted(Path(SPECPATH, "smoothui").rglob("*.abc"))]
+if not module_files:
+    raise SystemExit("ERROR: no .abc files found in smoothui/")
 merger_a = Analysis(
     ["merger-gui.py"],
     pathex=[],
     binaries=[],
-    # customtkinter's themes and fonts (it fails at startup without them), and the merger's version
-    datas=[*collect_data_files("customtkinter"), (str(merger_version_file), "smoothui/merger")],
+    # customtkinter's themes and fonts (it fails at startup without them), the merger's version, and the
+    # module files
+    datas=[*collect_data_files("customtkinter"), (str(merger_version_file), "smoothui/merger"), *module_files],
     hiddenimports=[],
     # pybcj, pyppmd and inflate64 (for py7zr) fall back to importing importlib_metadata on Python < 3.8;
     # PyInstaller resolves that to setuptools' vendored copy, which pulls in all of setuptools.

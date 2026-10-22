@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import errno
 import os
+import threading
 from pathlib import Path
 
 from .common import fail
@@ -22,9 +23,20 @@ from .common import fail
 # locked (ERROR_LOCK_VIOLATION)
 IN_USE_ERRORS = (32, 33)
 
+# Set by stop_writes: from then on, make_dirs and write_file fail
+_writes_stopped = threading.Event()
+
+
+def stop_writes():
+    """Make every later make_dirs and write_file fail, in every thread (one already writing finishes).
+    For deleting what a build that can't be stopped otherwise (in another thread) has written."""
+    _writes_stopped.set()
+
 
 def make_dirs(path: Path):
     """Make a folder and any missing parents"""
+    if _writes_stopped.is_set():
+        fail(f"writing was stopped: {path} isn't created")
     path = Path(path)
     for folder in reversed([path, *path.parents]):
         if folder == folder.parent:
@@ -50,6 +62,8 @@ def read_file(path: Path) -> bytes | None:
 
 def write_file(path: Path, data: bytes):
     """Write a file, replacing any file there, and check it by reading it back"""
+    if _writes_stopped.is_set():
+        fail(f"writing was stopped: {path} isn't written")
     try:
         with open(path, "wb") as f:
             f.write(data)

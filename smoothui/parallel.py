@@ -9,6 +9,7 @@ A worker's log records are collected per task and returned with its result (see 
 process can replay each file's output in one piece and in order (replay_records).
 """
 
+import importlib
 import logging
 import logging.handlers
 import multiprocessing
@@ -123,3 +124,14 @@ def replay_records(records):
     """Log a worker's records in this process, as if they had been logged here"""
     for record in records:
         logging.getLogger(record.name).handle(record)
+
+
+def warm_up(pool: ProcessPoolExecutor, workers: int, module: str):
+    """Start the pool's workers now, each importing module (what its tasks will need), so that the first
+    tasks don't wait for that. (A pool starts a worker only when a task finds none free.)"""
+    for _ in range(workers):
+        pool.submit(_import, module)
+
+
+def _import(module):
+    importlib.import_module(module)     # returns nothing: a module can't be sent back

@@ -225,6 +225,25 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     return states
 
 
+def carried_force(result: Scan) -> tuple[list[str], list[str]]:
+    """The files the package holds because the last build forced them (see policy.decide), to force again
+    in the next build: those whose copy is still the one it forced. And a note for each other one, which
+    isn't forced, so that the user decides again."""
+    folder = next((mod.folder for mod in result.order if is_package_folder(mod.folder)), PACKAGE_FOLDER)
+    manifest, _ = _read_manifest(result.mods_dir / folder / PACKAGE_MANIFEST)
+    force, notes = [], []
+    for key, record in sorted((manifest or {}).get("files", {}).items()):
+        if not record.get("forced"):
+            continue
+        file = result.files.get(key)
+        if file is not None and file.winner is not None and _same_copy(record, file.winner):
+            force.append(key)
+        else:
+            notes.append(f"{key} was forced into the package at the last build, but its copy changed: it isn't "
+                         "forced now")
+    return force, notes
+
+
 def _read_manifest(path):
     """(the package manifest at path, or None; why it can't be used, or None if there is none)"""
     try:
