@@ -2,6 +2,8 @@
 
 **If you only want to install the mod to play the game, [install it from the Nexus Mods page](https://www.nexusmods.com/witcher3/mods/13526) instead.**
 
+**If you're looking for Smooth UI Tools (for compatibility with other UI mods), see [README_tools](README_tools.md).**
+
 These are the tools that creates the mod itself. They can also create compatibility patches between this mod and other mods that modify the same .redswf files.  
 If you are a mod author that wants to release a compatibility patch, read on!
 

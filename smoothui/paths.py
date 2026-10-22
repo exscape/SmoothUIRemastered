@@ -2,7 +2,7 @@
 
 Run from the repo (the command-line tools), everything is relative to the repo root. Frozen (PyInstaller,
 see smoothui-merger.spec), the tool is one folder: the exes, with the files we ship next to them (manifests\\,
-licenses\\, UnRAR.exe), the user's data in data\\, and PyInstaller's _internal\\. Files that belong to a
+licenses\\), the user's data in data\\, and PyInstaller's _internal\\. Files that belong to a
 module (e.g. a fix's .abc) are found relative to that module instead, which works either way.
 """
 
