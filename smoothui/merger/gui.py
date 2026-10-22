@@ -202,7 +202,7 @@ class MergerWindow:
         root.geometry("1000x720")
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self.callback_failed
-        root.bind("<Map>", self.on_map, add="+")   # also its widgets' (they have the window's bind tag)
+        root.bind("<Map>", self.on_map, add="+")
 
         ctk.CTkLabel(root, text=_command_line(), justify="left", anchor="w", text_color="gray").pack(
             fill="x", padx=16, pady=(10, 0))
@@ -233,10 +233,12 @@ class MergerWindow:
             root.after(200, lambda: show_info("Welcome", WELCOME.format(game=game)))
 
     def on_map(self, event):
-        if not self.shown:
+        if event.widget is self.root and not self.shown:     # not its widgets' (they have the window's bind tag)
             self.shown = True
             ms = ms_since_process_start()
             log.debug(f"The window shows, {ms:.0f} ms after the merger started" if ms is not None else "The window shows")
+            if self.popup:
+                self.root.after(50, self.popup.place)   # it shows later than the popup, and would cover it
 
     # ---- Tk's thread: what threads hand over ----
 
@@ -454,7 +456,6 @@ class StalePopup:
         top.geometry("620x430")
         top.transient(window.root)
         top.protocol("WM_DELETE_WINDOW", window.close)
-        top.after(100, self.place)
 
         ctk.CTkLabel(top, text="Before the game starts", font=ctk.CTkFont(size=18, weight="bold")).pack(
             anchor="w", padx=20, pady=(16, 4))
