@@ -32,7 +32,7 @@ from ..common import SmoothUIError
 from ..files import make_dirs, stop_writes
 from ..launcher import ABORT, CLOSED, PLAY
 from ..log import HEADING
-from ..parallel import MAX_WORKERS, make_pool, warm_up, worker_count
+from ..parallel import MAX_WORKERS, kill_workers, make_pool, warm_up, worker_count
 from ..paths import DATA_DIR
 from ..windows import MB_ICONERROR, ms_since_process_start, msg_box
 from . import merger_version
@@ -392,6 +392,8 @@ class MergerWindow:
             if not ask_yes_no("Stop merging?", STOP_BUILD, icon="warning"):
                 return
             log.warning("Closed while building: deleting the package; the game doesn't start")
+            if self.pool is not None:
+                kill_workers(self.pool)
             self.delete_package_now()
             logging.shutdown()
             os._exit(ABORT)     # without waiting for the build's thread or the pool
@@ -509,10 +511,14 @@ class StalePopup:
             package = found.package_without_smoothui
             why = ("The merger's package was made for a Smooth UI build that can't be used now." if package else
                    f"These mods ship files Smooth UI changes: {', '.join(found.scan.conflicts)}.")
-            self.say(f"Smooth UI: {found.scan.installed.message}.\n\n{why}", "Until this is fixed, some of your mods' "
-                     "screens may look wrong or not work at all.", SEVERITY_COLORS[Severity.HIGH])
-            self.show_buttons(remove=package and self.window.can_remove(), play="Play anyway",
-                              color=SEVERITY_COLORS[Severity.HIGH])
+            text = f"Smooth UI: {found.scan.installed.message}.\n\n{why}"
+            if self.window.can_remove():    # Smooth UI disabled or missing: the merger can't enable it
+                text = (f"{_without_smoothui(found)}. It holds your other mods' screens, patched for Smooth UI.\n\n"
+                        "To play without Smooth UI, remove the package. To keep Smooth UI, abort, enable it again "
+                        "(for example in your mod manager), and start the game again.")
+            self.say(text, "Until this is fixed, some of your mods' screens may look wrong or not work at all.",
+                     SEVERITY_COLORS[Severity.HIGH])
+            self.show_buttons(remove=self.window.can_remove(), play="Play anyway", color=SEVERITY_COLORS[Severity.HIGH])
         elif found.stale:
             lines = [f"- {Path(state.path).name}: {state.message}" for state in found.states if state.severity]
             button, cost = PLAY_WITHOUT_MERGING[found.severity]
@@ -568,8 +574,16 @@ def _command_line():
     return "   ".join(lines)
 
 
+def _without_smoothui(found: Check) -> str:
+    """For a package whose Smooth UI is disabled or not installed"""
+    state = "disabled" if found.scan.installed.status == Status.DISABLED else "not installed"
+    return f"Smooth UI Remastered is {state}, but the merger's package for it is still installed"
+
+
 def _summary(found: Check) -> str:
     installed = found.scan.installed
+    if found.package_without_smoothui and installed.status in (Status.NOT_INSTALLED, Status.DISABLED):
+        return f"{_without_smoothui(found)}: remove the package, or enable Smooth UI again"
     if found.package_without_smoothui:
         return f"The package doesn't fit: {installed.message}"
     if not installed.usable:

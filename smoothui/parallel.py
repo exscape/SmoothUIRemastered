@@ -91,6 +91,16 @@ def make_pool(workers: int) -> ProcessPoolExecutor:
                                initializer=_init_worker, initargs=(levels,))
 
 
+def kill_workers(pool: ProcessPoolExecutor):
+    """End a pool's workers at once, even in the middle of a task: for a process that exits without waiting
+    for them (they'd go on otherwise, and a mod manager would see the program still running)"""
+    if hasattr(pool, "kill_workers"):   # Python 3.14
+        pool.kill_workers()
+        return
+    for process in list((pool._processes or {}).values()):
+        process.kill()
+
+
 class _RecordList(list):
     """A "queue" for QueueHandler that keeps the records"""
     def put_nowait(self, record):
