@@ -1,15 +1,18 @@
-"""Smooth UI Merger GUI: phase-0 demo (see docs/plan-local-patcher.md).
+"""Smooth UI Merger GUI: phase-0 demo.
 
 Frozen as SmoothUIMerger.exe (windowed, no console). The demo proves that
 customtkinter starts from the frozen build, measures how long that takes, and
 rehearses what the real tool will do to the mods folder (matters under MO2's VFS):
 read other mods' files, and write/read back/delete our own merged package.
+
+Its command line shows at the top. On its first run it saves its settings (so the launcher stops opening
+it for that). With --stale (the launcher opened it), it only offers its exit codes, to test the launcher.
 """
 
-import ctypes
 import multiprocessing
 import os
 import platform
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -17,26 +20,23 @@ from pathlib import Path
 
 import customtkinter as ctk
 
+from smoothui.launcher import ABORT, PLAY, UPDATING
+from smoothui.merger.game import (
+    GAME_PATH_ENV,
+    MODS_SETTINGS_ENV,
+    Settings,
+    find_game,
+    load_settings,
+    save_settings,
+)
+from smoothui.windows import ms_since_process_start
+
 MODS_DIR = Path(r"D:\Games\The Witcher 3 Remastered\mods")
 PACKAGE_NAME = "mod0000_SmoothUI_MergedPatches"
 PACKAGE_ROOT = MODS_DIR / PACKAGE_NAME
 PACKAGE_DIR = PACKAGE_ROOT / "content"
 PACKAGE_FILES = ("blob0.bundle", "metadata.store")
 BLOB_PADDING_BYTES = 1 << 20  # random, so a stale read-back can never look identical
-
-
-def ms_since_process_start():
-    """Wall-clock ms since this process was created (includes the bootloader)."""
-    kernel32 = ctypes.windll.kernel32
-    kernel32.GetCurrentProcess.restype = ctypes.c_void_p
-    created, exited, kernel, user = (ctypes.c_ulonglong() for _ in range(4))
-    kernel32.GetProcessTimes(
-        ctypes.c_void_p(kernel32.GetCurrentProcess()),
-        ctypes.byref(created), ctypes.byref(exited), ctypes.byref(kernel), ctypes.byref(user),
-    )
-    now = ctypes.c_ulonglong()
-    kernel32.GetSystemTimeAsFileTime(ctypes.byref(now))
-    return (now.value - created.value) / 10_000  # FILETIME ticks are 100 ns
 
 
 def package_listing():
@@ -57,14 +57,40 @@ def folder_listing():
     return "\n".join(lines)
 
 
+def first_run():
+    """Save the settings if there are none (or they can't be read); returns what to show about them"""
+    try:
+        settings = load_settings()
+    except Exception as e:  # noqa: BLE001 (written again)
+        settings, problem = None, f" (they couldn't be read: {e})"
+    else:
+        problem = ""
+    if settings is not None:
+        return f"Settings: game folder {settings.game_path}"
+    # find_game(), not game_path(): that would save a test folder from SMOOTHUI_GAME_PATH
+    save_settings(Settings(find_game()))
+    return f"First run{problem}: settings saved (game folder {find_game()})"
+
+
+def command_line_text():
+    lines = [f"Command line: {subprocess.list2cmdline(sys.argv[1:]) or '(no arguments)'}"]
+    for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV):
+        if os.environ.get(name):
+            lines.append(f"{name}={os.environ[name]}")
+    return "\n".join(lines)
+
+
 class MergerApp(ctk.CTk):
-    def __init__(self):
+    def __init__(self, stale):
         super().__init__()
         self.title("Smooth UI Merger (demo)")
         self.geometry("820x820")
         self.clicks = 0
+        self.exit_code = 0
 
-        ctk.CTkLabel(self, text="Smooth UI Merger", font=ctk.CTkFont(size=22, weight="bold")).pack(pady=(20, 4))
+        ctk.CTkLabel(self, text=command_line_text(), justify="left", font=ctk.CTkFont(size=16, weight="bold"),
+                     wraplength=780).pack(padx=20, pady=(16, 0), anchor="w")
+        ctk.CTkLabel(self, text="Smooth UI Merger", font=ctk.CTkFont(size=22, weight="bold")).pack(pady=(12, 4))
         ctk.CTkLabel(self, text="Phase-0 demo: nothing is really patched yet.").pack()
 
         self.info = ctk.CTkLabel(self, text="", justify="left")
@@ -72,17 +98,26 @@ class MergerApp(ctk.CTk):
 
         buttons = ctk.CTkFrame(self, fg_color="transparent")
         buttons.pack()
-        for text, action in (
-            ("Scan existing mods (read only)", self.scan_mods),
-            ("Write merged package", self.write_package),
-            ("Delete package", self.delete_package),
-        ):
-            ctk.CTkButton(buttons, text=text, command=lambda a=action: self.run(a)).pack(side="left", padx=6)
+        if stale:
+            # Test buttons for the launcher, until stale mode is built. Closing the window exits with 0: play.
+            ctk.CTkLabel(self, text="Opened by the launcher: tell it what to do").pack(before=buttons, pady=(0, 6))
+            for text, code in (("Play", PLAY), ("Abort game launch", ABORT), ("Updating (don't play)", UPDATING),
+                               ("Crash", 1)):
+                ctk.CTkButton(buttons, text=f"{text}: {code}", command=lambda c=code: self.exit(c)).pack(side="left",
+                                                                                                       padx=6)
+        else:
+            for text, action in (
+                ("Scan existing mods (read only)", self.scan_mods),
+                ("Write merged package", self.write_package),
+                ("Delete package", self.delete_package),
+            ):
+                ctk.CTkButton(buttons, text=text, command=lambda a=action: self.run(a)).pack(side="left", padx=6)
 
         self.result = ctk.CTkLabel(self, text="", justify="left", wraplength=780)
         self.result.pack(padx=20, pady=12, anchor="w")
 
-        ctk.CTkButton(self, text="Close", command=self.destroy).pack(side="bottom", pady=(0, 20))
+        if not stale:
+            ctk.CTkButton(self, text="Close", command=self.destroy).pack(side="bottom", pady=(0, 20))
 
         self.folders = ctk.CTkTextbox(self, wrap="none", state="disabled")
         self.folders.pack(side="top", padx=20, pady=(0, 12), fill="both", expand=True)
@@ -90,6 +125,10 @@ class MergerApp(ctk.CTk):
         # Runs once the event loop is up, i.e. when the window is about to show.
         self.after(0, self.show_info)
         self.after(100, self.refresh_folders)  # after the window is up, so it can't delay it
+
+    def exit(self, code):
+        self.exit_code = code
+        self.destroy()
 
     def run(self, action):
         """Button handler. Shows a "click received" line first, so a click that does nothing is visible."""
@@ -219,8 +258,13 @@ class MergerApp(ctk.CTk):
         return "\n".join(lines)
 
     def show_info(self):
+        try:
+            settings = first_run()
+        except Exception as e:  # noqa: BLE001 (shown)
+            settings = f"Settings can't be saved: {e}"
         self.info.configure(text="\n".join([
-            f"Window ready {ms_since_process_start():.0f} ms after process start",
+            settings,
+            f"Window ready {ms_since_process_start() or 0:.0f} ms after process start",
             f"Frozen: {getattr(sys, 'frozen', False)}",
             f"Python {platform.python_version()}, customtkinter {ctk.__version__}",
             f"Executable: {sys.executable}",
@@ -229,7 +273,9 @@ class MergerApp(ctk.CTk):
 
 def main():
     ctk.set_appearance_mode("system")
-    MergerApp().mainloop()
+    app = MergerApp(stale="--stale" in sys.argv[1:])
+    app.mainloop()
+    sys.exit(app.exit_code)
 
 
 if __name__ == "__main__":

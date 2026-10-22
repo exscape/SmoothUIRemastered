@@ -13,6 +13,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from ..common import fail, to_native, to_windows
 from ..files import make_dirs, read_file, write_file
@@ -72,12 +73,20 @@ def mods_settings() -> Path:
     return mods_settings_path()
 
 
-def game_command(args: list[str], game: Path) -> tuple[list[str], str | None]:
-    """The command that starts the game, from the launcher's arguments, and a note for the log if it looks
-    wrong. A first argument ending in .exe makes them all the command (Steam passes its own, %command%);
-    otherwise they are the game exe's arguments."""
+class GameCommand(NamedTuple):
+    args: list[str]
+    cwd: Path | None        # where it starts; None: where the launcher was started
+    note: str | None        # for the log, if it looks wrong
+
+
+def game_command(args: list[str], game: Path) -> GameCommand:
+    """The command that starts the game, from the launcher's arguments. A first argument ending in .exe
+    makes them all the command (Steam passes its own, %command%), started where the launcher was;
+    otherwise they are the game exe's arguments, and it starts in the exe's folder, as the game's own
+    launchers do."""
     if args and args[0].lower().endswith(".exe"):
         exe = Path(os.path.abspath(args[0]))
         inside = os.path.normcase(exe).startswith(os.path.normcase(os.path.join(os.path.abspath(game), "")))
-        return list(args), None if inside else f"the given exe isn't in the game folder ({game}): {exe}"
-    return [str(Path(game) / GAME_EXE), *args], None
+        return GameCommand(list(args), None, None if inside else f"the given exe isn't in the game folder: {exe}")
+    exe = Path(game) / GAME_EXE
+    return GameCommand([str(exe), *args], exe.parent, None)

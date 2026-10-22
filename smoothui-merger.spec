@@ -1,7 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Build from the repo root, on 64-bit Windows Python (env_gui, see requirements_gui.txt), never under WSL:
+# Build from the repo root, on 64-bit Windows Python (env_gui, see requirements_gui.txt), never under WSL's
+# Python (build-merger.sh runs this from WSL):
 #     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec
+#     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec -- --dev-manifests
+# --dev-manifests: also ship the manifests of Smooth UI's dev builds, so a test build knows an installed dev
+# build. Never for a release.
 # Output: dist/SmoothUIMerger/ with SmoothUILauncher.exe, SmoothUIMerger.exe, _internal/
+import argparse
 import hashlib
 import importlib.metadata
 import platform
@@ -56,6 +61,12 @@ def check_bootloader():
 
 
 check_bootloader()
+
+# PyInstaller passes the arguments after -- in sys.argv
+spec_parser = argparse.ArgumentParser(prog="smoothui-merger.spec")
+spec_parser.add_argument("--dev-manifests", action="store_true",
+                         help="also ship the dev builds' manifests (for test builds, never for a release)")
+SPEC_ARGS = spec_parser.parse_args(sys.argv[1:])
 
 
 def read_merger_version():
@@ -189,10 +200,13 @@ coll = COLLECT(
 out_dir = Path(DISTPATH) / APP_DIR_NAME
 manifests = sorted(
     p for p in (Path(SPECPATH) / "manifests").glob("*.json")
-    if not fnmatch(p.name, "*dev*") and not p.name == "v0.2.json"
+    if (SPEC_ARGS.dev_manifests or not fnmatch(p.name, "*dev*")) and not p.name == "v0.2.json"
 )
 if not manifests:
     raise SystemExit("ERROR: no release manifests found in manifests/")
+dev_manifests = [p.name for p in manifests if fnmatch(p.name, "*dev*")]
+if dev_manifests:
+    print(f"Dev manifests included (a test build, not for a release): {', '.join(dev_manifests)}")
 (out_dir / "manifests").mkdir()
 for p in manifests:
     shutil.copyfile(p, out_dir / "manifests" / p.name)
