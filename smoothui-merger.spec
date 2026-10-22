@@ -130,7 +130,10 @@ launcher_a = Analysis(
     binaries=[],
     datas=[],
     hiddenimports=[],
-    excludes=["tkinter", "customtkinter", "_tkinter"],  # keep the launcher light
+    # Keep the launcher light. PyInstaller follows every import, also those inside functions and under
+    # TYPE_CHECKING; the launch check needs none of these (tests/test_state.py LightImports)
+    excludes=["tkinter", "customtkinter", "_tkinter", "smoothui.patcher", "smoothui.build", "smoothui.log",
+              "smoothui.merger.policy", "smoothui.merger.builder", "smoothui.merger.gui", "colorama", "lz4"],
     noarchive=False,
     optimize=0,  # keep asserts
 )

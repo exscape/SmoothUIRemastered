@@ -5,7 +5,7 @@ from functools import cache
 from pathlib import Path
 
 from ..common import fail
-from ..paths import FROZEN
+from ..paths import FROZEN, REPO_ROOT
 
 # Where users report a file the merger can't patch
 REPORT_URL = "https://www.nexusmods.com/witcher3/mods/13526?tab=bugs"
@@ -25,11 +25,18 @@ def merger_version() -> str:
         except OSError as e:
             fail(f"can't read the merger's version: {e}")
     else:
-        # Only the repo has a config; imported here, as a frozen tool (e.g. the launcher) never needs it
-        from ..build.shared import load_config
-        version = load_config(section="versions").get("merger_version")
+        # Only the repo has a config. Read here, not with build.shared's load_config: that imports the
+        # patcher, which the launcher must not (and PyInstaller would then bundle it into the launcher).
+        # tomllib is imported here too, as a frozen tool never needs it.
+        import tomllib
+        path = REPO_ROOT / "config" / "config.toml"
+        try:
+            with open(path, "rb") as f:
+                version = tomllib.load(f).get("versions", {}).get("merger_version")
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            fail(f"can't read the merger's version from {path}: {e}")
         if not isinstance(version, str):
-            fail("no merger_version in [versions] in config/config.toml")
+            fail(f"no merger_version in [versions] in {path}")
     if not VERSION.fullmatch(version):
         fail(f"the merger's version must be X.Y.Z, not '{version}'")
     return version
