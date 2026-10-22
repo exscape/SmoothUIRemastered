@@ -76,6 +76,9 @@ def show_scan(game_path, mods_settings, data_dir):
         if found.package_without_smoothui:
             log.warning("A package is installed: it overrides files with copies patched for another Smooth UI "
                         "build, or for none")
+        if result.conflicts:
+            log.warning(f"Other mods ship files Smooth UI changes, so some of their screens may be wrong: "
+                        f"{', '.join(result.conflicts)}")
         _show_verdict(found, elapsed)
         return
     log.info(result.installed.message)

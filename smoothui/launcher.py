@@ -117,6 +117,8 @@ def package_stale(game: Path, log: Log) -> bool:
     log(f"Checked in {(time.perf_counter() - start) * 1000:.0f} ms: {found.scan.installed.message}")
     if found.package_without_smoothui:
         log("A package is installed, without a usable Smooth UI")
+    if found.scan.conflicts:
+        log(f"Other mods ship files of the Smooth UI that can't be used: {', '.join(found.scan.conflicts)}")
     for state in found.states:
         if state.severity is not None:
             log(f"  {state.path}: {state.state.value} ({state.severity.name.lower()}): {state.message}")

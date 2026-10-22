@@ -31,6 +31,7 @@ from pathlib import Path
 from ..common import SmoothUIError
 from ..files import make_dirs, stop_writes
 from ..launcher import ABORT, CLOSED, PLAY
+from ..log import HEADING
 from ..parallel import MAX_WORKERS, make_pool, warm_up, worker_count
 from ..paths import DATA_DIR
 from ..windows import MB_ICONERROR, ms_since_process_start, msg_box
@@ -104,6 +105,14 @@ def main() -> int:
     return window.exit_code
 
 
+class LogFormatter(logging.Formatter):
+    """Marks headings (log.HEADING, log.SUBHEADING) with ===== or ----- (the console draws banners instead)"""
+    def formatMessage(self, record):
+        mark = {1: "=====", 2: "-----"}.get(getattr(record, "heading", None))
+        message = f"{mark} {record.message} {mark}" if mark else record.message
+        return super().formatMessage(logging.makeLogRecord({**record.__dict__, "message": message}))
+
+
 def setup_logging() -> queue.Queue:
     """Log to data\\merger.log (rewritten on each start; a failure to open it is ignored) and into a queue
     for the window's log view (returned)"""
@@ -116,7 +125,7 @@ def setup_logging() -> queue.Queue:
     except (SmoothUIError, OSError):
         pass
     else:
-        file.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        file.setFormatter(LogFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
         root.addHandler(file)
     records = queue.Queue()
     view = logging.handlers.QueueHandler(records)
@@ -247,9 +256,7 @@ class MergerWindow:
             (getattr(self, function) if isinstance(function, str) else function)(*args)
 
     def show_log(self, record):
-        text = record.getMessage()
-        if getattr(record, "heading", None):
-            text = f"\n== {text} =="
+        text = ("\n" if getattr(record, "heading", None) else "") + LogFormatter().format(record)
         tag = "error" if record.levelno >= logging.ERROR else "warning" if record.levelno >= logging.WARNING else None
         self.log_view.configure(state="normal")
         self.log_view.insert("end", text + "\n", tag)
@@ -283,6 +290,10 @@ class MergerWindow:
                                                                                             ("black", "white")))
             self.show_results(_report(self.found) + [f"\nScanned in {elapsed:.2f} s"])
             log.info(f"Scanned in {elapsed:.2f} s: {_summary(self.found)}")
+            if not self.found.scan.installed.usable:
+                log.warning(f"Smooth UI: {self.found.scan.installed.message}")
+            for problem in self.found.scan.problems:
+                log.warning(problem.message)
         self.set_buttons()
         if self.popup:
             self.popup.scanned(self.found, error)
@@ -320,6 +331,7 @@ class MergerWindow:
         self.busy = "build"
         self.set_buttons()
         self.status.configure(text="Merging...", text_color=("black", "white"))
+        log.info("Merging", extra=HEADING)
 
         def finished(result, error):
             self.busy = None
@@ -346,7 +358,7 @@ class MergerWindow:
             log.info(f"Forced again, as at the last build (the same copies): {', '.join(force)}")
         result = build_package(self.game, settings, force=force, pool=self.pool, data_dir=DATA_DIR)
         show_build(result)
-        log.info(f"\nBuilt in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
+        log.info(f"Built in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
         return result
 
     def remove(self, done=None):
@@ -493,11 +505,13 @@ class StalePopup:
         if error is not None:
             self.say(f"The merger can't check your mods: {_error_text(error)}")
             self.show_buttons(play="Play")
-        elif found.package_without_smoothui:
-            self.say(f"{found.scan.installed.message}.\n\nThe merger's package was made for a Smooth UI build that "
-                     "can't be used now.", "With the package as it is, some of your mods' screens may look wrong or "
-                     "not work at all.", SEVERITY_COLORS[Severity.HIGH])
-            self.show_buttons(remove=self.window.can_remove(), play="Play with the package as it is",
+        elif found.package_without_smoothui or found.scan.conflicts:
+            package = found.package_without_smoothui
+            why = ("The merger's package was made for a Smooth UI build that can't be used now." if package else
+                   f"These mods ship files Smooth UI changes: {', '.join(found.scan.conflicts)}.")
+            self.say(f"Smooth UI: {found.scan.installed.message}.\n\n{why}", "Until this is fixed, some of your mods' "
+                     "screens may look wrong or not work at all.", SEVERITY_COLORS[Severity.HIGH])
+            self.show_buttons(remove=package and self.window.can_remove(), play="Play anyway",
                               color=SEVERITY_COLORS[Severity.HIGH])
         elif found.stale:
             lines = [f"- {Path(state.path).name}: {state.message}" for state in found.states if state.severity]
@@ -559,7 +573,7 @@ def _summary(found: Check) -> str:
     if found.package_without_smoothui:
         return f"The package doesn't fit: {installed.message}"
     if not installed.usable:
-        return installed.message
+        return f"Smooth UI: {installed.message}"
     if found.stale:
         return (f"A merge is needed: {len(found.needs_build)} file(s) (playing without merging: "
                 f"{found.severity.name.lower()})")
@@ -570,6 +584,8 @@ def _report(found: Check) -> list[str]:
     """The scan's result, as merge.py --scan shows it (shorter)"""
     result = found.scan
     lines = [f"Smooth UI: {result.installed.message}", ""]
+    if result.conflicts:
+        lines += [f"Other mods ship files Smooth UI changes: {', '.join(result.conflicts)}", ""]
     shown = [state for state in found.states if state.state != State.NOTHING_TO_DO]
     for state in shown:
         severity = f" ({state.severity.name.lower()})" if state.severity else ""

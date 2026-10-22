@@ -175,6 +175,9 @@ def installed_build(mods_dir: Path | None, folders, mods: list[Mod], manifests: 
     """The Smooth UI build in mods_dir (the game's Mods\\ folder; see smoothui_mod for folders and mods).
     manifests are as for identify (default: the release manifests the merger has)."""
     mod = smoothui_mod(folders, mods)
+    if isinstance(mod, Installed) and mod.status == Status.TWO_FOLDERS:
+        return _two_folders([installed_build(mods_dir, folders, [other], manifests) for other in mods
+                             if is_smoothui_folder(other.folder) and other.enabled])
     if isinstance(mod, Installed):
         return mod
     folder = Path(mods_dir) / mod.folder
@@ -194,3 +197,13 @@ def installed_build(mods_dir: Path | None, folders, mods: list[Mod], manifests: 
         manifests = {version: manifest for version, path in release_manifest_paths().items()
                      if (manifest := load_manifest(path)) is not None}
     return identify(mod.folder, files, record_text, manifests)
+
+
+def _two_folders(builds: list[Installed]) -> Installed:
+    """For two (or more) enabled Smooth UI folders: their builds, and the older one to delete if known"""
+    unknown = "a build the merger doesn't know"
+    names = " and ".join(f"{build.folder} ({build.version or unknown})" for build in builds)
+    keys = [version_key(build.version or "") for build in builds]
+    known = None not in keys and len(set(keys)) == len(keys)
+    advice = f"delete {builds[keys.index(min(keys))].folder}, the older one" if known else "delete one of them"
+    return Installed(Status.TWO_FOLDERS, f"two Smooth UI folders are installed, and the game loads both: {names}: {advice}")

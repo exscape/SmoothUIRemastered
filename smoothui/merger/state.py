@@ -14,6 +14,7 @@ folder instead (see package.py), which counts while there is no package.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from pathlib import Path
@@ -82,12 +83,12 @@ class Check:
     @property
     def stale(self) -> bool:
         """Whether the launcher opens the merger before the game starts. The scan's problems never do by
-        themselves: a build can't fix them (the merger lists them when it opens anyway)."""
+        themselves: a build can't fix them (the merger lists them when it opens anyway); scan.conflicts do."""
         return self.severity is not None
 
     @property
     def severity(self) -> Severity | None:
-        if self.package_without_smoothui:
+        if self.package_without_smoothui or self.scan.conflicts:
             return Severity.HIGH
         return max((state.severity for state in self.states if state.severity is not None), default=None)
 
@@ -166,8 +167,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
 
         if file.undetermined:
             state(State.UNDETERMINED, "which mod's copy the game loads isn't decided by the load order (see the problems)")
-        elif toc_problem:
-            state(State.DAMAGED, f"the package can't be read ({toc_problem}): build it again", Severity.HIGH)
+        elif toc_problem and (key in held or (manifest is None and winner is not None)):
+            state(State.DAMAGED, f"the package can't be used ({toc_problem}): build it again", Severity.HIGH)
         elif key in toc:
             record = held.get(key)
             entry = toc[key][1]
@@ -265,11 +266,14 @@ def _read_toc(package_dir, keys):
     """({profile key: (bundle, TocEntry)} for keys in the package's bundles; why they can't be read, or None)"""
     content = package_dir / "content"
     try:
-        list_bundles(content)
+        bundles = list_bundles(content)
+        names = {entry.name.lower() for entry in os.scandir(content)}
     except (FileNotFoundError, NotADirectoryError):
         return {}, None
     except OSError as e:
         return {}, str(e)
+    if bundles and "metadata.store" not in names:
+        return {}, "it has no metadata.store, so the game doesn't load it"
     try:
         return read_bundle_tocs(content, keys), None
     except SmoothUIError as e:

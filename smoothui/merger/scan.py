@@ -85,6 +85,9 @@ class Scan:
     order: list[Mod]                            # the enabled mods, in load order, ours included
     files: dict[str, FileResult]                # by profile key; empty unless installed is usable
     problems: list[Problem]
+    # For an enabled Smooth UI the merger can't use: the other enabled mods that ship a .redswf file in its
+    # bundles (their screens may be wrong until the merger can patch for it)
+    conflicts: list[str] = field(default_factory=list)
 
     @property
     def compat_patches(self) -> list[str]:
@@ -114,14 +117,16 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
     order = load_order(mods)
     installed = installed_build(mods_dir, folders, mods, manifests)
     if not installed.usable:
-        return Scan(mods_dir, installed, order, {}, [])
+        return Scan(mods_dir, installed, order, {}, [], _conflicts(mods_dir, order))
 
     keys = {profile_key(key) for key in installed.manifest["files"]}
     problems = []
     shipped = {}    # Mod: {profile key: (bundle, TocEntry)}
     mods_dir_length = windows_path_length(mods_dir)
     for mod in order:
-        shipped[mod] = _mod_files(mods_dir / mod.folder, mod, keys, problems, mods_dir_length)
+        # The package's own problems aren't the scan's: package_state tells them, and a build replaces it
+        shipped[mod] = _mod_files(mods_dir / mod.folder, mod, keys, [] if is_package_folder(mod.folder) else problems,
+                                  mods_dir_length)
 
     files = {}
     for key in sorted(keys):
@@ -145,6 +150,19 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
             result.winner = SourceFile.in_bundle(key, winner.folder, *shipped[winner][key])
     problems += modio_problems(keys, modio_root)
     return Scan(mods_dir, installed, order, files, problems)
+
+
+def _conflicts(mods_dir, order) -> list[str]:
+    """Scan.conflicts (Smooth UI's files are those in its own bundles: the merger has no manifest for it)"""
+    keys = set()
+    for mod in order:
+        if is_smoothui_folder(mod.folder):
+            try:
+                keys |= {key for key in read_bundle_tocs(mods_dir / mod.folder / "content") if key.endswith(".redswf")}
+            except SmoothUIError:
+                pass    # installed says why it can't be used
+    return [mod.folder for mod in order if keys and not is_own_folder(mod.folder)
+            and _mod_files(mods_dir / mod.folder, mod, keys, [], windows_path_length(mods_dir))]
 
 
 def _mods_dir(game_path):
