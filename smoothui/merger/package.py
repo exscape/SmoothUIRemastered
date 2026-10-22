@@ -19,13 +19,17 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
-from ..build.shared import pack_entries, patcher_commit
 from ..files import delete_file, make_dirs, remove_empty_dir, write_file
+from ..manifests import patcher_commit
+from ..witcher3.mod_bundles import pack_entries
 from . import merger_version
 from .installed import Installed
-from .policy import FileStatus, PackageFile
+
+if TYPE_CHECKING:
+    # Not imported otherwise: the launch check reads PACKAGE_MANIFEST, and policy.py imports the patcher
+    from .policy import PackageFile
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +65,7 @@ def record_path(data_dir: Path, mods_dir: Path) -> Path:
 
 def write_package(package_dir: Path, installed: Installed, files: list[PackageFile], record: Path | None = None) -> Written:
     """Write the package into package_dir (created if needed), replacing what it held: the files in files
-    that are to be included (see FileStatus.included), and a manifest recording files (see
+    that are to be included (see policy.FileStatus.included), and a manifest recording files (see
     package_manifest). installed: the Smooth UI build they were patched for. If none is to be included,
     remove the package instead, and write the manifest to record (see above), if given; else delete
     record."""
@@ -112,7 +116,7 @@ def package_manifest(installed: Installed, files: list[PackageFile]) -> dict:
                 "source_crc32": file.source.toc_entry.crc,
                 "output_size": file.entry.size,
                 "output_crc32": file.entry.crc,
-                "forced": file.status == FileStatus.FORCED,
+                "forced": file.forced,
                 "fixes_not_applied": file.fixes_not_applied,
             }
         else:

@@ -24,7 +24,7 @@ from enum import Enum
 from ..build.release import ReleasePatch
 from ..common import fail
 from ..patcher.fixes import CANT_APPLY, fix_consequence, fix_kind
-from ..patcher.patcher_core import SourceFile
+from ..witcher3.source_file import SourceFile
 from . import REPORT_URL
 from .installed import is_smoothui_folder
 from .scan import COMPAT_PATCH, Scan
@@ -77,6 +77,10 @@ class PackageFile:
     @property
     def mod(self) -> str:
         return self.source.origin
+
+    @property
+    def forced(self) -> bool:
+        return self.status == FileStatus.FORCED
 
     @property
     def entry(self):

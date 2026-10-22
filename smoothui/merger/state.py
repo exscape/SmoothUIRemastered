@@ -23,7 +23,6 @@ from ..witcher3.mod_bundles import list_bundles, read_bundle_tocs
 from . import merger_version
 from .installed import is_smoothui_folder
 from .package import PACKAGE_MANIFEST, PACKAGE_MANIFEST_FORMAT, record_path
-from .policy import FileStatus
 from .scan import COMPAT_PATCH, PACKAGE_FOLDER, Scan, is_package_folder
 
 
@@ -57,12 +56,13 @@ class FileState:
     winner: str | None = None   # the mod whose copy a build would patch (see scan.FileResult.winner)
 
 
-# What the last build did with a file it didn't put in the package (see policy.FileStatus)
+# What the last build did with a file it didn't put in the package, by the status the manifest records
+# (policy.FileStatus's values; policy.py isn't imported here, as the launch check doesn't need the patcher)
 NOT_HELD_TEXT = {
-    FileStatus.UNCHANGED.value: "needs no patching (already at the target frame rate)",
-    FileStatus.LEFT_OUT.value: "left out, as Smooth UI can't patch it entirely",
-    FileStatus.FAILED.value: "left out, as it can't be patched",
-    FileStatus.MOD_FAILED.value: "left out, as another file of the same mod can't be patched",
+    "unchanged": "needs no patching (already at the target frame rate)",
+    "left out": "left out, as Smooth UI can't patch it entirely",
+    "failed": "left out, as it can't be patched",
+    "mod failed": "left out, as another file of the same mod can't be patched",
 }
 
 

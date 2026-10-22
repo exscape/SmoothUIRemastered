@@ -1,6 +1,8 @@
-"""Read the files a mod ships in its content folder's bundles, without unpacking them.
+"""Read the files a mod ships in its content folder's bundles, without unpacking them, and pack files
+into a mod's bundle and metadata.store.
 
-Used by the compat build (one mod, unpacked from its archive) and the merger's scan (each installed mod).
+Reading is used by the compat build (one mod, unpacked from its archive) and the merger's scan (each
+installed mod); packing by the builds and the merger's package.
 """
 
 from __future__ import annotations
@@ -9,7 +11,8 @@ import os
 from pathlib import Path
 
 from ..common import fail, profile_key
-from .bundle import BundleError, TocEntry, read_entry, read_toc
+from .bundle import BundleError, TocEntry, read_entry, read_toc, write_bundle
+from .metadata_store import MetadataStoreError, make_metadata_store
 
 
 def list_bundles(content_dir: Path) -> list[Path]:
@@ -46,3 +49,17 @@ def read_entry_content(bundle: Path, toc_entry: TocEntry) -> bytes:
     """One file's content, from a bundle file and its TOC entry"""
     with open(bundle, "rb") as f:
         return read_entry(f, toc_entry).content()
+
+
+def pack_entries(entries, bundle_name="blob0.bundle"):
+    """(the bundle, its metadata.store) holding entries (BundleEntries), as bytes; bundle_name is the
+    bundle's file name, which the store records"""
+    try:
+        bundle = write_bundle(entries)
+    except BundleError as e:
+        fail(f"can't pack the patched files: {e}")
+    try:
+        store = make_metadata_store([(bundle_name, bundle)])
+    except MetadataStoreError as e:
+        fail(f"can't make metadata.store for {bundle_name}: {e}")
+    return bundle, store

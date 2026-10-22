@@ -7,8 +7,6 @@ from functools import cache
 from pathlib import Path
 from typing import NoReturn
 
-from .log import setup_console
-
 log = logging.getLogger(__name__)
 
 class SmoothUIError(Exception):
@@ -20,6 +18,8 @@ def fail(msg) -> NoReturn:
 def run_cli(main):
     """Run a command-line entry point with console output (see log.py): log the message of a SmoothUIError
     (see fail()) and exit with code 1, without a traceback. Any other exception keeps its traceback."""
+    # Imported here, not at the top: colorama is for the command line only
+    from .log import setup_console
     setup_console()
     try:
         main()

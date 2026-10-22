@@ -26,10 +26,10 @@ import rarfile
 from ..common import fail, normalize_version, profile_key
 from ..log import HEADING
 from ..patcher import dev_mode
-from ..patcher.patcher_core import SourceFile
 from ..paths import APP_DIR
 from ..witcher3 import mod_bundles
 from ..witcher3.mod_bundles import list_bundles
+from ..witcher3.source_file import SourceFile
 from .compat_status import newest_compat_patches
 from .profile import apply_overrides
 from .release import load_release_manifest, patch_as_release, profile_from_manifest

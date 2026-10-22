@@ -15,7 +15,7 @@ from functools import partial
 from ..common import fail
 from ..log import HEADING
 from ..patcher import dev_mode, patcher_core
-from ..patcher.patcher_core import GAME_FILES, SourceFile
+from ..witcher3.source_file import GAME_FILES, SourceFile
 from .compat_status import print_compat_status
 from .game_files import game_file_report
 from .manifest_diff import print_changes_since_previous

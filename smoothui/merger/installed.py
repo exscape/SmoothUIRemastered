@@ -15,7 +15,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from ..build.shared import (
+from ..common import SmoothUIError, profile_key
+from ..manifests import (
     BUILD_RECORD,
     MANIFEST_FORMAT,
     is_dev_version,
@@ -24,7 +25,6 @@ from ..build.shared import (
     release_manifest_paths,
     version_key,
 )
-from ..common import SmoothUIError, profile_key
 from ..witcher3.mod_bundles import read_bundle_tocs
 from .load_order import Mod, is_mod_folder
 

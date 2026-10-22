@@ -18,10 +18,10 @@ from enum import Enum
 from pathlib import Path
 
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
-from ..patcher.patcher_core import SourceFile
 from ..witcher3.bundle import read_toc
 from ..witcher3.mod_bundles import read_bundle_tocs
 from ..witcher3.mods_settings import read_mods_settings
+from ..witcher3.source_file import SourceFile
 from .installed import Installed, installed_build, is_smoothui_folder
 from .load_order import Mod, load_order, make_mods, undetermined_for
 

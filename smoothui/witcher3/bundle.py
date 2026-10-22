@@ -44,8 +44,6 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import BinaryIO, NamedTuple
 
-import lz4.block
-
 MAGIC = b"POTATO70"
 HEADER = struct.Struct("<8sQIHI6x")
 VERSION = 5
@@ -79,6 +77,8 @@ class BundleEntry(NamedTuple):
 
     def content(self) -> bytes:
         """The file's content, decompressed and checked against its size and CRC"""
+        # Imported here, not at the top: reading tables of contents (the merger's launch check) doesn't need it
+        import lz4.block
         try:
             if self.compression == NONE:
                 content = self.stored
@@ -232,6 +232,7 @@ def make_entry(path: str | Path, content: bytes) -> BundleEntry:
         raise BundleError(f"path is not lowercase: {path}")
     if not content:
         raise BundleError(f"{path}: file is empty (wcc_lite would leave it out of the bundle)")
+    import lz4.block  # see BundleEntry.content
     content = bytes(content)
     compressed = lz4.block.compress(content, mode="high_compression", compression=LZ4HC_LEVEL, store_size=False)
     if len(compressed) < len(content):
