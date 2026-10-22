@@ -3,7 +3,8 @@
 # merge.py -- the merger's command line, for development and tests: a thin layer over the library (see
 # builder.py). --scan (read-only) shows which Smooth UI build is installed, which mod's copy of each file it
 # patches the game loads, whether the package is up to date (see state.py), and what keeps mods or files
-# from being patched. --build builds the package.
+# from being patched; it runs the launcher's check, and exits with code 2 when the launcher would open the
+# merger. --build builds the package.
 
 import argparse
 import logging
@@ -18,8 +19,8 @@ from ..witcher3.user_files import mods_settings_path
 from .builder import build_package
 from .installed import is_smoothui_folder
 from .load_order import Group
-from .scan import is_package_folder, scan
-from .state import State, package_state
+from .scan import is_package_folder
+from .state import State, check
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ def parse_args():
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--scan", action="store_true",
                       help="show the installed Smooth UI build, which mod's copy of each file it patches the game "
-                           "loads, and any problems; changes nothing")
+                           "loads, any problems, and what the launcher would do (exit code 2: open the merger); "
+                           "changes nothing")
     mode.add_argument("--build", action="store_true",
                       help="build the package into the game's Mods folder, and give it its mods.settings entry")
     ap.add_argument("--game-path", type=to_native, default=None,
@@ -64,12 +66,18 @@ def main():
 
 def show_scan(game_path, mods_settings, data_dir):
     start = time.perf_counter()
-    result = scan(game_path, mods_settings)
+    found = check(game_path, mods_settings, data_dir=data_dir)
     elapsed = time.perf_counter() - start
+    result = found.scan
 
     log.info("Installed Smooth UI Remastered", extra=HEADING)
     if not result.installed.usable:
-        fail(result.installed.message)
+        log.warning(result.installed.message)
+        if found.package_without_smoothui:
+            log.warning("A package is installed: it overrides files with copies patched for another Smooth UI "
+                        "build, or for none")
+        _show_verdict(found, elapsed)
+        return
     log.info(result.installed.message)
 
     log.info("Load order of the mods that ship a file Smooth UI patches", extra=HEADING)
@@ -79,25 +87,38 @@ def show_scan(game_path, mods_settings, data_dir):
             log.info(f"{position:4}. {mod.folder} ({_entry(mod)})")
 
     log.info("Files: what the package holds, and what a build would change", extra=HEADING)
-    states = package_state(result, data_dir)
-    for state in states:
+    for state in found.states:
         file = result.files[state.path]
         loaded = file.loaded.folder if file.loaded else None
-        text = f"{state.path}: {state.state.value}: {state.message}"
-        if loaded and state.state.needs_build and loaded != state.winner:
+        severity = f" ({state.severity.name.lower()})" if state.severity else ""
+        text = f"{state.path}: {state.state.value}{severity}: {state.message}"
+        if loaded and state.needs_build and loaded != state.winner:
             text += f"; loaded now: {loaded}"
         # Smooth UI ships every file
         others = [mod.folder for mod in file.shippers if mod.folder not in (loaded, state.winner)
                   and not is_smoothui_folder(mod.folder) and not is_package_folder(mod.folder)]
-        attention = state.state.needs_build or state.state in (State.OVERRIDDEN, State.UNDETERMINED)
+        attention = state.severity is not None or state.state == State.UNDETERMINED
         log.log(logging.WARNING if attention else logging.INFO,
                 text + (f"; also shipped by {', '.join(others)}" if others else ""))
-    to_build = sum(state.state.needs_build for state in states)
+    to_build = len(found.needs_build)
     log.info(f"\nA build is needed: it would change {to_build} file(s)" if to_build else "\nNo build is needed")
 
     _show_problems(result.problems, [f"{folder} is a Smooth UI compat patch: the package replaces it for every file "
                                      "the package holds" for folder in result.compat_patches])
-    log.info(f"\nScanned in {elapsed:.2f} s")
+    _show_verdict(found, elapsed)
+
+
+def _show_verdict(found, elapsed):
+    """What the launcher would do (see state.Check), and the time the check took; exit code 2 if it would
+    open the merger"""
+    log.info("Launcher", extra=HEADING)
+    if found.stale:
+        log.warning(f"The launcher would open the merger (playing without merging: {found.severity.name.lower()})")
+    else:
+        log.info("The launcher would start the game")
+    log.info(f"\nChecked in {elapsed:.2f} s")
+    if found.stale:
+        sys.exit(2)
 
 
 def build(args, game_path, mods_settings):
