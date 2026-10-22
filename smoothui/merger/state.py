@@ -176,8 +176,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 why = manifest_problem or "its manifest doesn't record this file"
                 state(State.DAMAGED, f"the package holds a copy, but {why}: build it again", Severity.HIGH)
             elif winner is None:
-                state(State.NO_LONGER_NEEDED, f"the package holds {record['mod']}'s copy, but no other mod ships it "
-                      "now: build again to remove it", Severity.HIGH)
+                after = file.loaded_without_package
+                state(State.NO_LONGER_NEEDED, f"the package holds {record['mod']}'s copy, which no other mod ships now: "
+                      f"build again, so that the game uses {_copy_name(after.folder) if after else 'no copy'}",
+                      Severity.HIGH)
             elif (entry.size, entry.crc) != (record.get("output_size"), record.get("output_crc32")):
                 state(State.DAMAGED, "the package's copy isn't the one it built: build it again", Severity.HIGH)
             elif rebuilt:
