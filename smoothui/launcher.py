@@ -7,7 +7,7 @@ code. It must never keep anyone from playing: when the check or the merger fails
 box, then starts the game anyway. Only a game that can't start ends it.
 
 It writes nothing but its logs (data\\launcher.log, and the two before it); failing to write them stops
-nothing. Light: no Tk, and none of the patcher (see tests/test_state.py: LightImports).
+nothing. Light: no Qt, and none of the patcher (see tests/test_state.py: LightImports).
 """
 
 from __future__ import annotations

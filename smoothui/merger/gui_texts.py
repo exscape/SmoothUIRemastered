@@ -2,7 +2,7 @@
 be reviewed in one place. The library's messages stay with the library (state.py, policy.py, ...), the
 screens' names in screens.py.
 
-No Tk, and nothing that patches (the merger's window imports this at once): tests run without a window.
+No Qt, and nothing that patches (the merger's window imports this at once): tests run without a window.
 """
 
 from __future__ import annotations

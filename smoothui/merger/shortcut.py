@@ -61,7 +61,7 @@ def create_shortcut(folder: Path, name: str, target: Path, icon: str | None, des
     """Write folder\\<name>.lnk (replacing one of that name), which starts target in target's folder. icon:
     "<file>,<index>", e.g. an exe's first icon; None: target's own. Returns the shortcut's path."""
     path = Path(folder) / f"{name}.lnk"
-    # COM may already be set up on this thread (Tk's file dialogs use it): then it stays as it is
+    # COM may already be set up on this thread (Qt sets it up for its own use): then it stays as it is
     initialized = ctypes.windll.ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED) >= 0
     link, persist = ctypes.c_void_p(), ctypes.c_void_p()
     try:

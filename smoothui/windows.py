@@ -16,8 +16,8 @@ def msg_box(text: str, flags: int = MB_ICONWARNING):
     """Show a message box and wait for the user to close it. Never raises."""
     try:
         # Without this, Windows scales the box up on HiDPI monitors, blurred: PyInstaller's exe manifest
-        # doesn't declare DPI awareness. It is per process, so the game isn't affected; customtkinter sets
-        # the same mode, and setting it a second time fails without changing anything.
+        # doesn't declare DPI awareness. It is per process, so the game isn't affected; Qt sets its own
+        # (newer) mode, and setting one a second time fails without changing anything.
         ctypes.windll.shcore.SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE)
     except (AttributeError, OSError):
         pass
