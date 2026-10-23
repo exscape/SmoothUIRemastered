@@ -29,6 +29,8 @@ GAME_PATH_ENV = "SMOOTHUI_GAME_PATH"
 MODS_SETTINGS_ENV = "SMOOTHUI_MODS_SETTINGS"
 
 SETTINGS_FILE = "settings.json"
+# mods.settings as it was before the merger last changed it, in the merger's data folder
+MODS_SETTINGS_BACKUP = "mods.settings.bak"
 
 GAME_EXE = Path("bin", "x64_dx12", "witcher3.exe")
 

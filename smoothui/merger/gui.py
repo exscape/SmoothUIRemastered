@@ -9,6 +9,11 @@ progress) over through queues, which a timer empties (window.MergerWindow.poll).
 (DATA_DIR) is passed on explicitly, not left to the library's defaults, so that a test can point it elsewhere.
 
 With --stale, the launcher opened it before starting the game (see launcher.py, for the exit codes).
+
+One merger at a time (two would write the same files): a second one brings the first one's window to the
+front and exits at once, without touching the data folder (rotating the logs would cut the first one's).
+Started by the launcher, it exits with ABORT: the game mustn't start while the user may merge in the
+window that is open.
 """
 
 from __future__ import annotations
@@ -26,7 +31,9 @@ from pathlib import Path
 
 from ..common import SmoothUIError
 from ..files import check_data_writable, make_dirs, rotate
+from ..launcher import ABORT, CLOSED
 from ..paths import DATA_DIR
+from ..windows import bring_to_front, find_window, only_instance
 from . import merger_version
 from .game import (
     GAME_PATH_ENV,
@@ -36,6 +43,7 @@ from .game import (
     load_settings,
     mods_settings,
 )
+from .gui_texts import TITLE
 from .state import check
 
 log = logging.getLogger(__name__)
@@ -44,14 +52,22 @@ LOG_FILE = "merger.log"
 # The full reports of the merges logged in LOG_FILE (kept in step with it: merger.1.report.json belongs to
 # merger.1.log); missing when that run didn't merge.
 REPORT_FILE = "merger.report.json"
+# Held while a merger runs (see only_instance)
+MUTEX = "SmoothUIMerger"
+# The start of the window class of Qt's windows, to find the window of another merger
+QT_WINDOW_CLASS = "Qt"
 
 
 def main() -> int:
     stale = "--stale" in sys.argv[1:]
+    if not only_instance(MUTEX):
+        if (hwnd := find_window(TITLE, QT_WINDOW_CLASS)) is not None:
+            bring_to_front(hwnd)
+        return ABORT if stale else CLOSED
     if not check_data_writable(DATA_DIR):
         return 1
     log_records = setup_logging()
-    log.info(f"Smooth UI merger {_version()}; arguments: {subprocess.list2cmdline(sys.argv[1:]) or '(none)'}")
+    log.info(f"Smooth UI merger {version()}; arguments: {subprocess.list2cmdline(sys.argv[1:]) or '(none)'}")
     settings = _settings()
     game = game_path(settings)
     log.info(f"Game folder: {game or 'not chosen yet'}")
@@ -96,7 +112,7 @@ def setup_logging() -> queue.Queue:
     return records
 
 
-def _version():
+def version():
     try:
         return merger_version()
     except SmoothUIError as e:

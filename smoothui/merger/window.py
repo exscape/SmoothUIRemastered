@@ -7,7 +7,8 @@ again after each merge); the card counts the screens done, and each screen's row
 the card shows comes from gui_texts.status_card, with the window's other texts.
 
 Its pages share the header and notices: the main page (the card, the list, the log), the welcome page on the
-first run (no settings yet: data\\settings.json), and the settings page. Both of the latter have the game folder
+first run (no settings yet: data\\settings.json), the settings page, and the help page (versions, links, Save
+a bug report, the licenses). The welcome and settings pages have the game folder
 chooser (the folders find_games finds, or one the user picks) and a button that makes a launcher shortcut on
 the desktop. On the first run, the scan starts on the folder the welcome preselects, so that its result is
 ready when the user presses Continue, which saves the settings.
@@ -26,11 +27,11 @@ without it.
 
 from __future__ import annotations
 
-import ctypes
 import json
 import logging
 import os
 import queue
+import subprocess
 import sys
 import time
 import traceback
@@ -73,8 +74,8 @@ from ..common import SmoothUIError, fail
 from ..files import stop_writes, write_file
 from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
 from ..paths import APP_DIR
-from ..windows import MB_ICONERROR, ms_since_process_start, msg_box
-from . import SMOOTHUI_URL, TOOLS_README_URL, gui
+from ..windows import MB_ICONERROR, ms_since_process_start, msg_box, set_topmost
+from . import REPORT_URL, SMOOTHUI_URL, TOOLS_README_URL, gui
 from .game import (
     GAME_EXE,
     GAME_PATH_ENV,
@@ -89,6 +90,11 @@ from .game import (
 )
 from .gui import LOG_FILE, REPORT_FILE, LogFormatter, error_text, in_thread, start_scan
 from .gui_texts import (
+    BACK,
+    BUG,
+    BUG_HEADING,
+    BUG_REPORT_FAILED,
+    BUG_REPORT_TITLE,
     CANCEL,
     CHOOSE_FOLDER,
     CHOOSE_FOLDER_TITLE,
@@ -103,25 +109,35 @@ from .gui_texts import (
     GAME_HEADING,
     GAME_NOT_FOUND,
     GLYPHS,
+    GUIDE_HEADING,
+    GUIDE_LINK,
+    HELP,
     HIDE_LOG,
     INFO,
     LAUNCHER,
     LAUNCHER_HEADING,
+    LICENSES,
+    LICENSES_HEADING,
     LOOKING_FOR_GAME,
+    MERGER_VERSION,
     NEWER_RELEASE,
     NO_LAUNCHER,
     NOTES_HEADING,
     OK,
     OPEN_DATA,
+    OPEN_LICENSES,
+    OPEN_LOG_FOLDER,
     PATCH_ANYWAY,
     PATCH_ANYWAY_NOTE,
     PLAY_WITHOUT_SETUP,
     REMOVE_FAILED,
     REMOVE_QUESTION,
     REMOVE_TITLE,
+    REPORT_LINK,
     REVERT,
     REVERT_NOTE,
     SAVE,
+    SAVE_BUG_REPORT,
     SCREENS_HEADING,
     SETTINGS,
     SETTINGS_NOT_SAVED,
@@ -130,11 +146,13 @@ from .gui_texts import (
     SHORTCUT_MADE,
     SHORTCUT_NAME,
     SHOW_LOG,
+    SMOOTHUI_NOT_CHECKED,
     STOP_MERGE,
     STOP_MERGE_TITLE,
     TEST_MODE,
     TITLE,
     UNKNOWN_FILES,
+    VERSIONS_HEADING,
     WARNING,
     WELCOME,
     WELCOME_HEADING,
@@ -159,6 +177,7 @@ FONT_DIR = Path(__file__).with_name("fonts")
 FONT_FAMILY = "Roboto"
 SYMBOL_FONT = "Segoe UI Symbol"         # the glyphs (in Windows 10 and later)
 ICON_FILE = APP_DIR / "smoothui.ico"     # optional: Qt's own icon without it
+LICENSES_DIR = APP_DIR / "licenses"      # (only next to the frozen exes)
 WIDTH, HEIGHT = 720, 680                # the window's size at first, before Windows' scaling
 MIN_WIDTH, MIN_HEIGHT = WIDTH, 520
 # A row's status label is at least as wide as the widest status ("Another mod loads first"), so that a status
@@ -201,6 +220,13 @@ def find_candidates() -> list[GameFolder]:
 def same_folder(a: Path | None, b: Path | None) -> bool:
     return a is not None and b is not None and os.path.normcase(os.path.normpath(a)) == os.path.normcase(
         os.path.normpath(b))
+
+
+def smoothui_build(installed) -> str | None:
+    """The installed Smooth UI build, e.g. "Smooth UI Remastered v0.3.2, 120 fps"; None if it can't be used"""
+    if installed and installed.usable:
+        return f"Smooth UI Remastered {installed.version.split('-')[0]}, {installed.fps} fps"
+    return None
 
 
 # ---- The look ----
@@ -367,7 +393,7 @@ class MergerWindow:
         self.scan_again = False     # the game folder changed during a scan: its result is for the old one
         self.candidates = None      # the game folders found (find_candidates), once the search ends
         self.searching = False
-        self.welcome_page = self.settings_page = None   # made when first shown
+        self.welcome_page = self.settings_page = self.help_page = None   # made when first shown
         self.welcome_chooser = self.settings_chooser = None
 
         self.root = root = Root(self)
@@ -384,10 +410,17 @@ class MergerWindow:
         header.setSpacing(0)
         header.setColumnStretch(0, 1)
         header.addWidget(label(TITLE, 20, bold=True), 0, 0)
+        self.header_buttons = QWidget()     # Settings and Help (only on the main page)
+        row = QHBoxLayout(self.header_buttons)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
         self.settings_button = button(SETTINGS, self.open_settings)
-        header.addWidget(self.settings_button, 0, 1)
+        row.addWidget(self.settings_button)
+        row.addWidget(button(HELP, self.open_help))
+        header.addWidget(self.header_buttons, 0, 1)
         self.context = label(tone="muted")
         self.context.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)    # a long path is cut, not widening
+        self.context.setContentsMargins(0, 8, 0, 8)     # (away from the buttons above it)
         header.addWidget(self.context, 1, 0, 1, 2)
         layout.addLayout(header)
         self.notices = QVBoxLayout()
@@ -446,8 +479,11 @@ class MergerWindow:
         page.addWidget(self.log_view, 1)
         footer = QHBoxLayout()
         self.log_button = button(SHOW_LOG, self.toggle_log)
+        footer.setSpacing(8)
         footer.addWidget(self.log_button)
         footer.addStretch()
+        footer.addWidget(button(OPEN_LOG_FOLDER, lambda: os.startfile(gui.DATA_DIR)))
+        footer.addWidget(button(SAVE_BUG_REPORT, self.save_bug_report))
         page.addLayout(footer)
         self.pages.addWidget(main)
 
@@ -482,15 +518,15 @@ class MergerWindow:
         window. Windows may not give a background process the focus: on top for a moment helps."""
         self.root.raise_()
         self.root.activateWindow()
-        _topmost(int(self.root.winId()), True)
-        QTimer.singleShot(300, lambda: _topmost(int(self.root.winId()), False))
+        set_topmost(int(self.root.winId()), True)
+        QTimer.singleShot(300, lambda: set_topmost(int(self.root.winId()), False))
 
     # ---- The pages: main, welcome, settings ----
 
     def show_page(self, page):
-        """Show a page; the header's Settings button only shows on the main page"""
+        """Show a page; the header's Settings and Help buttons only show on the main page"""
         self.pages.setCurrentWidget(page)
-        self.settings_button.setVisible(page is self.main_page)
+        self.header_buttons.setVisible(page is self.main_page)
 
     @property
     def page(self):
@@ -553,6 +589,55 @@ class MergerWindow:
         self.save_button = button(SAVE, self.save_settings_page, primary=True)
         self.page_buttons(layout, button(CANCEL, lambda: self.show_page(self.main_page)), self.save_button)
         return page
+
+    def make_help(self):
+        """The help page: the versions, how to set the tools up, reporting a bug, the licenses"""
+        page, layout = self.make_page()
+        self.heading(layout, HELP, 0, 17)
+        self.heading(layout, VERSIONS_HEADING, 10)
+        layout.addWidget(label(MERGER_VERSION.format(version=gui.version())))
+        self.help_smoothui = label(wrap=True)
+        layout.addWidget(self.help_smoothui)
+        self.heading(layout, GUIDE_HEADING)
+        layout.addWidget(QLabel(f'<a href="{TOOLS_README_URL}">{GUIDE_LINK}</a>', openExternalLinks=True))
+        self.heading(layout, BUG_HEADING)
+        layout.addWidget(label(BUG, wrap=True))
+        layout.addSpacing(4)
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        row.addWidget(button(SAVE_BUG_REPORT, self.save_bug_report))
+        row.addWidget(QLabel(f'<a href="{REPORT_URL}">{REPORT_LINK}</a>', openExternalLinks=True))
+        row.addStretch()
+        layout.addLayout(row)
+        self.heading(layout, LICENSES_HEADING)
+        layout.addWidget(label(LICENSES, wrap=True))
+        layout.addSpacing(4)
+        licenses = button(OPEN_LICENSES, lambda: os.startfile(LICENSES_DIR))
+        licenses.setEnabled(LICENSES_DIR.is_dir())
+        layout.addWidget(licenses, 0, Qt.AlignLeft)
+        self.back_button = button(BACK, lambda: self.show_page(self.main_page), primary=True)
+        self.page_buttons(layout, self.back_button)
+        return page
+
+    def open_help(self):
+        if self.help_page is None:
+            self.help_page = self.make_help()
+        installed = self.found.scan.installed if self.found else None
+        self.help_smoothui.setText(smoothui_build(installed) or (capitalized(installed.message) if installed
+                                                                 else SMOOTHUI_NOT_CHECKED))
+        self.show_page(self.help_page)
+
+    def save_bug_report(self):
+        """Save a bug report (see bug_report.py), then show it in Explorer"""
+        from .bug_report import save_bug_report
+        try:
+            path = save_bug_report(gui.DATA_DIR, self.game, mods_settings(), self.found)
+        except SmoothUIError as e:
+            log.error(f"The bug report can't be saved: {e}")
+            show_error(self.root, BUG_REPORT_TITLE, BUG_REPORT_FAILED.format(error=e))
+            return
+        log.info(f"Bug report saved: {path}")
+        subprocess.Popen(f'explorer /select,"{path}"')
 
     def launcher_section(self, chooser) -> QWidget:
         """How to start the game: the setup link, and the shortcut button (its icon: the game's, in the folder
@@ -712,10 +797,8 @@ class MergerWindow:
     def refresh(self):
         """Show the window's state: the header's context line, the notices, the card, the screens"""
         installed = self.found.scan.installed if self.found else None
-        context = [str(self.game)] if self.game else []
-        if installed and installed.usable:
-            context.insert(0, f"Smooth UI Remastered {installed.version.split('-')[0]}, {installed.fps} fps")
-        self.context.setText("  ·  ".join(context))
+        context = [smoothui_build(installed), str(self.game) if self.game else None]
+        self.context.setText("  ·  ".join(text for text in context if text))
         self.settings_button.setEnabled(self.busy not in ("build", "remove"))  # no other game folder meanwhile
         self.show_notices(installed)
         self.show_card()
@@ -824,6 +907,9 @@ class MergerWindow:
         if self.page is self.settings_page:
             self.save_button.click()
             return
+        if self.page is self.help_page:
+            self.back_button.click()
+            return
         actions = self.card_actions()
         buttons = [action for _, action in self.card.buttons if action in actions] if self.card else []
         shown = self.card_buttons.findChildren(QPushButton) if self.card_buttons is not None else []
@@ -842,6 +928,7 @@ class MergerWindow:
             "remove_and_play": lambda: self.remove(play=True),
             "rescan": self.rescan,
             "smoothui_page": lambda: webbrowser.open(SMOOTHUI_URL),
+            "bug_report": self.save_bug_report,
         }
 
     def show_screens(self):
@@ -1305,16 +1392,3 @@ def ask_yes_no(parent, title, text, warning=False) -> bool:
     box.setDefaultButton(QMessageBox.No)
     return box.exec() == QMessageBox.Yes
 
-
-def _topmost(hwnd: int, on: bool):
-    """Keep a window above all others, or not any more (SetWindowPos; Qt's flag would make the window anew)"""
-    try:
-        user32 = ctypes.windll.user32
-    except AttributeError:
-        return
-    hwnd_topmost, hwnd_notopmost = -1, -2
-    swp_nosize, swp_nomove, swp_noactivate = 0x1, 0x2, 0x10
-    user32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_ssize_t, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_int, ctypes.c_uint]
-    user32.SetWindowPos(ctypes.c_void_p(hwnd), hwnd_topmost if on else hwnd_notopmost, 0, 0, 0, 0,
-                        swp_nosize | swp_nomove | swp_noactivate)

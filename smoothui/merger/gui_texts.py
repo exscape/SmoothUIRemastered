@@ -88,6 +88,27 @@ DATA_HEADING = "Data folder"
 DATA = "The merger's settings, logs and records of the merged patches:\n{folder}"
 OPEN_DATA = "Open the data folder"
 
+# ---- The help page, the log folder and the bug report ----
+
+HELP = "Help"
+BACK = "Back"
+VERSIONS_HEADING = "Versions"
+MERGER_VERSION = "Smooth UI Merger {version}"
+SMOOTHUI_NOT_CHECKED = "Smooth UI Remastered: not checked yet"
+GUIDE_HEADING = "Setting up"
+GUIDE_LINK = "How to set up and use Smooth UI's tools ↗"
+BUG_HEADING = "Reporting a bug"
+BUG = ("Save a bug report, then attach it to your report. It is a zip with the merger's logs and settings, your "
+       "mods.settings (i.e. your mod list is likely included) and what the merger merged; your Windows user name is left out.")
+REPORT_LINK = "Report a bug ↗"
+SAVE_BUG_REPORT = "Save a bug report"
+BUG_REPORT_TITLE = "Bug report"
+BUG_REPORT_FAILED = "The bug report can't be saved: {error}"
+LICENSES_HEADING = "Licenses"
+LICENSES = "Smooth UI's tools are free software (MIT license). The licenses of what they include are in their licenses folder."
+OPEN_LICENSES = "Open the licenses folder"
+OPEN_LOG_FOLDER = "Open log folder"
+
 
 @dataclass(frozen=True, slots=True)
 class Card:
@@ -175,7 +196,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
             play = PLAY_WITHOUT_MERGING[found.severity] if found and found.severity else "Play without merging"
             buttons = (("Merge again", "merge_and_play"), (play, "play"), DONT_START)
         else:
-            buttons = (("Merge again", "merge"), ("Save a bug report", "bug_report"))
+            buttons = (("Merge again", "merge"), (SAVE_BUG_REPORT, "bug_report"))
         return Card(ERROR, "Merging failed", (_sentence(merge_error),), buttons)
     if merged is not None:
         return _merged(merged, stale)

@@ -19,15 +19,13 @@ from ..files import make_dirs
 from ..patcher.patcher_core import RuleIssues
 from ..paths import DATA_DIR
 from ..witcher3.mods_settings import write_entry
+from .game import MODS_SETTINGS_BACKUP
 from .package import Written, record_path, write_package
 from .policy import PackageFile, decide
 from .scan import PACKAGE_FOLDER, Scan, is_package_folder, scan
 from .screens import screen_label
 
 log = logging.getLogger(__name__)
-
-# mods.settings as it was before the merger last changed it, in the merger's data folder
-MODS_SETTINGS_BACKUP = "mods.settings.bak"
 
 
 def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> ReleasePatch:
