@@ -36,6 +36,7 @@ from .windows import MB_ICONERROR, ms_since_process_start, msg_box
 
 LOG_FILE = "launcher.log"
 MERGER_EXE = "SmoothUIMerger.exe"
+LAUNCHER_EXE = "SmoothUILauncher.exe"
 
 # The merger's exit codes when the launcher opened it (--stale). 0 means its window was closed: the user
 # wants to play. Anything else means it crashed (an unhandled exception, or ended in Task Manager, gives 1).

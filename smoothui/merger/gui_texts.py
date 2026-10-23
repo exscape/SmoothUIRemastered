@@ -56,18 +56,38 @@ REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate.
 
 DELETE_FAILED = "The merged patches can't be deleted: {error}\n\nDelete the folder {folder} yourself before you play."
 FAILED = "Smooth UI Merger failed:\n\n{error}\n\nDetails are in data\\{log}."
-NO_GAME = "The game wasn't found. Its folder can't be chosen in this version of the merger yet."
 
-WELCOME_TITLE = "Welcome"
-WELCOME = """Welcome to Smooth UI Merger.
+# ---- The welcome page (first run) and the settings page ----
 
-Some of your other mods ship their own copies of the screens Smooth UI patches. The game then shows those copies, \
-without Smooth UI's frame rate patches. The merger patches those copies, and puts them into a mod of its own \
-(mod0000_SmoothUI_MergedPatches), which the game loads first. Your mods themselves are never changed.
-
-Start the game with SmoothUILauncher.exe: it checks your mods first, and opens the merger when they changed.
-
-Game folder (the first one found): {game}"""
+WELCOME_HEADING = "Welcome to Smooth UI Merger"
+WELCOME = ("Some of your mods change the same screens as Smooth UI Remastered. The game then shows their copies, "
+           "without Smooth UI's frame rate. The merger patches those copies into a mod of its own ({folder}), "
+           "which the game loads first. Your mods themselves are never changed.")
+CONTINUE = "Continue"
+PLAY_WITHOUT_SETUP = "Play without setting up"
+SETTINGS = "Settings"
+SAVE, CANCEL = "Save", "Cancel"
+# The game folder
+GAME_HEADING = "Your game"
+LOOKING_FOR_GAME = "Looking for the game..."
+GAME_NOT_FOUND = "The game wasn't found: choose its folder."
+CHOOSE_FOLDER = "Choose another folder..."
+CHOOSE_FOLDER_TITLE = "Choose the game's folder (the one that holds bin, content and Mods)"
+SETTINGS_NOT_SAVED = "The settings can't be saved: {error}"
+# The launcher
+LAUNCHER_HEADING = "Starting the game"
+LAUNCHER = ("Start the game with SmoothUILauncher.exe: it checks your mods before each start, and opens the merger "
+            "when they changed.")
+SETUP_LINK = "How to set it up with your mod manager ↗"
+CREATE_SHORTCUT = "Create launcher shortcut"
+SHORTCUT_NAME = "The Witcher 3 (Smooth UI)"
+SHORTCUT_DESCRIPTION = "Starts The Witcher 3 through SmoothUILauncher.exe, which checks your mods first"
+SHORTCUT_MADE = "Made on your desktop: {name}"
+NO_LAUNCHER = "SmoothUILauncher.exe isn't next to the merger: unpack all of Smooth UI Tools into one folder"
+# The data folder
+DATA_HEADING = "Data folder"
+DATA = "The merger's settings, logs and records of the merged patches: {folder}"
+OPEN_DATA = "Open the data folder"
 
 
 @dataclass(frozen=True, slots=True)
