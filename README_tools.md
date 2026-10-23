@@ -3,55 +3,26 @@
 These tools are a companion to [Smooth UI Remastered](https://www.nexusmods.com/witcher3/mods/13526), which is required to use them. They make other UI mods work together with Smooth UI, by creating high framerate versions of those mods.  
 You only need these tools if you use other UI mods that conflict with Smooth UI.
 
-**This file might be overwhelming, but there's really not a ton you need to do. If you just want to get started, jump to [Installation](#installation).**
+## Quick start
 
-Smooth UI Tools contains two programs:
+1. Extract all the files and folders in the .zip to any *writable* folder (not directly inside Program Files).  
+   For most setups, `The Witcher 3\Smooth UI Tools` is a handy location. Mod Organizer 2 users should *not* place them inside the Witcher 3 directory as that is likely to cause issues.
+2. Start the game with `SmoothUILauncher.exe` instead of `witcher3.exe`, for example from a desktop shortcut.  
+   Yes, it's a launcher, but I've spent a lot of time ensuring that it's as fast as possible, and that it has none of the annoyances of the typical game launcher that everybody hates. It's invisible and unnoticeable (less than 1 second of extra launch time) unless there are issues that need your attention.
+3. The first time (and whenever you install, update, remove or reorder mods), the launcher opens the merger and tells you what needs fixing. Typically, this is a single button click that takes less than 5 seconds; the merger closes immediately when it's done, and the game launches.
 
-### SmoothUIMerger.exe
+That's it. This works with any mod manager, though Mod Organizer 2 needs a few extra steps (see below).  
+The sections below also have optional tips for other mod managers, such as convenient ways to start the game through the launcher.
 
-Patches other mods' copies of the files Smooth UI changes, so that your other UI mods (for example: Sort Everything, Gwent mods, Separate Upgrades Tab, Community GUI fixes, and so on) keep working at Smooth UI's frame rate. It writes the result as one mod, `mod0000_SmoothUI_MergedPatches`, in your `Mods` folder.  
-This is similar to how Script Merger works, but for making other UI mods work with Smooth UI.
-
-### SmoothUILauncher.exe
-
-Starts the game in place of `witcher3.exe`. Before the game starts, it checks (in well under a second) that the merged patches still match your mods. If they do, the game starts right away. If something changed (a mod was installed, updated, removed or reordered, or Smooth UI was updated), the merger opens first and tells you what needs fixing.  
-Typically, this is a single button click that takes less than 5 seconds; the merger closes immediately when it's done, and the game launches.
-
-**If you start the game with the launcher, you never need to start the merger yourself:** the launcher opens it whenever your merged patches need updating. You can still open it to see the details. 
-
-The launcher is optional, but recommended: without it, nothing tells you when your merged patches are out of date, and you have to run the merger yourself after every change to your mods to ensure you get Smooth UI and other mods working together as intended.  
-I've spent a lot of time ensuring that it's as fast as possible, and that it has none of the annoyances of the typical game launcher that everybody hates.
-
-## Installation
-
-Extract all the files and folders in the .zip to any *writable* folder (not directly inside Program Files).  
-Mod Organizer 2 users should *not* place them inside the Witcher 3 directory as that is likely to cause issues. For other mod managers (or none at all), `The Witcher 3\Smooth UI Tools` is a handy location.
-
-Also see the setup section below on how to connect the tools to your mod manager.
-
-**Uninstallation**
-  
-Aside from the merged patches, the tools only write to a folder named `data` under its install directory, so uninstalling them is simple: delete the directory you put them in.  
-You should also delete `mod0000_SmoothUI_MergedPatches` from your mods directory.
-
-**Setup:**
+**Setup for your mod manager:**
 
 - [Without a mod manager](#setup-without-a-mod-manager)
 - [TW3MM and Relapse's Mod Manager](#setup-tw3mm-and-relapses-mod-manager)
 - [Vortex](#setup-vortex)
 - [Mod Organizer 2](#setup-mod-organizer-2)
-- [Optional: launching via Steam or GOG Galaxy](#launching-via-steam-or-gog-galaxy)
+- [Optional: launching via Steam or GOG Galaxy](#optional-launching-via-steam-or-gog-galaxy)
 
-## Good to know
-
-- **What the merger fixes:** the game uses only one mod's copy of each UI file. When other mods change a file that Smooth UI also changes, the merger takes the copy the game would use anyway (from the mod that comes first in your load order) and adds Smooth UI's changes to it. So Smooth UI's own place in the load order doesn't matter.
-- **What the merger doesn't do** is combine two **other** mods that change the same file: as without Smooth UI, only the first one's changes show, unless you install a compatibility patch for those two mods and place it above the original mods in the load order. The merger then uses that patch's copy and makes it high framerate.
-- **Load order:** the merged patches must load before every other UI mod (Priority 0 in `mods.settings`, which the merger sets). If another mod that ships one of the patched files is put ahead of them, the launcher notices and offers to fix it.
-- **Game updates** may need a new version of Smooth UI.
-- **mod.io mods are not supported** where they ship a UI file (`.redswf`) that Smooth UI changes: a mod.io mod always wins over regular mods, so neither Smooth UI nor the merger can fix that. mod.io mods that don't touch those files should be fine, but I haven't tested.
-- **Removing Smooth UI:** if you disable or uninstall Smooth UI but leave the merged patches, the launcher tells you, and offers to remove them.
-- **Logs:** if something goes wrong, `data\launcher.log` and `data\merger.log` (next to the exes) say what happened. Please include them when you report a problem.
-- Arguments given to the launcher are passed on to the game unchanged, which may be useful for e.g. Steam (see Steam below).
+Everything after the setup sections is optional reading: how the tools work, limitations, troubleshooting and uninstallation.
 
 ## Setup: Without a mod manager
 
@@ -61,9 +32,10 @@ Alternatively, run `SmoothUIMerger.exe` manually any time you install/update/rem
 
 ## Setup: TW3MM and Relapse's Mod Manager
 
-The Witcher 3 Mod Manager (TW3MM) and Relapse's Mod Manager only start `witcher3.exe`, so you can't use the launcher for their "Run the Game" button. The merger itself works with them: nothing special is needed, and the merged patches load first by default.
+These are lightweight enough that the "Without a mod manager" section essentially applies.  
+Both only allow for starting `witcher3.exe`, so you can't set the "Run the Game" button to use the launcher. The merger itself works with them: nothing special is needed, and the merged patches load first by default.
 
-Either start the game with the launcher outside the manager (for example from a desktop shortcut to the launcher), or run `SmoothUIMerger.exe` yourself after you install/update/remove or reorder mods that may change UI files.
+Recommended usage is to launch the game via a shortcut (desktop/taskbar to `SmoothUILauncher.exe`, or if you use Steam or GOG Galaxy, edit their launch settings (see below).
 
 ## Setup: Vortex
 
@@ -80,7 +52,9 @@ Due to MO2's design with the VFS, this setup is a bit more complex than for the 
 
 1. Make sure the plugin (above) is up-to-date: at least version 4.1 (released 2026-10-22). Older versions should work **if you have profile-specific game INI files enabled** for your current profile. (Check the Profiles window, *not* the Settings window.)
 2. Right-click the mod list, **Create empty mod**, and name it, for example, "Smooth UI Merged Patches". Enable it.
-3. In **Executables** (the gears icon), add `SmoothUILauncher.exe` and `SmoothUIMerger.exe`. For **both**, tick **Create files in mod instead of overwrite** and select the mod from step 2. **They must use the same empty mod.**
+3. In **Executables** (the gears icon), add `SmoothUILauncher.exe`. Tick **Create files in mod instead of overwrite** and select the mod from step 2.
+
+Optionally, add `SmoothUIMerger.exe` the same way if you want to run it by hand (the launcher opens it for you when needed). **If added, it must use the same empty mod as the launcher.**
 
 Always start the launcher and the merger **from MO2** or via shortcuts it creates: started any other way, they can't see MO2's mods, and will falsely claim e.g. that Smooth UI is not installed.
 
@@ -104,4 +78,36 @@ To make the "Play" button in Steam or GOG Galaxy use the launcher:
 1. Open the game in Galaxy, click the settings (sliders) icon, then **Manage installation > Configure > Features**.
 2. Add another executable: `SmoothUILauncher.exe`, with no arguments, and set it as "Default executable", so that **Play** runs it.
 
-With no arguments, the launcher starts the DirectX 12 game (`bin\x64_dx12\witcher3.exe`). For DirectX 11, give it the full path of `bin\x64\witcher3.exe` as its argument (not tested yet).
+## About the tools
+
+Smooth UI Tools contains two programs:
+
+### SmoothUIMerger.exe
+
+Patches other mods' copies of the files Smooth UI changes, so that your other UI mods (for example: Sort Everything, Gwent mods, Separate Upgrades Tab, Community GUI fixes, and so on) keep working at Smooth UI's frame rate. It writes the result as one mod, `mod0000_SmoothUI_MergedPatches`, in your `Mods` folder.  
+This is similar to how Script Merger works, but for making other UI mods work with Smooth UI.
+
+### SmoothUILauncher.exe
+
+Starts the game in place of `witcher3.exe`. Before the game starts, it checks (in well under a second) that the merged patches still match your mods. If they do, the game starts right away. If something changed (a mod was installed, updated, removed or reordered, or Smooth UI was updated), the merger opens first and tells you what needs fixing.  
+Typically, this is a single button click that takes less than 5 seconds; the merger closes immediately when it's done, and the game launches.
+
+**If you start the game with the launcher, you never need to start the merger yourself:** the launcher opens it whenever your merged patches need updating.
+
+The launcher is optional, but recommended: without it, nothing tells you when your merged patches are out of date, and you have to run the merger yourself after every change to your mods to ensure you get Smooth UI and other mods working together as intended.
+
+## Good to know
+
+- **What the merger fixes:** the game uses only one mod's copy of each UI file. When other mods change a file that Smooth UI also changes, the merger takes the copy the game would use anyway (from the mod that comes first in your load order) and adds Smooth UI's changes to it. So Smooth UI's own place in the load order doesn't matter.
+- **What the merger doesn't do** is combine two **other** mods that change the same file: as without Smooth UI, only the first one's changes show, unless you install a compatibility patch for those two mods and place it above the original mods in the load order. The merger then uses that patch's copy and makes it high framerate.
+- **Load order:** the merged patches must load before every other UI mod (Priority 0 in `mods.settings`, which the merger sets). If another mod that ships one of the patched files is put ahead of them, the launcher notices and offers to fix it.
+- **Game updates** may need a new version of Smooth UI.
+- **mod.io mods are not supported** where they ship a UI file (`.redswf`) that Smooth UI changes: a mod.io mod always wins over regular mods, so neither Smooth UI nor the merger can fix that. mod.io mods that don't touch those files should be fine, but I haven't tested.
+- **Removing Smooth UI:** if you disable or uninstall Smooth UI but leave the merged patches, the launcher tells you, and offers to remove them.
+- **Logs:** if something goes wrong, `data\launcher.log` and `data\merger.log` (next to the exes) say what happened. Please include them when you report a problem.
+- Arguments given to the launcher are passed on to the game unchanged, which may be useful for e.g. Steam (see Steam above).
+
+## Uninstallation
+
+Aside from the merged patches, the tools only write to a folder named `data` under its install directory, so uninstalling them is simple: delete the directory you put them in.  
+You should also delete `mod0000_SmoothUI_MergedPatches` from your mods directory.
