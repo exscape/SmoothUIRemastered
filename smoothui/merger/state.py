@@ -75,6 +75,8 @@ class FileState:
                                 # "load order" (another mod's copy wins now); for NOT_HELD, the status the
                                 # manifest records (see NOT_HELD_TEXT); for UP_TO_DATE, "forced" if the user
                                 # chose to patch it anyway
+    previous: str | None = None     # CHANGED (but for "smoothui", "merger") and NO_LONGER_NEEDED: the mod whose
+                                    # copy the last merge used
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,9 +168,9 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         winner = file.winner
         origin = winner.origin if winner else None
 
-        def state(kind, message, severity=None, needs_build=None, cause=None, key=key, origin=origin):
+        def state(kind, message, severity=None, needs_build=None, cause=None, previous=None, key=key, origin=origin):
             needs_build = kind.needs_build if needs_build is None else needs_build
-            states.append(FileState(key, kind, message, origin, severity, needs_build, cause))
+            states.append(FileState(key, kind, message, origin, severity, needs_build, cause, previous))
 
         if file.undetermined:
             state(State.UNDETERMINED, "the load order doesn't decide which mod's copy the game uses (see the problems)")
@@ -183,7 +185,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             elif winner is None:
                 after = file.loaded_without_package
                 state(State.NO_LONGER_NEEDED, f"{record['mod']} no longer changes it: merge again (the game then uses "
-                      f"{_copy_name(after.folder) if after else 'no copy'})", Severity.HIGH)
+                      f"{_copy_name(after.folder) if after else 'no copy'})", Severity.HIGH, previous=record["mod"])
             elif (entry.size, entry.crc) != (record.get("output_size"), record.get("output_crc32")):
                 state(State.DAMAGED, "the merged patches are damaged: merge again", Severity.HIGH)
             elif rebuilt:
@@ -191,7 +193,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                       cause=rebuilt)
             elif not same_copy(record, winner):
                 cause, text = _changed(record, winner)
-                state(State.CHANGED, f"{text}: merge again", Severity.HIGH, cause=cause)
+                state(State.CHANGED, f"{text}: merge again", Severity.HIGH, cause=cause, previous=record.get("mod"))
             elif not (file.loaded and is_package_folder(file.loaded.folder)):
                 loaded = file.loaded.folder if file.loaded else "another mod"
                 if own_entry:
@@ -227,7 +229,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                       cause=rebuilt)
             elif not same_copy(record, winner):
                 cause, text = _changed(record, winner)
-                state(State.CHANGED, f"{text}: merge again", Severity.MEDIUM, cause=cause)
+                state(State.CHANGED, f"{text}: merge again", Severity.MEDIUM, cause=cause, previous=record.get("mod"))
             else:
                 text = NOT_HELD_TEXT.get(record["status"], record["status"])
                 if record["status"] != "unchanged":

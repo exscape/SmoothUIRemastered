@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 from .installed import Status
 from .scan import FileResult, is_own_folder
-from .screens import screen_name
 from .state import Check, FileState, Severity, State
 
 if TYPE_CHECKING:
@@ -108,10 +107,10 @@ PLAY_WITHOUT_MERGING = {
 TONES = {Severity.HIGH: ERROR, Severity.MEDIUM: WARNING, Severity.LOW: INFO}
 
 # Causes are keyed by FileState.cause, or its state's value, and by policy.FileStatus's values, with "fixes"
-# for a copy patched without some fixes. Those about mods' copies only name the mods (the list below the card
-# names the screens): one sentence per kind (MOD_CAUSES), from MODS (for one mod, for more).
-MOD_CAUSES = {"updated": "changed", "load order": "changed", "not built": "unpatched", "left out": "left out",
-              "failed": "left out", "fixes": "fixes"}
+# for a copy patched without some fixes. The card names no screens: the list below it does. Those about
+# mods' copies name the mods: one sentence per kind (MOD_CAUSES), from MODS (for one mod, for more).
+MOD_CAUSES = {"updated": "changed", "load order": "changed", "no longer needed": "changed", "not built": "unpatched",
+              "left out": "left out", "failed": "left out", "fixes": "fixes"}
 MODS = {
     "changed": ("{count} changed since the last merge: {mods}.", "{count} changed since the last merge: {mods}."),
     "unpatched": ("{count} contains unpatched screens: {mods}.", "{count} contain unpatched screens: {mods}."),
@@ -121,20 +120,17 @@ MODS = {
               "{count} have screens patched without some fixes: {mods}."),
 }
 NUMBERS = ("No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten")
-# The other causes, one sentence each ({screens}: the screens' names). One with {mod} is said once per mod,
-# one without it once.
+# The other causes, one sentence each: one with {mod} once per mod, one without it once
 CAUSES = {
     "smoothui": "Smooth UI was updated.",
     "merger": "The merger was updated.",
     "damaged": "The merged patches are damaged.",
     "entry": "The merged patches' mods.settings entry is missing or changed.",
-    "no longer needed": "No other mod changes these now: {screens}.",
-    "overridden": "{mod} has Priority 0 too, and its name sorts first: {screens}.",
-    "undetermined": "The load order doesn't decide which mod's copy the game uses: {screens}.",
+    "overridden": "{mod} has Priority 0 too, and its name sorts first.",
+    "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
 }
 MORE_CAUSES = "And {count} more: see the list below."
 MAX_CAUSES = 2          # sentences about causes on a card, the last one perhaps MORE_CAUSES
-MAX_SCREENS = 4         # screens named in a sentence; then "and N more"
 
 
 def status_card(found: Check | None, *, stale: bool, busy: str | None = None, scan_error: str | None = None,
@@ -187,9 +183,9 @@ def _merged(result: BuildResult, stale):
     for file in result.files:
         status = file.status.value
         if status in ("left out", "failed", "mod failed"):
-            causes.append(("failed" if status == "mod failed" else status, file.mod, file.path))
+            causes.append(("failed" if status == "mod failed" else status, file.mod))
         elif file.fixes_not_applied:
-            causes.append(("fixes", file.mod, file.path))
+            causes.append(("fixes", file.mod))
     notes = []
     if result.check_problems:
         notes.append("Some merged screens don't load as they should: see the notes below.")
@@ -224,7 +220,7 @@ def _checked(found: Check, stale):
 
     if found.stale:
         files = sorted((file for file in found.states if file.severity is not None), key=lambda file: -file.severity)
-        causes = [(_cause(file), file.winner, file.path) for file in files]
+        causes = [(_cause(file), _changed_mod(file, found)) for file in files]
         if not found.needs_build:
             # Only another mod at Priority 0 that sorts first: a merge changes nothing
             fix = "Give it a priority above 0 (in your mod manager or mods.settings), then re-scan."
@@ -237,7 +233,7 @@ def _checked(found: Check, stale):
                     buttons)
 
     # Up to date: what the merged patches hold, and what they can't
-    causes = [(_cause(file), file.winner, file.path) for file in found.states
+    causes = [(_cause(file), file.winner) for file in found.states
               if file.state == State.UNDETERMINED or (file.state == State.NOT_HELD and file.cause != "unchanged")]
     patched = [(file.winner, file.path) for file in found.states if file.state == State.UP_TO_DATE]
     buttons = (PLAY,) if stale else (RESCAN, ("Merge again", "merge"))
@@ -308,17 +304,31 @@ def _cause(file: FileState) -> str:
     return file.cause or file.state.value
 
 
+def _changed_mod(file: FileState, found: Check) -> str | None:
+    """The mod a file's cause is about: for a copy that changed, the mod that changed. For a removed mod, the
+    one the last merge used; when another mod's copy is used now, the one the last merge used if it no
+    longer ships the file (removed or disabled), else the one used now (new, or moved up)."""
+    if file.state == State.NO_LONGER_NEEDED:
+        return file.previous
+    if file.cause == "load order" and file.previous:
+        result = found.scan.files.get(file.path)
+        if file.previous.lower() not in {mod.folder.lower() for mod in (result.shippers if result else [])}:
+            return file.previous
+    return file.winner
+
+
 def _sentences(causes, notes=()) -> tuple[str, ...]:
     """One sentence per cause (see CAUSES), and per kind of cause about mods' copies (see MOD_CAUSES), from
-    causes ((key, mod, path), the most important first), then notes. Only MAX_CAUSES of them: the last one
-    that fits then says how many more there are."""
+    causes ((key, mod), the most important first), then notes. Only MAX_CAUSES of them: the last one that
+    fits then says how many more there are."""
     groups, kinds = {}, {}
-    for key, mod, path in causes:
+    for key, mod in causes:
         if key in MOD_CAUSES:
-            kinds.setdefault(MOD_CAUSES[key], {}).setdefault(mod.lower(), mod)
+            if mod:
+                kinds.setdefault(MOD_CAUSES[key], {}).setdefault(mod.lower(), mod)
         else:
-            groups.setdefault((key, mod if "{mod}" in CAUSES[key] else None), []).append(path)
-    sentences = [CAUSES[key].format(mod=mod, screens=_screens(paths)) for (key, mod), paths in groups.items()]
+            groups.setdefault((key, mod if "{mod}" in CAUSES[key] else None), None)
+    sentences = [CAUSES[key].format(mod=mod) for key, mod in groups]
     for kind, mods in kinds.items():
         names = sorted(mods.values(), key=str.lower)
         count = f"{NUMBERS[len(names)] if len(names) < len(NUMBERS) else len(names)} {'mod' if len(names) == 1 else 'mods'}"
@@ -326,14 +336,6 @@ def _sentences(causes, notes=()) -> tuple[str, ...]:
     if len(sentences) > MAX_CAUSES:
         sentences[MAX_CAUSES - 1:] = [MORE_CAUSES.format(count=len(sentences) - MAX_CAUSES + 1)]
     return (*sentences, *notes)
-
-
-def _screens(paths) -> str:
-    """The screens' names, e.g. "Inventory, Map and Gwent"; "..., and 3 more" past MAX_SCREENS"""
-    names = list(dict.fromkeys(screen_name(path) for path in paths))
-    if len(names) > MAX_SCREENS:
-        names[MAX_SCREENS - 1:] = [f"{len(names) - MAX_SCREENS + 1} more"]
-    return _join(names)
 
 
 def _patched(files) -> str:
