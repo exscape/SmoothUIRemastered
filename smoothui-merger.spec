@@ -15,11 +15,10 @@ import shutil
 import sys
 import tomllib
 from fnmatch import fnmatch
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from PyInstaller import HOMEPATH, PLATFORM
 from PyInstaller import __version__ as PYINSTALLER_VERSION
-from PyInstaller.utils.hooks import collect_data_files
 from PyInstaller.utils.win32.versioninfo import (
     FixedFileInfo, StringFileInfo, StringStruct, StringTable, VarFileInfo, VarStruct, VSVersionInfo,
 )
@@ -132,34 +131,57 @@ launcher_a = Analysis(
     hiddenimports=[],
     # Keep the launcher light. PyInstaller follows every import, also those inside functions and under
     # TYPE_CHECKING; the launch check needs none of these (tests/test_state.py LightImports)
-    excludes=["tkinter", "customtkinter", "_tkinter", "smoothui.patcher", "smoothui.build", "smoothui.log",
-              "smoothui.merger.policy", "smoothui.merger.builder", "smoothui.merger.gui", "colorama", "lz4"],
+    excludes=["tkinter", "_tkinter", "PySide6", "shiboken6", "smoothui.patcher", "smoothui.build", "smoothui.log",
+              "smoothui.merger.policy", "smoothui.merger.builder", "smoothui.merger.gui", "smoothui.merger.window",
+              "colorama", "lz4"],
     noarchive=False,
     optimize=0,  # keep asserts
 )
 # Files a module reads next to itself (Path(__file__)), at its path in _internal\: the fixes' compiled
-# ActionScript (gwent_speed.abc), and the merger window's theme. grep -rn __file__ smoothui finds the code
-# that does it.
+# ActionScript (gwent_speed.abc), and the merger window's theme and fonts. grep -rn __file__ smoothui finds the
+# code that does it.
 module_files = [(str(p), p.parent.relative_to(SPECPATH).as_posix()) for p in sorted(Path(SPECPATH, "smoothui").rglob("*.abc"))]
 if not module_files:
     raise SystemExit("ERROR: no .abc files found in smoothui/")
 module_files.append((str(Path(SPECPATH, "smoothui", "merger", "theme.json")), "smoothui/merger"))
+module_files += [(str(p), "smoothui/merger/fonts") for p in sorted(Path(SPECPATH, "smoothui", "merger", "fonts").glob("*.ttf"))]
 merger_a = Analysis(
     ["merger-gui.py"],
     pathex=[],
     binaries=[],
-    # customtkinter's themes and fonts (it fails at startup without them), the merger's version, and the
-    # module files
-    datas=[*collect_data_files("customtkinter"), (str(merger_version_file), "smoothui/merger"), *module_files],
+    # The merger's version, and the module files
+    datas=[(str(merger_version_file), "smoothui/merger"), *module_files],
     hiddenimports=[],
     # pybcj, pyppmd and inflate64 (for py7zr) fall back to importing importlib_metadata on Python < 3.8;
     # PyInstaller resolves that to setuptools' vendored copy, which pulls in all of setuptools.
     # (Excluding importlib_metadata itself makes PyInstaller's setuptools hook fail.)
-    excludes=["setuptools", "_distutils_hack", "pkg_resources"],
+    excludes=["setuptools", "_distutils_hack", "pkg_resources", "tkinter", "_tkinter"],
     noarchive=False,
     optimize=0,
     module_collection_mode={module: "py" for module in LGPL_MODULES},
 )
+
+
+def qt_file_needed(dest):
+    """Qt (PySide6): only what a Widgets window loads. Not the software OpenGL fallback (20 MB), Qt
+    WebEngine's ICU data, the translations, the Qt modules the merger doesn't use, nor plugins other than the
+    Windows platform, the styles and the .ico reader (for the window's icon)."""
+    path = PurePath(dest)
+    if path.parts[0] != "PySide6":
+        return True
+    if path.name in QT_DROPPED_FILES or "translations" in path.parts:
+        return False
+    if "plugins" in path.parts:
+        plugin = "/".join(path.parts[path.parts.index("plugins") + 1:])
+        return plugin in ("platforms/qwindows.dll", "imageformats/qico.dll") or plugin.startswith("styles/")
+    return True
+
+
+QT_DROPPED_FILES = {"opengl32sw.dll", "icudtl.dat", "QtNetwork.pyd", "Qt6Svg.dll", "Qt6Pdf.dll", "Qt6Network.dll",
+                    "Qt6OpenGL.dll", "Qt6Qml.dll", "Qt6Quick.dll", "Qt6VirtualKeyboard.dll", "Qt6QmlModels.dll",
+                    "Qt6QmlMeta.dll", "Qt6QmlWorkerScript.dll"}
+merger_a.binaries = [entry for entry in merger_a.binaries if qt_file_needed(entry[0])]
+merger_a.datas = [entry for entry in merger_a.datas if qt_file_needed(entry[0])]
 
 
 def is_ucrt(dest_name):
@@ -223,10 +245,16 @@ for p in manifests:
     shutil.copyfile(p, out_dir / "manifests" / p.name)
 
 
-# Licenses: ours next to the exes; in licenses\, Python's (which also covers what it includes: Tcl/Tk,
-# OpenSSL, bzip2, libffi, the Microsoft runtime), PyInstaller's (its bootloader is in each exe), and
-# those of each package with files in the build, from its .dist-info folder.
+# Licenses: ours next to the exes; in licenses\, Python's (which also covers what it includes: OpenSSL,
+# bzip2, libffi, the Microsoft runtime), PyInstaller's (its bootloader is in each exe), those of each package
+# with files in the build, from its .dist-info folder, and the window's font's.
 LICENSE_FILE_PREFIXES = ("LICENSE", "LICENCE", "COPYING", "NOTICE")
+# PySide6's and shiboken6's .dist-info hold only Qt's commercial license text: their LGPL texts, where their
+# source code is, and the notices of the third-party code in Qt are in licenses/PySide6/ instead (written by
+# dev-tools/qt-licenses.py, its README by hand)
+QT_DISTRIBUTIONS = {"PySide6_Essentials", "shiboken6"}
+QT_LICENSES = Path(SPECPATH) / "licenses" / "PySide6"
+FONT_LICENSE = Path(SPECPATH) / "smoothui" / "merger" / "fonts" / "OFL.txt"
 
 
 def bundled_distributions(*analyses):
@@ -251,21 +279,30 @@ shutil.copyfile(Path(sys.base_prefix) / "LICENSE.txt", licenses_dir / "Python" /
 readme = [
     f"Third-party software in {PRODUCT}'s tools; each one's license is in the folder of the same name.",
     "",
-    f"Python {python_version}, with the libraries it includes (Tcl/Tk, OpenSSL, bzip2, libffi): https://www.python.org/",
+    f"Python {python_version}, with the libraries it includes (OpenSSL, bzip2, libffi): https://www.python.org/",
 ]
 lgpl = []
 for dist in [importlib.metadata.distribution("pyinstaller"), *bundled_distributions(launcher_a, merger_a)]:
     name, version = dist.metadata["Name"], dist.version
+    note = " (its bootloader, in each exe)" if name.lower() == "pyinstaller" else ""
+    if name in QT_DISTRIBUTIONS:
+        (licenses_dir / "PySide6").mkdir(exist_ok=True)
+        for f in sorted(QT_LICENSES.iterdir()):
+            shutil.copyfile(f, licenses_dir / "PySide6" / f.name)
+        readme.append(f"{name} {version} (LGPL; see PySide6\\README.txt): https://pypi.org/project/{name}/{version}/")
+        continue
     files = license_files(dist)
     if not files:
         raise SystemExit(f"ERROR: {name} {version} is in the build but has no license file in its .dist-info")
     (licenses_dir / name).mkdir()
     for f in files:
         shutil.copyfile(dist.locate_file(f), licenses_dir / name / f.name)
-    note = " (its bootloader, in each exe)" if name.lower() == "pyinstaller" else ""
     readme.append(f"{name} {version}{note}: https://pypi.org/project/{name}/{version}/")
     if is_lgpl(dist):
         lgpl.append(name)
+(licenses_dir / "Roboto").mkdir()
+shutil.copyfile(FONT_LICENSE, licenses_dir / "Roboto" / FONT_LICENSE.name)
+readme.append("Roboto 3.016 (the merger window's font): https://github.com/googlefonts/roboto-3-classic")
 if lgpl:
     readme += ["", (f"{', '.join(lgpl)} (LGPL) are in _internal\\ as .py files, so they can be replaced by modified "
                     "versions. Their source code is at the links above.")]

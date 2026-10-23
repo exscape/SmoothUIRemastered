@@ -14,8 +14,8 @@ ready when the user presses Continue, which saves the settings.
 
 The look: Qt's Fusion style (the same on Windows 10 and 11, and it does dark mode), with the colors in
 theme.json (each a light and a dark mode color, following Windows' setting) and Roboto, which ships in fonts\\.
-With ROUNDED, a style sheet also draws buttons, the progress bar, radio buttons and scroll bars as rounded,
-flat shapes (ROUNDED_STYLE); without it, Fusion draws them.
+A style sheet (STYLE) draws buttons, the progress bar, radio buttons and scroll bars as rounded, flat shapes,
+as customtkinter did.
 
 With --stale, the launcher opened it before starting the game. The window is the same, but it comes to the
 front, the card offers Merge and play, Play without merging (worded by what that costs, state.Severity) and
@@ -72,8 +72,6 @@ from PySide6.QtWidgets import (
 from ..common import SmoothUIError, fail
 from ..files import stop_writes, write_file
 from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
-from ..log import HEADING
-from ..parallel import MAX_WORKERS, kill_workers, make_pool, warm_up, worker_count
 from ..paths import APP_DIR
 from ..windows import MB_ICONERROR, ms_since_process_start, msg_box
 from . import SMOOTHUI_URL, TOOLS_README_URL, gui
@@ -161,9 +159,8 @@ FONT_DIR = Path(__file__).with_name("fonts")
 FONT_FAMILY = "Roboto"
 SYMBOL_FONT = "Segoe UI Symbol"         # the glyphs (in Windows 10 and later)
 ICON_FILE = APP_DIR / "smoothui.ico"     # optional: Qt's own icon without it
-ROUNDED = True                          # buttons, progress bar, ... drawn by ROUNDED_STYLE, not by Fusion
-WIDTH, HEIGHT = 920, 680                # the window's size at first, before Windows' scaling
-MIN_WIDTH, MIN_HEIGHT = 720, 520
+WIDTH, HEIGHT = 720, 680                # the window's size at first, before Windows' scaling
+MIN_WIDTH, MIN_HEIGHT = WIDTH, 520
 # A row's status label is at least as wide as the widest status ("Another mod loads first"), so that a status
 # changing (as while merging) doesn't move the arrows after it
 STATUS_WIDTH = 140
@@ -227,35 +224,30 @@ def apply_theme():
     for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
         palette.setColor(QPalette.Disabled, role, QColor(c["disabled_text"]))
     QApplication.setPalette(palette)
-    QApplication.instance().setStyleSheet(style_sheet(c) + (ROUNDED_STYLE.format(**c) if ROUNDED else ""))
+    QApplication.instance().setStyleSheet(style_sheet(c))
 
 
 def style_sheet(c) -> str:
-    """The card, notices and details, texts colored by tone (set_tone), and the main button"""
+    """The window's style sheet (STYLE), and texts and the card's border colored by tone (set_tone)"""
     tones = (OK, INFO, WARNING, ERROR, "neutral")
-    return "\n".join([
-        f"#card {{ background: {c['card']}; border: 2px solid {c['neutral']}; border-radius: 6px; }}",
+    return STYLE.format(**c) + "\n".join([
         *(f'#card[tone="{tone}"] {{ border-color: {c[tone]}; }}' for tone in tones),
-        f"#notice {{ background: {c['notice']}; border-radius: 6px; }}",
-        f"#details {{ background: {c['card']}; border-radius: 6px; }}",
         *(f'QLabel[tone="{tone}"] {{ color: {c[tone]}; }}' for tone in tones),
-        f'QLabel[tone="muted"] {{ color: {c["muted_text"]}; }}',
-        (f'QPushButton[primary="true"] {{ background: {c["accent"]}; color: {c["accent_text"]}; '
-         f'border: 1px solid {c["accent_hover"]}; border-radius: 3px; padding: 4px 14px; }}'),
-        f'QPushButton[primary="true"]:hover {{ background: {c["accent_hover"]}; }}',
-        f'QPushButton[primary="true"]:disabled {{ color: {c["accent_disabled_text"]}; }}',
     ]) + "\n"
 
 
 # customtkinter's look: flat, rounded buttons (the main one in the accent color, the others outlined), a thin
-# rounded progress bar, ring-shaped radio buttons, thin scroll bars. Without it (ROUNDED), Fusion draws them.
-ROUNDED_STYLE = """
+# rounded progress bar, ring-shaped radio buttons, thin scroll bars; the card, notices and a screen's details
+STYLE = """
+#card {{ background: {card}; border: 2px solid {neutral}; border-radius: 6px; }}
+#notice {{ background: {notice}; border-radius: 6px; }}
+#details {{ background: {card}; border-radius: 6px; }}
+QLabel[tone="muted"] {{ color: {muted_text}; }}
 QPushButton {{ background: transparent; color: {quiet_button_text}; border: 1px solid {quiet_button_border};
     border-radius: 6px; padding: 5px 12px; min-width: 114px; min-height: 16px; }}
 QPushButton:hover {{ background: {quiet_button_hover}; }}
 QPushButton:disabled {{ color: {disabled_text}; }}
-QPushButton[primary="true"] {{ background: {accent}; color: {accent_text}; border: 1px solid {accent};
-    border-radius: 6px; padding: 5px 12px; }}
+QPushButton[primary="true"] {{ background: {accent}; color: {accent_text}; border: 1px solid {accent}; }}
 QPushButton[primary="true"]:hover {{ background: {accent_hover}; border-color: {accent_hover}; }}
 QPushButton[primary="true"]:disabled {{ color: {accent_disabled_text}; }}
 QProgressBar {{ background: {trough}; border: none; border-radius: 4px; max-height: 8px; min-height: 8px; }}
@@ -708,6 +700,8 @@ class MergerWindow:
             bar.setValue(bar.maximum())
 
     def start_pool(self):
+        # Imported here, as in close and merge: they take a while to import, and the window shows first
+        from ..parallel import MAX_WORKERS, make_pool, warm_up, worker_count
         workers = worker_count(MAX_WORKERS)
         if workers > 1:
             self.pool = make_pool(workers)
@@ -1040,6 +1034,7 @@ class MergerWindow:
             if self.found.scan.files[path].winner:
                 self.show_row_status(path, *merging_status(None))
                 self.rows_merging = True
+        from ..log import HEADING
         log.info("Merging", extra=HEADING)
 
         def finished(result, error):
@@ -1157,6 +1152,7 @@ class MergerWindow:
             if not ask_yes_no(self.root, STOP_MERGE_TITLE, STOP_MERGE[self.stale], warning=True):
                 return
             log.warning("Closed while merging: deleting the package" + ("; the game starts" if self.stale else ""))
+            from ..parallel import kill_workers
             self.closing = True
             if self.pool is not None:
                 kill_workers(self.pool)

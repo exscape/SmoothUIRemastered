@@ -76,8 +76,7 @@ CHOOSE_FOLDER_TITLE = "Choose the game's folder (the one that holds bin, content
 SETTINGS_NOT_SAVED = "The settings can't be saved: {error}"
 # The launcher
 LAUNCHER_HEADING = "Starting the game"
-LAUNCHER = ("Start the game with SmoothUILauncher.exe: it checks your mods before each start, and opens the merger "
-            "when they changed.")
+LAUNCHER = "Start the game with SmoothUILauncher.exe: it checks your mods first, and opens the merger if they changed."
 SETUP_LINK = "How to set it up with your mod manager ↗"
 CREATE_SHORTCUT = "Create launcher shortcut"
 SHORTCUT_NAME = "The Witcher 3 (Smooth UI)"
@@ -86,7 +85,7 @@ SHORTCUT_MADE = "Made on your desktop: {name}"
 NO_LAUNCHER = "SmoothUILauncher.exe isn't next to the merger: unpack all of Smooth UI Tools into one folder"
 # The data folder
 DATA_HEADING = "Data folder"
-DATA = "The merger's settings, logs and records of the merged patches: {folder}"
+DATA = "The merger's settings, logs and records of the merged patches:\n{folder}"
 OPEN_DATA = "Open the data folder"
 
 
