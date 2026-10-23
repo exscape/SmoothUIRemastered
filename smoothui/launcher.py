@@ -6,7 +6,7 @@ merger/game.py: game_command), and track it as the game: so it waits for the gam
 code. It must never keep anyone from playing: when the check or the merger fails, it says so in a message
 box, then starts the game anyway. Only a game that can't start ends it.
 
-It writes nothing but its log (data\\launcher.log, rewritten on each start); failing to write that stops
+It writes nothing but its logs (data\\launcher.log, and the two before it); failing to write them stops
 nothing. Light: no Tk, and none of the patcher (see tests/test_state.py: LightImports).
 """
 
@@ -19,7 +19,7 @@ import traceback
 from pathlib import Path
 
 from .common import SmoothUIError
-from .files import check_data_writable, make_dirs
+from .files import check_data_writable, make_dirs, rotate
 from .merger import merger_version
 from .merger.game import (
     GameCommand,
@@ -48,33 +48,40 @@ DETAILS = r"Details are in data\launcher.log."
 
 
 class Log:
-    """data\\launcher.log: each line with the time since the process was created"""
+    """data\\launcher.log (the last three kept: launcher.1.log, launcher.2.log), in merger.log's format: the
+    date and time, the level, the text"""
     def __init__(self, path: Path):
         self.start = time.perf_counter()
         self.offset = ms_since_process_start() or 0.0
         try:
             make_dirs(path.parent)
+            rotate(path.parent, [path.name])
             self.file = open(path, "w", encoding="utf-8")   # noqa: SIM115 (open while the launcher runs)
         except (SmoothUIError, OSError):
             self.file = None
 
-    def __call__(self, text: str):
+    def __call__(self, text: str, level: str = "INFO"):
         if self.file is None:
             return
-        ms = self.offset + (time.perf_counter() - self.start) * 1000
+        now = time.time()
+        stamp = f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now))},{int(now % 1 * 1000):03d}"
         try:
-            self.file.write(f"{ms:7.0f} ms  {text}\n")
+            self.file.write(f"{stamp} {level:7} {text}\n")
             self.file.flush()
         except OSError:
             pass
+
+    def ms(self) -> float:
+        """The time since the process was created (the launcher's speed: how soon the game starts)"""
+        return self.offset + (time.perf_counter() - self.start) * 1000
 
     def failure(self, what: str, e: BaseException) -> str:
         """Log a failure with its traceback (unless it's a SmoothUIError, whose message says it all);
         returns its text for a message box"""
         text = str(e) if isinstance(e, SmoothUIError) else f"{type(e).__name__}: {e}"
-        self(f"{what}: {text}")
+        self(f"{what}: {text}", "ERROR")
         if not isinstance(e, SmoothUIError):
-            self("".join(traceback.format_exception(e)).rstrip())
+            self("".join(traceback.format_exception(e)).rstrip(), "ERROR")
         return text
 
 
@@ -83,14 +90,15 @@ def main(args: list[str], log: Log) -> int:
         version = merger_version()
     except Exception as e:  # noqa: BLE001 (logged only)
         version = f"unknown ({e})"
-    log(f"Smooth UI launcher {version}; arguments: {subprocess.list2cmdline(args) or '(none)'}")
+    log(f"Smooth UI launcher {version}, started {log.ms():.0f} ms after its process was created; arguments: "
+        f"{subprocess.list2cmdline(args) or '(none)'}")
 
     settings = read_settings(log)
     game = game_path(settings)
     log(f"Game folder: {game or 'not chosen yet'}")
 
     if not check_data_writable(DATA_DIR):
-        log("The data folder can't be written to: starting the game without the check")
+        log("The data folder can't be written to: starting the game without the check", "WARNING")
     elif settings is None:
         log("The merger has never run: opening it")
         if not open_merger(log):
@@ -170,17 +178,17 @@ def open_merger(log: Log) -> bool:
     if code in (ABORT, UPDATING):
         log(f"The merger says: don't start the game ({'aborted' if code == ABORT else 'updating'})")
         return False
-    log(f"The merger stopped unexpectedly (exit code {code})")
+    log(f"The merger stopped unexpectedly (exit code {code})", "ERROR")
     msg_box(f"Smooth UI's merger stopped unexpectedly (exit code {code}).\n\nThe game starts anyway. {DETAILS}")
     return True
 
 
 def start_game(command: GameCommand | None, log: Log) -> int:
     if command is None:
-        log("The game wasn't found")
+        log("The game wasn't found", "ERROR")
         msg_box("The game wasn't found. Start SmoothUIMerger.exe to choose its folder.", MB_ICONERROR)
         return 1
-    log(f"Starting the game (in {command.cwd or Path.cwd()})")
+    log(f"Starting the game, {log.ms():.0f} ms after the launcher's process was created (in {command.cwd or Path.cwd()})")
     try:
         code = subprocess.run(command.args, cwd=command.cwd, check=False).returncode
     except Exception as e:  # noqa: BLE001 (nothing to start)

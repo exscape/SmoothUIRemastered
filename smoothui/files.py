@@ -102,6 +102,32 @@ def delete_file(path: Path) -> bool:
     return True
 
 
+def rotate(folder: Path, names: list[str], keep: int = 3):
+    """Keep the last keep generations of the files names in folder, e.g. merger.log -> merger.1.log ->
+    merger.2.log (merger.report.json -> merger.1.report.json), before they are written again. Files rotated
+    together stay pairs: a generation that one of them lacks is deleted for it, and a file that can't be
+    moved (still open in another process) stops the rotation there, for all of them. Never fails (a log
+    must never stop anything). For the tool's own data folder only: renames aren't MO2-safe (see above)."""
+    def generation(name, i):
+        head, dot, tail = name.partition(".")
+        return f"{head}.{i}{dot}{tail}" if i else name
+
+    for i in range(keep - 1, 0, -1):
+        for name in names:
+            older = Path(folder) / generation(name, i)
+            try:
+                os.replace(Path(folder) / generation(name, i - 1), older)
+            except FileNotFoundError:
+                try:
+                    os.remove(older)
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    return
+            except OSError:
+                return
+
+
 def remove_empty_dir(path: Path) -> bool:
     """Remove a folder if it is empty; anything else (not empty, can't be removed) leaves it as it is.
     Returns whether it is gone (also if it never was there)."""

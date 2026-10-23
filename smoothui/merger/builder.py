@@ -131,16 +131,43 @@ class BuildResult:
 
 
 def build_package(game_path: Path, mods_settings: Path, *, force=(), out_dir: Path | None = None,
-                  data_dir: Path | None = DATA_DIR, pool=None, on_file=print_file_result,
+                  data_dir: Path | None = DATA_DIR, pool=None, on_file=print_file_result, progress=None,
                   **scan_options) -> BuildResult:
     """Scan, patch, decide (force: see policy.decide), install (out_dir and data_dir: see
     install) and check. scan_options go to scan.scan (for tests). Fails (SmoothUIError) if the installed
     Smooth UI build can't be used, or the package or mods.settings can't be written; problems with files
-    or mods are in the result."""
+    or mods are in the result. progress(done, total), if given, is called in this thread once the number
+    of files to patch is known, then as each file is done (after on_file)."""
     before = scan(game_path, mods_settings, **scan_options)
-    patch = patch_winners(before, pool=pool, on_file=on_file)
+    total = sum(file.winner is not None for file in before.files.values())
+    log.info(f"Merging {total} screen(s)...")
+    done = 0
+
+    def file_done(*args, **kwargs):
+        nonlocal done
+        done += 1
+        on_file(*args, **kwargs)
+        if progress:
+            progress(done, total)
+
+    if progress:
+        progress(0, total)
+    patch = patch_winners(before, pool=pool, on_file=file_done)
     files = decide(before, patch, force=force)
     installation = install(before, files, mods_settings, out_dir=out_dir, data_dir=data_dir)
     check_problems = [] if out_dir is not None else check_package(files, scan(game_path, mods_settings, **scan_options))
     return BuildResult(before, files, installation, check_problems, compat_notes(before, files))
 
+
+def merge_report(result: BuildResult, started: str) -> dict:
+    """A merge's full report, for the merger's report file (too long for its log): when it started (as the
+    log shows it), and for each file its status, its issues, and the patcher's report (what was stretched
+    or interpolated, what wasn't and why, the fixes) or its error"""
+    return {
+        "started": started,
+        "smoothui": result.scan.installed.version,
+        "files": {file.path: {"mod": file.mod, "status": file.status.value,
+                              "issues": [issue.message for issue in file.issues], "error": file.error,
+                              "report": file.result["report"] if file.result else None}
+                  for file in result.files},
+    }

@@ -6,7 +6,9 @@ else, and the command line under WSL then behaves the same. Frozen exes must cal
 multiprocessing.freeze_support() first in main.
 
 A worker's log records are collected per task and returned with its result (see run_logged), so the main
-process can replay each file's output in one piece and in order (replay_records).
+process can replay each file's output in one piece (replay_records), as each task is done. The records then
+get the time they are replayed at, so that a log reads in order; the worker's own time for the task is
+logged at its end.
 """
 
 import importlib
@@ -16,7 +18,10 @@ import multiprocessing
 import os
 import struct
 import sys
+import time
 from concurrent.futures import ProcessPoolExecutor
+
+log = logging.getLogger(__name__)
 
 # Undocumented: SMOOTHUI_WORKERS=1 makes callers work in-process (for comparing a parallel build with a
 # serial one, debugging and profiling); any other number sets the worker count
@@ -122,17 +127,23 @@ def _init_worker(levels):
 
 def run_logged(function, *args):
     """Run function(*args) in a worker (pool.submit(run_logged, function, ...)). Returns (its result,
-    the log records it made)."""
+    the log records it made, the last one with the time it took)."""
     _records.clear()
+    start = time.perf_counter()
     try:
-        return function(*args), list(_records)
+        result = function(*args)
+        log.debug(f"Done in {time.perf_counter() - start:.2f} s (worker process {os.getpid()})")
+        return result, list(_records)
     finally:
         _records.clear()
 
 
 def replay_records(records):
-    """Log a worker's records in this process, as if they had been logged here"""
+    """Log a worker's records in this process, as if they had been logged here, now"""
+    now = time.time()
     for record in records:
+        record.created = now
+        record.msecs = (now - int(now)) * 1000
         logging.getLogger(record.name).handle(record)
 
 

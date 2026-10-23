@@ -17,6 +17,7 @@ after a warning: the package, which may be half written, is then deleted, and th
 
 from __future__ import annotations
 
+import json
 import logging
 import logging.handlers
 import os
@@ -29,7 +30,7 @@ import traceback
 from pathlib import Path
 
 from ..common import SmoothUIError
-from ..files import check_data_writable, make_dirs, stop_writes
+from ..files import check_data_writable, make_dirs, rotate, stop_writes, write_file
 from ..launcher import ABORT, CLOSED, PLAY
 from ..log import HEADING
 from ..parallel import MAX_WORKERS, kill_workers, make_pool, warm_up, worker_count
@@ -54,6 +55,9 @@ from .state import Check, Severity, State, carried_force, check
 log = logging.getLogger(__name__)
 
 LOG_FILE = "merger.log"
+# The full reports of the merges logged in LOG_FILE (kept in step with it: merger.1.report.json belongs to
+# merger.1.log); missing when that run didn't merge.
+REPORT_FILE = "merger.report.json"
 
 # Imported in main, after the scan has started: it takes a while (see the module's docstring)
 ctk = None
@@ -119,18 +123,19 @@ class LogFormatter(logging.Formatter):
 
 
 def setup_logging() -> queue.Queue:
-    """Log to data\\merger.log (rewritten on each start; a failure to open it is ignored) and into a queue
-    for the window's log view (returned)"""
+    """Log to data\\merger.log (the last three runs kept, with their reports; a failure to open it is
+    ignored) and into a queue for the window's log view (returned)"""
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     logging.getLogger("smoothui").setLevel(logging.DEBUG)
     try:
         make_dirs(DATA_DIR)
+        rotate(DATA_DIR, [LOG_FILE, REPORT_FILE])
         file = logging.FileHandler(DATA_DIR / LOG_FILE, mode="w", encoding="utf-8")
     except (SmoothUIError, OSError):
         pass
     else:
-        file.setFormatter(LogFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        file.setFormatter(LogFormatter("%(asctime)s %(levelname)-7s %(message)s"))
         root.addHandler(file)
     records = queue.Queue()
     view = logging.handlers.QueueHandler(records)
@@ -203,6 +208,7 @@ class MergerWindow:
         self.found: Check | None = None
         self.busy = None            # what runs in a thread: "scan", "build", "remove"
         self.pool = None
+        self.reports = []           # merge_report for each merge, written to REPORT_FILE
         self.exit_code = CLOSED
         self.shown = False
 
@@ -358,9 +364,10 @@ class MergerWindow:
 
     def build(self):
         # Imported here: the patcher takes a while to import, and only a build needs it
-        from .builder import build_package
+        from .builder import build_package, merge_report
         from .cli import show_build
         start = time.perf_counter()
+        started = time.strftime("%Y-%m-%d %H:%M:%S")
         settings = mods_settings()
         force, notes = carried_force(scan(self.game, settings))
         for note in notes:
@@ -368,6 +375,12 @@ class MergerWindow:
         if force:
             log.info(f"Forced again, as at the last build (the same copies): {', '.join(force)}")
         result = build_package(self.game, settings, force=force, pool=self.pool, data_dir=DATA_DIR)
+        self.reports.append(merge_report(result, started))
+        try:
+            write_file(DATA_DIR / REPORT_FILE, json.dumps(self.reports, indent=1).encode("utf-8"))
+            log.info(f"The full report of this merge (started {started}) is in data\\{REPORT_FILE}")
+        except SmoothUIError as e:
+            log.warning(f"The full report can't be written: {e}")
         show_build(result)
         log.info(f"Built in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
         return result

@@ -6,6 +6,7 @@ import hashlib
 import logging
 import struct
 import traceback
+from concurrent.futures import as_completed
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -58,14 +59,14 @@ def patch_files(inputs, profile, *, on_file=None, pool=None):
 
     The files are patched in parallel, in pool if given (see parallel.make_pool), else in a pool made for
     this call. They are patched in-process instead when there is only one file or one worker (see
-    parallel.worker_count), or a dev hook is active (see dev_mode.py). Either way, the results come in
-    input order, each file's log output in one piece.
+    parallel.worker_count), or a dev hook is active (see dev_mode.py). Either way, each file's log output
+    comes in one piece, as soon as the file is done (so the order of the files can differ between runs).
 
     on_file(path, status, report=None, error=None) is called as soon as each file's result is
-    known: status is "patched" or "kept" (with the file's rescale report), or "failed" (with the
-    error message).
+    known, right after its log output: status is "patched" or "kept" (with the file's rescale report),
+    or "failed" (with the error message).
 
-    Returns (patched, kept, failed), lists of dicts with the file's "path" and "origin" (as in its
+    Returns (patched, kept, failed), in input order, lists of dicts with the file's "path" and "origin" (as in its
     SourceFile). patched ones also hold "entry" (the patched file, compressed, as a BundleEntry for
     write_bundle), "hashes" (sha256, swf_sha256 and size of the source and output files, and the output's
     CRC32, as manifests record them: source_sha256, output_swf_sha256, output_crc32, ...), "fps" (its frame rate now) and "report"; kept
@@ -80,19 +81,22 @@ def patch_files(inputs, profile, *, on_file=None, pool=None):
     resolve_dev_target(profile)
     jobs = [(source, profile[source.path]) for source in inputs]
 
+    results = [None] * len(jobs)
+    for i, result in _patch_jobs(jobs, pool):
+        results[i] = result
+        if on_file:
+            on_file(result["path"], result["status"], result.get("report"), result.get("error"))
     patched, kept, failed = [], [], []
-    for result in _patch_jobs(jobs, pool):
+    for result in results:
         status = result.pop("status")
         {"patched": patched, "kept": kept, "failed": failed}[status].append(result)
-        if on_file:
-            on_file(result["path"], status, result.get("report"), result.get("error"))
     return patched, kept, failed
 
 def _patch_jobs(jobs, pool):
-    """_patch_file's result for each (SourceFile, PatchSettings) in jobs, in order"""
+    """(index, _patch_file's result) for each (SourceFile, PatchSettings) in jobs, as each is done"""
     if dev_mode.DEV_MODE or worker_count(len(jobs)) == 1:
-        for source, settings in jobs:
-            yield _patch_file(source, settings, dev_make_body_hook(source.path))
+        for i, (source, settings) in enumerate(jobs):
+            yield i, _patch_file(source, settings, dev_make_body_hook(source.path))
     elif pool is None:
         with make_pool(worker_count(len(jobs))) as own_pool:
             yield from _patch_in_pool(own_pool, jobs)
@@ -102,16 +106,16 @@ def _patch_jobs(jobs, pool):
 def _patch_in_pool(pool, jobs):
     # The largest files first, so that a slow one starts at once instead of waiting for a free worker
     order = sorted(range(len(jobs)), key=lambda i: -jobs[i][0].size)
-    futures = {i: pool.submit(run_logged, _patch_file, *jobs[i]) for i in order}
+    futures = {pool.submit(run_logged, _patch_file, *jobs[i]): i for i in order}
     try:
-        for i in range(len(jobs)):
-            result, records = futures[i].result()
+        for future in as_completed(futures):
+            result, records = future.result()
             replay_records(records)
-            yield result
+            yield futures[future], result
     except BrokenProcessPool as e:
         fail(f"a worker process stopped while patching files: {e}")
     finally:
-        for future in futures.values():
+        for future in futures:
             future.cancel()
 
 def _patch_file(source, settings, body_hook=None):
