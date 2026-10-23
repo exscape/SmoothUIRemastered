@@ -40,7 +40,7 @@ from .game import (
     GAME_PATH_ENV,
     MODS_SETTINGS_ENV,
     Settings,
-    find_game,
+    find_games,
     game_path,
     load_settings,
     mods_settings,
@@ -80,7 +80,7 @@ without Smooth UI's frame rate patches. The merger patches those copies, and put
 
 Start the game with SmoothUILauncher.exe: it checks your mods first, and opens the merger when they changed.
 
-Game folder (for now, always this one): {game}"""
+Game folder (for now, the first one found): {game}"""
 
 STOP_BUILD = ("The merger is still building the package. Closing now stops it halfway, so the package is deleted "
               "(a half-written one could break the game), and the game won't start.\n\nOnly do this if the merger "
@@ -95,6 +95,9 @@ def main() -> int:
     log.info(f"Smooth UI merger {_version()}; arguments: {subprocess.list2cmdline(sys.argv[1:]) or '(none)'}")
     settings, first_run = _settings()
     game = game_path(settings)
+    if game is None:
+        msg_box("The game wasn't found. Its folder can't be chosen in this test version of the merger.", MB_ICONERROR)
+        return CLOSED
     log.info(f"Game folder: {game}")
     calls = queue.Queue()       # (function, args) to call on Tk's thread
     start_scan(game, calls)
@@ -143,9 +146,9 @@ def _version():
         return f"unknown ({e})"
 
 
-def _settings() -> tuple[Settings, bool]:
+def _settings() -> tuple[Settings | None, bool]:
     """The merger's settings, and whether this is its first run (none, or they can't be read): then they
-    are saved now"""
+    are saved now, with the first game folder find_games finds (None if it finds none)"""
     try:
         settings = load_settings(DATA_DIR)
     except SmoothUIError as e:
@@ -153,8 +156,12 @@ def _settings() -> tuple[Settings, bool]:
         settings = None
     if settings is not None:
         return settings, False
-    # find_game(), not game_path(): that would save a test folder from SMOOTHUI_GAME_PATH
-    settings = Settings(find_game())
+    # find_games(), not game_path(): that would save a test folder from SMOOTHUI_GAME_PATH
+    found = find_games()
+    log.info(f"Game folders found: {', '.join(str(game.path) for game in found) or 'none'}")
+    if not found:
+        return None, True
+    settings = Settings(found[0].path)
     try:
         save_settings(settings, DATA_DIR)
         log.info("First run: settings saved")

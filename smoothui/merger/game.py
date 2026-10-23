@@ -1,8 +1,9 @@
 """Where the game and its mods.settings are, the command that starts the game, and the merger's settings
-(data\\settings.json), which the merger writes when it first runs: the launcher opens the merger while
-there are none.
+(data\\settings.json): the game folder the user confirmed in the merger. The launcher opens the merger
+while there are none.
 
-Both exes find the game here, so nothing is passed between them. For tests only, two environment variables
+The merger finds candidates for the game folder (find_games) for the user to confirm, and both exes read
+it from the settings, so nothing is passed between them. For tests only, two environment variables
 override where the game and mods.settings are (SMOOTHUI_GAME_PATH, SMOOTHUI_MODS_SETTINGS); the merger
 inherits them from the launcher. Light: the launcher imports it.
 """
@@ -10,7 +11,11 @@ inherits them from the launcher. Light: the launcher imports it.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
+import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
@@ -27,9 +32,7 @@ SETTINGS_FILE = "settings.json"
 
 GAME_EXE = Path("bin", "x64_dx12", "witcher3.exe")
 
-# TODO: hardcoded for now. The merger is to find the game in the registry, have the
-# user confirm it or choose another folder, and save it in its settings; both exes then read it from there.
-DEFAULT_GAME_PATH = r"D:\Games\The Witcher 3 Remastered"
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,15 +59,201 @@ def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
     write_file(Path(data_dir) / SETTINGS_FILE, text.encode("utf-8"))
 
 
-def find_game() -> Path:
-    """Where the game is, for settings that don't exist yet (see DEFAULT_GAME_PATH)"""
-    return to_native(DEFAULT_GAME_PATH)
-
-
-def game_path(settings: Settings | None) -> Path:
+def game_path(settings: Settings | None) -> Path | None:
+    """The game folder: the test variable, else the settings; None while the user hasn't chosen one"""
     if os.environ.get(GAME_PATH_ENV):
         return to_native(os.environ[GAME_PATH_ENV])
-    return settings.game_path if settings else find_game()
+    return settings.game_path if settings else None
+
+
+def is_game_folder(folder: Path) -> bool:
+    # The game's exe is a real file even under MO2, whose VFS only adds mods' files: is_file is fine here
+    try:
+        return (Path(folder) / GAME_EXE).is_file()
+    except OSError:
+        return False
+
+
+def game_folder_of(chosen: Path) -> Path:
+    """The game folder, from a folder the user chose: the game folder itself, or a folder inside it.
+    Fails (SmoothUIError) for any other folder."""
+    chosen = Path(os.path.abspath(chosen))
+    for folder in (chosen, *chosen.parents):
+        if is_game_folder(folder):
+            return folder
+    fail(f"{to_windows(chosen)} isn't the game's folder: choose the folder that holds bin, content and Mods")
+
+
+class GameFolder(NamedTuple):
+    path: Path
+    source: str | None      # where it was found, for the user: "GOG", "Steam", "Epic"; None: elsewhere
+
+
+# Folders whose subfolders find_games looks into, on each fixed drive
+COMMON_FOLDERS = (
+    ("Games", None),
+    ("GOG Games", "GOG"),
+    (r"Program Files (x86)\GOG Galaxy\Games", "GOG"),
+    (r"SteamLibrary\steamapps\common", "Steam"),
+)
+
+FIND_TIMEOUT = 1.0  # seconds
+
+
+def find_games(timeout: float = FIND_TIMEOUT) -> list[GameFolder]:
+    """The game folders that can be found quickly: from the registry (GOG, and the uninstall entries of
+    any installer), Steam's libraries, Epic's manifests, then the folders one level inside COMMON_FOLDERS
+    and those named like the game at the root of each fixed drive. Never a search of whole drives: what is
+    found within timeout is returned, and the search goes on in the background (a sleeping hard disk or
+    a slow drive can block it for seconds). Registry entries can be stale (an uninstalled game, a moved
+    folder), so each folder is checked."""
+    found = []
+    search = threading.Thread(target=_search, args=(found,), daemon=True)
+    search.start()
+    search.join(timeout)
+    games, seen = [], set()
+    for game in found.copy():     # the search may still be adding to it
+        key = os.path.normcase(os.path.normpath(game.path))
+        if key not in seen:
+            seen.add(key)
+            games.append(game)
+    return games
+
+
+def _search(found: list[GameFolder]):
+    """Appends each game folder found to found, the fastest sources first"""
+    def add(folder, source):
+        if folder and is_game_folder(folder):
+            found.append(GameFolder(Path(folder), source))
+
+    def add_inside(folder, source, name_filter=None):
+        try:
+            entries = [entry.path for entry in os.scandir(folder) if entry.is_dir()
+                       and (name_filter is None or name_filter in entry.name.lower())]
+        except OSError:
+            return
+        for path in entries:
+            add(path, source)
+
+    try:
+        for folder, source in _registry_folders():
+            add(folder, source)
+        steam = _steam_path()
+        for library in _steam_libraries(steam) if steam else []:
+            add_inside(Path(library, "steamapps", "common"), "Steam")
+        for folder in _epic_folders():
+            add(folder, "Epic")
+        for drive in _fixed_drives():
+            for folder, source in COMMON_FOLDERS:
+                add_inside(Path(drive, *folder.split("\\")), source)
+            add_inside(drive, None, "witcher")
+    except Exception:   # what was found until then still counts
+        log.debug("Searching for the game failed", exc_info=True)
+
+
+def _registry_folders() -> list[tuple[str, str | None]]:
+    """(folder, source) from GOG's registry keys and the installers' uninstall entries for the game"""
+    if sys.platform != "win32":
+        return []
+    import winreg
+
+    folders = []
+    for key, source in ((r"SOFTWARE\WOW6432Node\GOG.com\Games", "GOG"), (r"SOFTWARE\GOG.com\Games", "GOG")):
+        for _, values in _subkeys(winreg.HKEY_LOCAL_MACHINE, key):
+            folders.append((values.get("path"), source))
+    for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        for key in (r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                    r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"):
+            for name, values in _subkeys(root, key):
+                if "witcher 3" not in str(values.get("DisplayName", "")).lower():
+                    continue
+                # Steam's are "Steam App <id>"; GOG's installers (Inno Setup) "<GOG's id>_is1"
+                source = "Steam" if name.startswith("Steam App ") else "GOG" if name.endswith("_is1") else None
+                folders.append((values.get("InstallLocation"), source))
+    return folders
+
+
+def _subkeys(root, path) -> list[tuple[str, dict]]:
+    """(name, {value name: value}) for each subkey of a registry key; none if it doesn't exist"""
+    import winreg
+
+    subkeys = []
+    try:
+        with winreg.OpenKey(root, path) as key:
+            for i in range(winreg.QueryInfoKey(key)[0]):
+                name = winreg.EnumKey(key, i)
+                try:
+                    with winreg.OpenKey(key, name) as subkey:
+                        values = {}
+                        for j in range(winreg.QueryInfoKey(subkey)[1]):
+                            value_name, value, _ = winreg.EnumValue(subkey, j)
+                            values[value_name] = value
+                except OSError:
+                    continue
+                subkeys.append((name, values))
+    except OSError:
+        pass
+    return subkeys
+
+
+def _steam_path() -> str | None:
+    if sys.platform != "win32":
+        return None
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
+            return winreg.QueryValueEx(key, "SteamPath")[0]
+    except OSError:
+        return None
+
+
+def _steam_libraries(steam: str) -> list[str]:
+    """Steam's library folders: its own, and those steamapps\\libraryfolders.vdf names (Valve's KeyValues
+    text: "path" "D:\\\\SteamLibrary" in each library's block; older files had "1" "D:\\\\SteamLibrary". Today's
+    blocks also list "<app id>" "<size>", which aren't paths)"""
+    libraries = [steam]
+    try:
+        text = Path(steam, "steamapps", "libraryfolders.vdf").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return libraries
+    for match in re.finditer(r'^\s*"(path|\d+)"\s+"((?:[^"\\]|\\.)*)"\s*$', text, re.MULTILINE):
+        path = match[2].replace("\\\\", "\\")
+        if match[1] == "path" or re.match(r"[A-Za-z]:[\\/]|[\\/]", path):
+            libraries.append(path)
+    unique = {}     # Steam's own folder is usually listed again, spelled differently
+    for path in libraries:
+        unique.setdefault(os.path.normcase(os.path.normpath(path)), path)
+    return list(unique.values())
+
+
+def _epic_folders() -> list[str]:
+    """The install folders in the Epic Games Launcher's manifests (one JSON .item file per game). Whether
+    Epic sells this game is unverified: then there are none."""
+    manifests = Path(os.environ.get("ProgramData", r"C:\ProgramData"), "Epic", "EpicGamesLauncher", "Data", "Manifests")
+    folders = []
+    try:
+        paths = [entry.path for entry in os.scandir(manifests) if entry.name.lower().endswith(".item")]
+    except OSError:
+        return folders
+    for path in paths:
+        try:
+            folders.append(json.loads(Path(path).read_bytes())["InstallLocation"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return folders
+
+
+def _fixed_drives() -> list[str]:
+    """The roots of the local, fixed drives (C:\\, D:\\, ...): no network, removable or optical drives"""
+    if sys.platform != "win32":
+        return []
+    import ctypes
+
+    drive_fixed = 3
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    roots = [f"{chr(ord('A') + i)}:\\" for i in range(26) if mask & (1 << i)]
+    return [root for root in roots if ctypes.windll.kernel32.GetDriveTypeW(root) == drive_fixed]
 
 
 def mods_settings() -> Path:
@@ -79,14 +268,18 @@ class GameCommand(NamedTuple):
     note: str | None        # for the log, if it looks wrong
 
 
-def game_command(args: list[str], game: Path) -> GameCommand:
+def game_command(args: list[str], game: Path | None) -> GameCommand | None:
     """The command that starts the game, from the launcher's arguments. A first argument ending in .exe
     makes them all the command (Steam passes its own, %command%), started where the launcher was;
     otherwise they are the game exe's arguments, and it starts in the exe's folder, as the game's own
-    launchers do."""
+    launchers do. None if no exe is given and the game folder isn't known."""
     if args and args[0].lower().endswith(".exe"):
         exe = Path(os.path.abspath(args[0]))
+        if game is None:
+            return GameCommand(list(args), None, None)
         inside = os.path.normcase(exe).startswith(os.path.normcase(os.path.join(os.path.abspath(game), "")))
         return GameCommand(list(args), None, None if inside else f"the given exe isn't in the game folder: {exe}")
+    if game is None:
+        return None
     exe = Path(game) / GAME_EXE
     return GameCommand([str(exe), *args], exe.parent, None)

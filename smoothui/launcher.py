@@ -23,6 +23,8 @@ from .files import check_data_writable, make_dirs
 from .merger import merger_version
 from .merger.game import (
     GameCommand,
+    Settings,
+    find_games,
     game_command,
     game_path,
     load_settings,
@@ -83,28 +85,46 @@ def main(args: list[str], log: Log) -> int:
         version = f"unknown ({e})"
     log(f"Smooth UI launcher {version}; arguments: {subprocess.list2cmdline(args) or '(none)'}")
 
-    try:
-        settings = load_settings()
-    except Exception as e:  # noqa: BLE001 (the merger says so too, and writes them again)
-        log.failure("The merger's settings can't be read", e)
-        settings = None
+    settings = read_settings(log)
     game = game_path(settings)
-    command = game_command(args, game)
-    log(f"Game folder: {game}")
-    log(f"Game command: {subprocess.list2cmdline(command.args)}")
-    if command.note:
-        log(f"Note: {command.note}")
+    log(f"Game folder: {game or 'not chosen yet'}")
 
     if not check_data_writable(DATA_DIR):
         log("The data folder can't be written to: starting the game without the check")
-        return start_game(command, log)
-    if settings is None:
+    elif settings is None:
         log("The merger has never run: opening it")
         if not open_merger(log):
             return 0
+        # It asks for the game folder on its first run
+        game = game_path(read_settings(log))
+        log(f"Game folder: {game or 'still not chosen'}")
     elif package_stale(game, log) and not open_merger(log):
         return 0
-    return start_game(command, log)
+    return start_game(command_for(args, game, log), log)
+
+
+def read_settings(log: Log) -> Settings | None:
+    try:
+        return load_settings()
+    except Exception as e:  # noqa: BLE001 (the merger says so too, and writes them again)
+        log.failure("The merger's settings can't be read", e)
+        return None
+
+
+def command_for(args: list[str], game: Path | None, log: Log) -> GameCommand | None:
+    """The game command (see game_command), logged. Without a game folder (the merger's settings don't name
+    one) and no exe given, the first game folder find_games finds."""
+    command = game_command(args, game)
+    if command is None:
+        found = find_games()
+        if found:
+            log(f"Game folder found: {found[0].path}")
+            command = game_command(args, found[0].path)
+    if command is not None:
+        log(f"Game command: {subprocess.list2cmdline(command.args)}")
+        if command.note:
+            log(f"Note: {command.note}")
+    return command
 
 
 def package_stale(game: Path, log: Log) -> bool:
@@ -155,7 +175,11 @@ def open_merger(log: Log) -> bool:
     return True
 
 
-def start_game(command: GameCommand, log: Log) -> int:
+def start_game(command: GameCommand | None, log: Log) -> int:
+    if command is None:
+        log("The game wasn't found")
+        msg_box("The game wasn't found. Start SmoothUIMerger.exe to choose its folder.", MB_ICONERROR)
+        return 1
     log(f"Starting the game (in {command.cwd or Path.cwd()})")
     try:
         code = subprocess.run(command.args, cwd=command.cwd, check=False).returncode
