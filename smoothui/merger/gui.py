@@ -47,6 +47,7 @@ from .game import (
     mods_settings,
     save_settings,
 )
+from .gui_texts import COST, PLAY_WITHOUT_MERGING
 from .installed import Status
 from .package import remove_package
 from .scan import PACKAGE_FOLDER, is_package_folder, scan
@@ -62,17 +63,6 @@ REPORT_FILE = "merger.report.json"
 # Imported in main, after the scan has started: it takes a while (see the module's docstring)
 ctk = None
 
-# Play without merging: the button, and what it costs (state.Severity)
-PLAY_WITHOUT_MERGING = {
-    Severity.HIGH: ("Play without merging (may break mods)",
-                    "Without merging, some of your mods' screens may look wrong or not work at all."),
-    Severity.MEDIUM: ("Play without merging (unpatched screens)",
-                      ("Without merging, some of your mods' screens run at their original frame rate, without Smooth "
-                       "UI's patches.")),
-    Severity.LOW: ("Play without merging",
-                   ("Your game works as it is, but merging again is recommended: this version of the merger builds "
-                    "the package differently.")),
-}
 SEVERITY_COLORS = {Severity.HIGH: "#e05252", Severity.MEDIUM: "#e69500"}
 LOG_COLORS = {"warning": "#e69500", "error": "#e05252"}
 
@@ -544,7 +534,7 @@ class StalePopup:
             self.show_buttons(remove=self.window.can_remove(), play="Play anyway", color=SEVERITY_COLORS[Severity.HIGH])
         elif found.stale:
             lines = [f"- {Path(state.path).name}: {state.message}" for state in found.states if state.severity]
-            button, cost = PLAY_WITHOUT_MERGING[found.severity]
+            button, cost = PLAY_WITHOUT_MERGING[found.severity], COST[found.severity]
             self.say("Smooth UI's patches for your other mods are out of date:\n\n" + "\n".join(lines), cost,
                      SEVERITY_COLORS.get(found.severity))
             self.show_buttons(merge=True, play=button, color=SEVERITY_COLORS.get(found.severity))

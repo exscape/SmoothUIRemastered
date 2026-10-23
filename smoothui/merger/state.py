@@ -70,6 +70,10 @@ class FileState:
     winner: str | None = None   # the mod whose copy a build would patch (see scan.FileResult.winner)
     severity: Severity | None = None    # set for the files that open the merger at launch (see Check)
     needs_build: bool = False   # whether building the package again would change it (see State.needs_build)
+    cause: str | None = None    # why, in a word, for the window to group files by: for CHANGED, "smoothui" or
+                                # "merger" (updated since the build), "updated" (the mod's copy changed) or
+                                # "load order" (another mod's copy wins now); for NOT_HELD, the status the
+                                # manifest records (see NOT_HELD_TEXT)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,13 +148,12 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     built_by = (manifest or {}).get("merger_version")
     # Only the merger's version changed: nothing the game shows is wrong (severity LOW)
     if built_for.get("version") != installed.version or built_for.get("release_created_at") != installed.manifest.get("created_at"):
-        rebuilt = "Smooth UI was updated"
-        merger_only = False
+        rebuilt, rebuilt_text = "smoothui", "Smooth UI was updated"
     elif built_by != merger_version():
-        rebuilt = "the merger was updated"
-        merger_only = True
+        rebuilt, rebuilt_text = "merger", "the merger was updated"
     else:
-        rebuilt = None
+        rebuilt = rebuilt_text = None
+    merger_only = rebuilt == "merger"
     # Whether the package's own mods.settings entry is as a build writes it (see mods_settings.write_entry)
     own_entry = any(is_package_folder(mod.folder) and mod.settings == ModSettings(True, 0) for mod in result.order)
     held = (manifest or {}).get("files", {})
@@ -162,9 +165,9 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         winner = file.winner
         origin = winner.origin if winner else None
 
-        def state(kind, message, severity=None, needs_build=None, key=key, origin=origin):
+        def state(kind, message, severity=None, needs_build=None, cause=None, key=key, origin=origin):
             needs_build = kind.needs_build if needs_build is None else needs_build
-            states.append(FileState(key, kind, message, origin, severity, needs_build))
+            states.append(FileState(key, kind, message, origin, severity, needs_build, cause))
 
         if file.undetermined:
             state(State.UNDETERMINED, "the load order doesn't decide which mod's copy the game uses (see the problems)")
@@ -183,9 +186,11 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             elif (entry.size, entry.crc) != (record.get("output_size"), record.get("output_crc32")):
                 state(State.DAMAGED, "the merged patches are damaged: merge again", Severity.HIGH)
             elif rebuilt:
-                state(State.CHANGED, f"{rebuilt}: merge again", Severity.LOW if merger_only else Severity.HIGH)
+                state(State.CHANGED, f"{rebuilt_text}: merge again", Severity.LOW if merger_only else Severity.HIGH,
+                      cause=rebuilt)
             elif not _same_copy(record, winner):
-                state(State.CHANGED, f"{_changed(record, winner)}: merge again", Severity.HIGH)
+                cause, text = _changed(record, winner)
+                state(State.CHANGED, f"{text}: merge again", Severity.HIGH, cause=cause)
             elif not (file.loaded and is_package_folder(file.loaded.folder)):
                 loaded = file.loaded.folder if file.loaded else "another mod"
                 if own_entry:
@@ -210,14 +215,16 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             # The package doesn't hold it, so the game shows the winning copy, unpatched
             record = not_held[key]
             if rebuilt:
-                state(State.CHANGED, f"{rebuilt}: merge again", Severity.LOW if merger_only else Severity.MEDIUM)
+                state(State.CHANGED, f"{rebuilt_text}: merge again", Severity.LOW if merger_only else Severity.MEDIUM,
+                      cause=rebuilt)
             elif not _same_copy(record, winner):
-                state(State.CHANGED, f"{_changed(record, winner)}: merge again", Severity.MEDIUM)
+                cause, text = _changed(record, winner)
+                state(State.CHANGED, f"{text}: merge again", Severity.MEDIUM, cause=cause)
             else:
                 text = NOT_HELD_TEXT.get(record["status"], record["status"])
                 if record["status"] in ("left out", "failed") and record.get("reasons"):
                     text += f". Why: {'; '.join(record['reasons'])}"
-                state(State.NOT_HELD, f"{origin}'s copy: {text}")
+                state(State.NOT_HELD, f"{origin}'s copy: {text}", cause=record["status"])
         elif manifest is None and manifest_problem is None:
             state(State.NOT_BUILT, f"{origin}'s copy isn't merged yet", Severity.MEDIUM)
         else:
@@ -287,9 +294,10 @@ def _same_copy(record, winner) -> bool:
 
 
 def _changed(record, winner):
+    """(FileState.cause, the message) for a record about another copy than the winner's"""
     if str(record.get("mod", "")).lower() != winner.origin.lower():
-        return f"{winner.origin}'s copy is used now, not {record.get('mod')}'s"
-    return f"{winner.origin} was updated"
+        return "load order", f"{winner.origin}'s copy is used now, not {record.get('mod')}'s"
+    return "updated", f"{winner.origin} was updated"
 
 
 def _copy_name(folder):
