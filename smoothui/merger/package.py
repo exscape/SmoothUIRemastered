@@ -71,9 +71,10 @@ def write_package(package_dir: Path, installed: Installed, files: list[PackageFi
     record."""
     package_dir = Path(package_dir)
     content = package_dir / "content"
+    previous = _read_manifest(package_dir / PACKAGE_MANIFEST)
     delete_file(package_dir / PACKAGE_MANIFEST)
     included = sorted((file for file in files if file.status.included), key=lambda file: file.path)
-    manifest = package_manifest(installed, files)
+    manifest = package_manifest(installed, files, previous)
     if not included:
         removed, unknown = remove_package(package_dir)
         log.info("Nothing to merge: " + ("removed the merged patches" if removed else "their folder stays, as it holds other files"))
@@ -111,11 +112,32 @@ def _manifest_bytes(manifest):
     return (json.dumps(manifest, indent=1, sort_keys=True) + "\n").encode("utf-8")
 
 
-def package_manifest(installed: Installed, files: list[PackageFile]) -> dict:
+def _read_manifest(path) -> dict:
+    """The package manifest at path, or {} if there is none or it can't be read"""
+    try:
+        manifest = json.loads(Path(path).read_bytes())
+    except (OSError, ValueError):
+        return {}
+    return manifest if isinstance(manifest, dict) else {}
+
+
+def same_copy(record: dict, source) -> bool:
+    """Whether a manifest record (see package_manifest) is about a copy (a SourceFile): the same mod, bundle,
+    size and CRC32"""
+    return (str(record.get("mod", "")).lower() == source.origin.lower()
+            and str(record.get("bundle", "")).lower() == source.file.name.lower()
+            and record.get("source_size") == source.size and record.get("source_crc32") == source.toc_entry.crc)
+
+
+def package_manifest(installed: Installed, files: list[PackageFile], previous: dict | None = None) -> dict:
     """What the package holds, and what it was built from: for each file it holds, the copy it was patched
     from (to tell whether that changed without reading it) and the output (to tell whether the package
-    is intact); for each other file, why it isn't there, and the copy that was decided on."""
+    is intact); for each other file, why it isn't there, and the copy that was decided on. A forced file
+    also gets why it isn't fully patched, and the date it was first forced: from previous (the manifest
+    of the package this one replaces) while its copy is the same, else today."""
     commit, uncommitted = patcher_commit()
+    before = (previous or {}).get("files", {})
+    today = datetime.date.today().isoformat()
     held, not_held = {}, {}
     for file in files:
         if file.status.included:
@@ -129,6 +151,11 @@ def package_manifest(installed: Installed, files: list[PackageFile]) -> dict:
                 "forced": file.forced,
                 "fixes_not_applied": file.fixes_not_applied,
             }
+            if file.forced:
+                old = before.get(file.path, {})
+                kept = old.get("forced_since") if old.get("forced") and same_copy(old, file.source) else None
+                held[file.path]["forced_since"] = kept or today
+                held[file.path]["reasons"] = [issue.message for issue in file.issues if issue.keeps_out]
         else:
             not_held[file.path] = {
                 "mod": file.mod,

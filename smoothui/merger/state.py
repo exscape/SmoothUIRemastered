@@ -26,7 +26,7 @@ from ..witcher3.mod_bundles import list_bundles, read_bundle_tocs
 from ..witcher3.mods_settings import ModSettings
 from . import merger_version
 from .installed import is_smoothui_folder
-from .package import PACKAGE_MANIFEST, PACKAGE_MANIFEST_FORMAT, record_path
+from .package import PACKAGE_MANIFEST, PACKAGE_MANIFEST_FORMAT, record_path, same_copy
 from .scan import COMPAT_PATCH, PACKAGE_FOLDER, Scan, is_package_folder, scan
 from .screens import screen_name
 
@@ -73,7 +73,8 @@ class FileState:
     cause: str | None = None    # why, in a word, for the window to group files by: for CHANGED, "smoothui" or
                                 # "merger" (updated since the build), "updated" (the mod's copy changed) or
                                 # "load order" (another mod's copy wins now); for NOT_HELD, the status the
-                                # manifest records (see NOT_HELD_TEXT)
+                                # manifest records (see NOT_HELD_TEXT); for UP_TO_DATE, "forced" if the user
+                                # chose to patch it anyway
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,7 +189,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             elif rebuilt:
                 state(State.CHANGED, f"{rebuilt_text}: merge again", Severity.LOW if merger_only else Severity.HIGH,
                       cause=rebuilt)
-            elif not _same_copy(record, winner):
+            elif not same_copy(record, winner):
                 cause, text = _changed(record, winner)
                 state(State.CHANGED, f"{text}: merge again", Severity.HIGH, cause=cause)
             elif not (file.loaded and is_package_folder(file.loaded.folder)):
@@ -200,11 +201,18 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 else:
                     state(State.OVERRIDDEN, f"the game uses {loaded}'s copy, as the merged patches' mods.settings entry "
                           "is missing or changed: merge again", Severity.MEDIUM, needs_build=True)
-            else:
-                notes = ["patched anyway"] if record.get("forced") else []
+            elif record.get("forced"):
+                since = f" on {record['forced_since']}" if record.get("forced_since") else ""
+                text = (f"patched anyway, as you chose{since} ({origin}'s copy), though Smooth UI can't fully patch "
+                        "it: it may look or behave wrong in places")
+                if record.get("reasons"):
+                    text += f". Why: {'; '.join(record['reasons'])}"
                 if record.get("fixes_not_applied"):
-                    notes.append(f"without {', '.join(record['fixes_not_applied'])}")
-                state(State.UP_TO_DATE, f"patched ({origin}'s copy" + "".join(f"; {note}" for note in notes) + ")")
+                    text += f". Without {', '.join(record['fixes_not_applied'])}"
+                state(State.UP_TO_DATE, text, cause="forced")
+            else:
+                without = f"; without {', '.join(record['fixes_not_applied'])}" if record.get("fixes_not_applied") else ""
+                state(State.UP_TO_DATE, f"patched ({origin}'s copy{without})")
         elif key in held:
             state(State.DAMAGED, "the merged patches are damaged (their manifest lists it, their bundle doesn't): "
                   "merge again", Severity.HIGH)
@@ -217,11 +225,15 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             if rebuilt:
                 state(State.CHANGED, f"{rebuilt_text}: merge again", Severity.LOW if merger_only else Severity.MEDIUM,
                       cause=rebuilt)
-            elif not _same_copy(record, winner):
+            elif not same_copy(record, winner):
                 cause, text = _changed(record, winner)
                 state(State.CHANGED, f"{text}: merge again", Severity.MEDIUM, cause=cause)
             else:
                 text = NOT_HELD_TEXT.get(record["status"], record["status"])
+                if record["status"] != "unchanged":
+                    shown = file.loaded_without_package
+                    text += (", so the game shows its own copy, at its original frame rate" if shown and shown.folder == origin
+                             else f", so the game shows {_copy_name(shown.folder) if shown else 'no copy'}")
                 if record["status"] in ("left out", "failed") and record.get("reasons"):
                     text += f". Why: {'; '.join(record['reasons'])}"
                 state(State.NOT_HELD, f"{origin}'s copy: {text}", cause=record["status"])
@@ -243,7 +255,7 @@ def carried_force(result: Scan) -> tuple[list[str], list[str]]:
         if not record.get("forced"):
             continue
         file = result.files.get(key)
-        if file is not None and file.winner is not None and _same_copy(record, file.winner):
+        if file is not None and file.winner is not None and same_copy(record, file.winner):
             force.append(key)
         else:
             notes.append(f"{screen_name(key)}: you chose to patch it anyway, but its copy changed since, so that "
@@ -284,13 +296,6 @@ def _read_toc(package_dir, keys):
         return read_bundle_tocs(content, keys), None
     except SmoothUIError as e:
         return {}, str(e)
-
-
-def _same_copy(record, winner) -> bool:
-    """Whether a manifest record (see package.package_manifest) is about the winner's copy"""
-    return (str(record.get("mod", "")).lower() == winner.origin.lower()
-            and str(record.get("bundle", "")).lower() == winner.file.name.lower()
-            and record.get("source_size") == winner.size and record.get("source_crc32") == winner.toc_entry.crc)
 
 
 def _changed(record, winner):

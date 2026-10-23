@@ -94,9 +94,9 @@ class PackageFile:
 
     @property
     def severity(self) -> str:
-        """"ok"; "warning" (not as Smooth UI would patch it); or "error" (not in the package, although it
-        needs to be)"""
-        if self.status in (FileStatus.PATCHED, FileStatus.UNCHANGED) and not self.issues:
+        """"ok" (as Smooth UI would patch it, or patched anyway as the user chose); "warning" (without some
+        fixes); or "error" (not in the package, although it needs to be)"""
+        if self.status in (FileStatus.PATCHED, FileStatus.UNCHANGED, FileStatus.FORCED) and not self.fixes_not_applied:
             return "ok"
         if self.status.included or self.status == FileStatus.UNCHANGED:
             return "warning"

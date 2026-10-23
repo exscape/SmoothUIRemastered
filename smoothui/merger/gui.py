@@ -64,10 +64,13 @@ from .gui_texts import (
     NEWER_RELEASE,
     NO_GAME,
     NOTES_HEADING,
-    OK,
+    PATCH_ANYWAY,
+    PATCH_ANYWAY_NOTE,
     REMOVE_FAILED,
     REMOVE_QUESTION,
     REMOVE_TITLE,
+    REVERT,
+    REVERT_NOTE,
     SCREENS_HEADING,
     SHOW_LOG,
     STOP_MERGE,
@@ -79,13 +82,16 @@ from .gui_texts import (
     WELCOME,
     WELCOME_TITLE,
     Card,
+    also_changed,
+    capitalized,
+    row_status,
     status_card,
     unchanged_screens,
 )
 from .package import remove_package
 from .scan import PACKAGE_FOLDER, is_package_folder, scan
-from .screens import screen_name
-from .state import FileState, Severity, State, carried_force, check
+from .screens import screen_label, screen_name
+from .state import FileState, State, carried_force, check
 
 log = logging.getLogger(__name__)
 
@@ -271,7 +277,10 @@ class MergerWindow:
         self.card_frame.bind("<Configure>", lambda event: self.wrap_card())
         self.screens = ctk.CTkScrollableFrame(root, fg_color="transparent")
         self.screens.grid(row=3, column=0, sticky="nsew", padx=8)
-        self.screens.grid_columnconfigure(3, weight=1)
+        self.screens.grid_columnconfigure(5, weight=1)
+        self.screens._parent_canvas.bind("<Configure>", self.fit_scrollbar, add="+")
+        self.expanded = set()       # the screens whose details show
+        self.list_row = 0
         root.grid_rowconfigure(3, weight=1)
 
         self.log_view = ctk.CTkTextbox(root, wrap="word", state="disabled", height=180)
@@ -462,52 +471,105 @@ class MergerWindow:
         }
 
     def show_screens(self):
-        """The screens other mods change, the most important first, then notes"""
+        """The screens other mods change, by mod, then the line for the others, then notes"""
         for child in self.screens.winfo_children():
             child.destroy()
-        shown = sorted((state for state in self.found.states if state.state != State.NOTHING_TO_DO),
-                       key=_row_order) if self.found else []
-        others = len(self.found.states) - len(shown) if self.found else 0
+        states = self.found.states if self.found else []
+        shown = sorted((state for state in states if state.state != State.NOTHING_TO_DO), key=_row_order)
+        others = len(states) - len(shown)
         notes = self.notes() if self.found else []
         if not (shown or others or notes):
             self.screens.grid_remove()      # an empty list would still show its scroll bar
             return
         self.screens.grid()
-        row = 0
-
-        def heading(text):
-            nonlocal row
-            ctk.CTkLabel(self.screens, text=text, font=font(14, "bold"), anchor="w").grid(
-                row=row, column=0, columnspan=4, sticky="ew", padx=8, pady=(10 if row else 0, 4))
-            row += 1
-
-        def line(text, glyph="", tone=None):
-            nonlocal row
-            ctk.CTkLabel(self.screens, text=glyph, font=(SYMBOL_FONT, 13), width=20,
-                         text_color=color(tone) if tone else None).grid(row=row, column=0, sticky="nw", padx=(8, 4))
-            ctk.CTkLabel(self.screens, text=text, anchor="w", justify="left", wraplength=760).grid(
-                row=row, column=1, columnspan=3, sticky="ew")
-            row += 1
-
+        self.list_row = 0
+        width = max(self.screens.winfo_width() / ctk.ScalingTracker.get_widget_scaling(self.screens), 600)
         if shown or others:
-            heading(SCREENS_HEADING)
+            self.list_heading(SCREENS_HEADING)
         for state in shown:
-            tone = _row_tone(state)
-            ctk.CTkLabel(self.screens, text=GLYPHS[tone], font=(SYMBOL_FONT, 13), text_color=color(tone),
-                         width=20).grid(row=row, column=0, sticky="nw", padx=(8, 4), pady=2)
-            ctk.CTkLabel(self.screens, text=screen_name(state.path), anchor="w").grid(
-                row=row, column=1, sticky="nw", padx=(0, 16), pady=2)
-            ctk.CTkLabel(self.screens, text=state.winner or "", anchor="w", text_color=color("muted_text")).grid(
-                row=row, column=2, sticky="nw", padx=(0, 16), pady=2)
-            ctk.CTkLabel(self.screens, text=state.message, anchor="w", justify="left", wraplength=420).grid(
-                row=row, column=3, sticky="ew", pady=2)
-            row += 1
+            self.screen_row(state, width)
         if others:
-            line(unchanged_screens(others))
+            self.list_line(unchanged_screens(others))
         if notes:
-            heading(NOTES_HEADING)
+            self.list_heading(NOTES_HEADING)
             for text, tone in notes:
-                line(text, GLYPHS[tone], tone)
+                self.list_line(text, GLYPHS[tone], tone)
+        self.root.after_idle(self.fit_scrollbar)
+
+    def list_heading(self, text):
+        ctk.CTkLabel(self.screens, text=text, font=font(14, "bold"), anchor="w").grid(
+            row=self.list_row, column=0, columnspan=6, sticky="ew", padx=8, pady=(10 if self.list_row else 0, 4))
+        self.list_row += 1
+
+    def list_line(self, text, glyph="", tone=None):
+        ctk.CTkLabel(self.screens, text=glyph, font=(SYMBOL_FONT, 13), width=20,
+                     text_color=color(tone) if tone else None).grid(row=self.list_row, column=0, sticky="nw", padx=(8, 4))
+        ctk.CTkLabel(self.screens, text=text, anchor="w", justify="left", wraplength=760).grid(
+            row=self.list_row, column=1, columnspan=5, sticky="ew", pady=(4, 0))
+        self.list_row += 1
+
+    def screen_row(self, state: FileState, width):
+        """A screen's row: its glyph, name, mod and status; a click shows its details"""
+        tone, status = row_status(state)
+        expanded = state.path in self.expanded
+        cells = {
+            0: ctk.CTkLabel(self.screens, text=GLYPHS[tone], font=(SYMBOL_FONT, 13), text_color=color(tone), width=20),
+            1: ctk.CTkLabel(self.screens, text=screen_name(state.path), anchor="w"),
+            2: ctk.CTkLabel(self.screens, text=state.winner or "", anchor="w", text_color=color("muted_text")),
+            3: ctk.CTkLabel(self.screens, text=status, anchor="w"),
+            4: ctk.CTkLabel(self.screens, text="▾" if expanded else "▸", font=(SYMBOL_FONT, 16),
+                            text_color=color("muted_text")),
+        }
+        for column, cell in cells.items():
+            cell.grid(row=self.list_row, column=column, sticky="w", pady=1, padx=(8, 4) if column == 0 else (0, 16))
+            cell.configure(cursor="hand2")
+            cell.bind("<Button-1>", lambda event, path=state.path: self.toggle_row(path))
+        self.list_row += 1
+        if expanded:
+            self.details(state, width)
+
+    def details(self, state: FileState, width):
+        """Below a screen's row: its file name, the full message, the other mods that change it, and Patch
+        anyway (a screen left out for its rescale's problems, never for a failure) or its revert"""
+        frame = ctk.CTkFrame(self.screens, fg_color=color("card"))
+        frame.grid(row=self.list_row, column=1, columnspan=5, sticky="ew", padx=(0, 16), pady=(2, 8))
+        self.list_row += 1
+        wrap = width - 140
+        lines = [(screen_label(state.path), color("muted_text")), (capitalized(state.message), None)]
+        if also := also_changed(self.found.scan.files[state.path], state.winner):
+            lines.append((also, None))
+        for line, text_color in lines:
+            ctk.CTkLabel(frame, text=line, anchor="w", justify="left", wraplength=wrap, text_color=text_color).pack(
+                fill="x", padx=12, pady=(6, 0))
+        if state.state == State.NOT_HELD and state.cause == "left out":
+            button, note = PATCH_ANYWAY, PATCH_ANYWAY_NOTE
+            command = lambda: self.merge(self.stale, patch_anyway=state.path)
+        elif state.state == State.UP_TO_DATE and state.cause == "forced":
+            button, note = REVERT, REVERT_NOTE.format(mod=state.winner)
+            command = lambda: self.merge(self.stale, revert=state.path)
+        else:
+            button = None
+        if button:
+            row = ctk.CTkFrame(frame, fg_color="transparent")
+            row.pack(fill="x", padx=12, pady=(8, 0))
+            self.button(row, button, command, quiet=True).pack(side="left")
+            ctk.CTkLabel(row, text=note, anchor="w").pack(side="left", padx=10)
+            if self.busy:
+                row.winfo_children()[0].configure(state="disabled")
+        ctk.CTkFrame(frame, fg_color="transparent", height=8).pack()
+
+    def toggle_row(self, path):
+        self.expanded ^= {path}
+        self.show_screens()
+
+    def fit_scrollbar(self, event=None):
+        """Show the list's scroll bar only when the list doesn't fit (customtkinter always shows it; its
+        internals, as of customtkinter 6.0.0)"""
+        bar = self.screens._scrollbar
+        if self.screens.winfo_reqheight() > self.screens._parent_canvas.winfo_height():
+            bar.grid()
+        else:
+            bar.grid_remove()
 
     def notes(self) -> list[tuple[str, str]]:
         """(text, tone): the scan's problems, the compat patches, and the last merge's problems and notes"""
@@ -520,7 +582,7 @@ class MergerWindow:
                 notes.append((UNKNOWN_FILES.format(names=", ".join(unknown)), INFO))
         else:
             notes += [(COMPAT_PATCH.format(folder=folder), INFO) for folder in result.compat_patches]
-        return [(text[:1].upper() + text[1:], tone) for text, tone in notes]
+        return [(capitalized(text), tone) for text, tone in notes]
 
     # ---- The scan ----
 
@@ -551,8 +613,9 @@ class MergerWindow:
 
     # ---- Merge, remove ----
 
-    def merge(self, play=False):
-        """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once"""
+    def merge(self, play=False, patch_anyway=None, revert=None):
+        """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once.
+        patch_anyway: a file to force too; revert: a forced file not to force (see build)"""
         self.busy = "build"
         self.merged = self.merge_error = None
         self.refresh()
@@ -569,9 +632,11 @@ class MergerWindow:
                     self.exit(PLAY)
                     return
             self.rescan(keep_result=True)
-        in_thread(self.calls, self.build, finished)
+        in_thread(self.calls, self.build, finished, patch_anyway, revert)
 
-    def build(self):
+    def build(self, patch_anyway=None, revert=None):
+        """Build the package, forcing what the last build forced (the same copies), and patch_anyway, but
+        not revert"""
         # Imported here: the patcher takes a while to import, and only a build needs it
         from .builder import build_package, merge_report
         from .cli import show_build
@@ -583,6 +648,12 @@ class MergerWindow:
             log.warning(note)
         if force:
             log.info(f"Forced again, as at the last build (the same copies): {', '.join(force)}")
+        if patch_anyway:
+            log.info(f"Patching {screen_label(patch_anyway)} anyway, as you chose")
+            force.append(patch_anyway)
+        if revert in force:
+            log.info(f"Reverting {screen_label(revert)} to the unpatched screen, as you chose")
+            force.remove(revert)
         result = build_package(self.game, settings, force=force, pool=self.pool, data_dir=DATA_DIR)
         self.reports.append(merge_report(result, started))
         try:
@@ -678,19 +749,9 @@ class MergerWindow:
         msg_box(FAILED.format(error=f"{kind.__name__}: {error}", log=LOG_FILE), MB_ICONERROR)
 
 
-def _row_tone(state: FileState) -> str:
-    """A screen's glyph and color in the list"""
-    if state.state == State.UP_TO_DATE or (state.state == State.NOT_HELD and state.cause == "unchanged"):
-        return OK
-    if state.state in (State.DAMAGED, State.NOT_HELD):
-        return ERROR
-    return INFO if state.severity == Severity.LOW else WARNING
-
-
 def _row_order(state: FileState):
-    """Those needing attention first"""
-    rank = {ERROR: 0, WARNING: 1, INFO: 2, OK: 3}[_row_tone(state)]
-    return rank, -(state.severity or 0), screen_name(state.path).lower()
+    """By mod, then by screen (a screen no other mod changes now, e.g. its mod was removed, first)"""
+    return (state.winner or "").lower(), screen_name(state.path).lower()
 
 
 def show_info(title, text):
