@@ -9,6 +9,8 @@ A worker's log records are collected per task and returned with its result (see 
 process can replay each file's output in one piece (replay_records), as each task is done. The records then
 get the time they are replayed at, so that a log reads in order; the worker's own time for the task is
 logged at its end.
+
+On Windows, the workers end with the process that started them, however it ends (see _workers_job).
 """
 
 import importlib
@@ -29,6 +31,11 @@ WORKERS_VARIABLE = "SMOOTHUI_WORKERS"
 
 # GetLogicalProcessorInformationEx: one record per physical core
 RELATION_PROCESSOR_CORE = 0
+
+# Job objects (Windows)
+JOB_OBJECT_ASSIGN_PROCESS = 0x0001
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 
 # More workers stop helping here: it saves no time, but adds 50-120 MiB of RAM usage per extra worker.
 MAX_WORKERS = 4
@@ -93,7 +100,62 @@ def make_pool(workers: int) -> ProcessPoolExecutor:
               if isinstance(logger, logging.Logger) and logger.level}
     levels[""] = root.level
     return ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
-                               initializer=_init_worker, initargs=(levels,))
+                               initializer=_init_worker, initargs=(levels, _workers_job()))
+
+
+_job = None     # (name, handle) of the job _workers_job made, once
+
+
+def _workers_job() -> str | None:
+    """The name of a job object that Windows ends together with this process: it kills the processes in the
+    job when the job's last handle closes, and that handle is this process's, closed when it ends, however it
+    ends (also from Task Manager, or by a crash). Without it, a worker whose main process is gone waits for
+    work forever (it holds both ends of its pipes, so it never notices), and a mod manager sees the program
+    still running. Only the workers join it (_init_worker): this process stays out of it, and so does
+    anything else it starts (a browser, Explorer, or the game, which must never end with the tools). None
+    outside Windows, or if it can't be made: workers then end only as before (see kill_workers)."""
+    global _job
+    if _job is None and sys.platform == "win32":
+        name = f"Local\\SmoothUI-workers-{os.getpid()}"
+        try:
+            _job = (name, _make_job(name))
+            log.debug(f"Workers end with this process (job object {name})")
+        except OSError as e:
+            _job = (None, None)
+            log.debug(f"Workers may outlive this process: no job object ({e})")
+    return _job[0] if _job else None
+
+
+def _make_job(name):
+    """A job object that kills its processes when its last handle closes; returns that handle. (Handles are
+    passed as c_void_p: a plain int would be passed as a 32-bit C int.)"""
+    import ctypes
+
+    class Limits(ctypes.Structure):     # JOBOBJECT_EXTENDED_LIMIT_INFORMATION, its first member's fields inlined
+        _fields_ = [("UserTimeLimits", ctypes.c_int64 * 2), ("LimitFlags", ctypes.c_uint32),
+                    ("WorkingSetSizes", ctypes.c_size_t * 2), ("ActiveProcessLimit", ctypes.c_uint32),
+                    ("Affinity", ctypes.c_size_t), ("PriorityAndSchedulingClass", ctypes.c_uint32 * 2),
+                    ("IoInfo", ctypes.c_uint64 * 6), ("MemoryLimits", ctypes.c_size_t * 4)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = ctypes.c_void_p
+    job = kernel32.CreateJobObjectW(None, name)
+    limits = Limits(LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
+    if not job or not kernel32.SetInformationJobObject(ctypes.c_void_p(job), JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                                                       ctypes.byref(limits), ctypes.sizeof(limits)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return job     # never closed: Windows closes it when this process ends
+
+
+def _join_job(name):
+    """In a worker: join the job _workers_job named, closing its own handle at once, so that the main
+    process's stays the last one. A failure is ignored (the worker then ends only as before)."""
+    import ctypes
+    kernel32 = ctypes.WinDLL("kernel32")
+    kernel32.OpenJobObjectW.restype = ctypes.c_void_p
+    if job := kernel32.OpenJobObjectW(JOB_OBJECT_ASSIGN_PROCESS, False, name):
+        kernel32.AssignProcessToJobObject(ctypes.c_void_p(job), ctypes.c_void_p(-1))    # -1: this process
+        kernel32.CloseHandle(ctypes.c_void_p(job))
 
 
 def kill_workers(pool: ProcessPoolExecutor):
@@ -115,8 +177,11 @@ class _RecordList(list):
 _records = _RecordList()
 
 
-def _init_worker(levels):
-    """In each worker: the main process's logger levels, and every record collected into _records"""
+def _init_worker(levels, job=None):
+    """In each worker: join the job that ends it with the main process (see _workers_job), the main
+    process's logger levels, and every record collected into _records"""
+    if job:
+        _join_job(job)
     root = logging.getLogger()
     for handler in root.handlers[:]:
         root.removeHandler(handler)
