@@ -28,6 +28,7 @@ from ..witcher3.source_file import SourceFile
 from . import REPORT_URL
 from .installed import is_smoothui_folder
 from .scan import COMPAT_PATCH, Scan
+from .screens import screen_label
 
 
 class FileStatus(Enum):
@@ -106,36 +107,31 @@ class PackageFile:
         they can do. The first line is the summary; the others are indented."""
         status, mod = self.status, self.mod
         if status == FileStatus.PATCHED:
-            summary = f"patched ({mod}'s copy)" + (", but not entirely" if self.issues else "")
+            summary = f"patched ({mod}'s copy)" + (", without some fixes:" if self.issues else "")
             details = self._fix_lines()
         elif status == FileStatus.UNCHANGED:
-            if self.issues:
-                summary = (f"{mod}'s copy is already at the target frame rate, and is used as it is, without these "
-                           "fixes, which can't apply to it:")
-            else:
-                summary = f"{mod}'s copy is already at the target frame rate and needs none of its fixes: used as it is"
+            summary = f"{mod}'s copy is already smooth: used as it is" + (", without some fixes:" if self.issues else "")
             details = self._fix_lines()
         elif status == FileStatus.FORCED:
-            summary = (f"patched ({mod}'s copy) as you asked, although Smooth UI can't patch it entirely. It may "
+            summary = (f"patched anyway ({mod}'s copy), as you chose, though Smooth UI can't fully patch it. It may "
                        "look or behave wrong in places:")
             details = [*self._issue_lines(), *self._fix_lines()]
         elif status == FileStatus.MOD_FAILED:
-            summary = (f"NOT patched: another of {mod}'s files can't be patched (see there), so all of its files "
-                       f"are left out. {self._fallback_text()}")
+            summary = (f"not patched: another of {mod}'s screens can't be patched, so none of them are. "
+                       f"{self._fallback_text()}")
             details = []
         elif status == FileStatus.FAILED:
-            summary = f"NOT patched: Smooth UI can't patch {mod}'s copy, so all of {mod}'s files are left out. {self._fallback_text()}"
+            summary = f"not patched: {mod}'s copy can't be patched, so none of {mod}'s screens are. {self._fallback_text()}"
             details = [f"Why: {self.error}",
-                       (f"This is most likely a limitation or a bug of Smooth UI, not a mistake of {mod}: please report it at "
-                        f"{REPORT_URL}, with this log.")]
-        else:
-            summary = f"NOT patched: Smooth UI can't patch {mod}'s copy entirely, so it is left out. {self._fallback_text()}"
-            details = ["Why:", *self._issue_lines(), *self._fix_lines(),
-                       ("What you can do: check for a newer version of the merger, or patch the file anyway (force "
-                        "it) if you accept that it may look or behave wrong in places. This is most likely a "
-                        f"limitation of Smooth UI, not a mistake of {mod}: please report it at {REPORT_URL}, "
+                       (f"Most likely a bug or limitation of Smooth UI, not of {mod}: please report it at {REPORT_URL}, "
                         "with this log.")]
-        return "\n  ".join([f"{self.path}: {summary}", *details])
+        else:
+            summary = f"left out: Smooth UI can't fully patch {mod}'s copy. {self._fallback_text()}"
+            details = ["Why:", *self._issue_lines(), *self._fix_lines(),
+                       ("You can patch it anyway (it may then look or behave wrong in places), or check for a newer "
+                        f"merger. Most likely a limitation of Smooth UI, not of {mod}: please report it at "
+                        f"{REPORT_URL}, with this log.")]
+        return "\n  ".join([f"{screen_label(self.path)}: {summary}", *details])
 
     def _issue_lines(self):
         return [f"- {issue.message}" for issue in self.issues if issue.keeps_out]
@@ -152,11 +148,10 @@ class PackageFile:
         if self.fallback is None or self.fallback == self.mod:
             return f"{self.mod}'s own copy, at its original frame rate"
         if is_smoothui_folder(self.fallback):
-            return (f"Smooth UI's own copy, which comes before {self.mod}'s in the load order, without {self.mod}'s "
-                    "changes to this screen")
+            return f"Smooth UI's own copy, without {self.mod}'s changes (it comes first in the load order)"
         if COMPAT_PATCH.fullmatch(self.fallback):
             return f"the copy of {self.fallback} (a Smooth UI compat patch)"
-        return f"{self.fallback}'s copy, which comes before {self.mod}'s in the load order"
+        return f"{self.fallback}'s copy (it comes before {self.mod}'s in the load order)"
 
 
 def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
@@ -168,7 +163,7 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
                ((FileStatus.PATCHED, patch.patched), (FileStatus.UNCHANGED, patch.kept), (FileStatus.FAILED, patch.failed))
                for result in results}
     if unknown := sorted(force - set(results)):
-        fail(f"not a file the package could hold: {', '.join(unknown)}")
+        fail(f"not a file the merged patches could hold: {', '.join(unknown)}")
 
     issues = _issues(patch)
     failed_mods = {result["origin"] for result in patch.failed}

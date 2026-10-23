@@ -253,7 +253,8 @@ def replace_swf(redswf: bytes | bytearray, swf: bytes | bytearray) -> bytes:
     check_swf(swf)
     old = RedSwf(redswf)
     if old.stale:
-        log.warning(f"Stale CRCs in the original .redswf: {', '.join(sorted(old.stale))}")
+        # Not worth a warning: seen in other mods' files, which work in game as they are
+        log.debug(f"Stale CRCs in the original .redswf: {', '.join(sorted(old.stale))}")
     out = old.with_swf(swf)
     problems = verify_replacement(old, out, swf)
     if problems:

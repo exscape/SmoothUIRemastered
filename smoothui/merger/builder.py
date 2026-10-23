@@ -22,6 +22,7 @@ from ..witcher3.mods_settings import write_entry
 from .package import Written, record_path, write_package
 from .policy import PackageFile, decide
 from .scan import PACKAGE_FOLDER, Scan, is_package_folder, scan
+from .screens import screen_label
 
 log = logging.getLogger(__name__)
 
@@ -76,22 +77,22 @@ def check_package(files: list[PackageFile], rescan: Scan) -> list[str]:
     """Problems with an installed package, from a scan made after it was installed: each file it holds must
     be loaded from it, and still come from the same copy (else a mod changed while it was built)."""
     if not rescan.installed.usable:
-        return [f"the package can't be checked: {rescan.installed.message}"]
+        return [f"the merged patches can't be checked: {rescan.installed.message}"]
     problems = []
     for file in files:
         if not file.status.included:
             continue
         found = rescan.files.get(file.path)
         loaded = found.loaded if found else None
+        label = screen_label(file.path)
         if loaded is None:
-            problems.append(f"{file.path}: the game doesn't load the package's copy (it doesn't see the package)")
+            problems.append(f"{label}: the game doesn't see the merged patches")
         elif not is_package_folder(loaded.folder):
-            problems.append(f"{file.path}: the game loads {loaded.folder}'s copy, not the package's: that mod comes "
-                            "before the package in the load order. Change its priority to be a higher number than 0 (in mods.settings, or "
-                            "in your mod manager)")
+            problems.append(f"{label}: the game uses {loaded.folder}'s copy, which comes before the merged patches. "
+                            "Give it a priority above 0 (in mods.settings or your mod manager)")
         elif found.winner != file.source:
-            problems.append(f"{file.path}: {file.mod}'s copy changed (or another mod's copy now wins) while the package "
-                            "was built: build it again")
+            problems.append(f"{label}: {file.mod}'s copy changed while merging (or another mod's copy is used now): "
+                            "merge again")
     return problems
 
 
@@ -104,7 +105,7 @@ def compat_notes(result: Scan, files: list[PackageFile]) -> list[str]:
     for folder in result.compat_patches:
         shipped = [key for key, file in result.files.items() if any(mod.folder == folder for mod in file.shippers)]
         if all(key in held for key in shipped):
-            notes.append(f"{folder} is not needed while the package is used, and is safe to remove")
+            notes.append(f"{folder} is no longer needed (the merged patches replace it): you can remove it")
     return notes
 
 

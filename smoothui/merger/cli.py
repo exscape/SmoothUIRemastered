@@ -20,6 +20,7 @@ from .builder import build_package
 from .installed import is_smoothui_folder
 from .load_order import Group
 from .scan import is_package_folder
+from .screens import screen_label
 from .state import State, check
 
 log = logging.getLogger(__name__)
@@ -74,27 +75,27 @@ def show_scan(game_path, mods_settings, data_dir):
     if not result.installed.usable:
         log.warning(result.installed.message)
         if found.package_without_smoothui:
-            log.warning("A package is installed: it overrides files with copies patched for another Smooth UI "
-                        "build, or for none")
+            log.warning("The merged patches are still installed: they replace screens with copies patched for "
+                        "another Smooth UI build, or for none")
         if result.conflicts:
-            log.warning(f"Other mods ship files Smooth UI changes, so some of their screens may be wrong: "
+            log.warning(f"Other mods change screens Smooth UI changes, so some may look wrong: "
                         f"{', '.join(result.conflicts)}")
         _show_verdict(found, elapsed)
         return
     log.info(result.installed.message)
 
-    log.info("Load order of the mods that ship a file Smooth UI patches", extra=HEADING)
+    log.info("Load order of the mods that change a screen Smooth UI patches", extra=HEADING)
     relevant = {mod for file in result.files.values() for mod in file.shippers}
     for position, mod in enumerate(result.order, 1):
         if mod in relevant or is_smoothui_folder(mod.folder):
             log.info(f"{position:4}. {mod.folder} ({_entry(mod)})")
 
-    log.info("Files: what the package holds, and what a build would change", extra=HEADING)
+    log.info("Screens: what the merged patches hold, and what merging would change", extra=HEADING)
     for state in found.states:
         file = result.files[state.path]
         loaded = file.loaded.folder if file.loaded else None
         severity = f" ({state.severity.name.lower()})" if state.severity else ""
-        text = f"{state.path}: {state.state.value}{severity}: {state.message}"
+        text = f"{screen_label(state.path)}: {state.state.value}{severity}: {state.message}"
         if loaded and state.needs_build and loaded != state.winner:
             text += f"; loaded now: {loaded}"
         # Smooth UI ships every file
@@ -102,12 +103,12 @@ def show_scan(game_path, mods_settings, data_dir):
                   and not is_smoothui_folder(mod.folder) and not is_package_folder(mod.folder)]
         attention = state.severity is not None or state.state == State.UNDETERMINED
         log.log(logging.WARNING if attention else logging.INFO,
-                text + (f"; also shipped by {', '.join(others)}" if others else ""))
+                text + (f"; also changed by {', '.join(others)}" if others else ""))
     to_build = len(found.needs_build)
-    log.info(f"\nA build is needed: it would change {to_build} file(s)" if to_build else "\nNo build is needed")
+    log.info(f"\nMerging is needed: it would change {to_build} screen(s)" if to_build else "\nNo merge is needed")
 
-    _show_problems(result.problems, [f"{folder} is a Smooth UI compat patch: the package replaces it for every file "
-                                     "the package holds" for folder in result.compat_patches])
+    _show_problems(result.problems, [f"{folder} is a Smooth UI compat patch: the merged patches replace it for every "
+                                     "screen they hold" for folder in result.compat_patches])
     _show_verdict(found, elapsed)
 
 
@@ -128,7 +129,7 @@ def build(args, game_path, mods_settings):
     start = time.perf_counter()
     result = build_package(game_path, mods_settings, force=args.force, out_dir=args.out, data_dir=args.data_dir)
     show_build(result)
-    log.info(f"\nBuilt in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
+    log.info(f"\nMerged in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
     if not result.clean:
         sys.exit(2)
 
@@ -137,26 +138,26 @@ def show_build(result):
     """Log what build_package did"""
     log.info("Installed Smooth UI Remastered", extra=HEADING)
     log.info(result.scan.installed.message)
-    log.info("Files", extra=HEADING)
+    log.info("Screens", extra=HEADING)
     for file in result.files:
         log.log(LEVELS[file.severity], file.explain())
     if not result.files:
-        log.info("No other mod ships a file Smooth UI patches")
+        log.info("No other mod changes a screen Smooth UI patches")
     _show_problems(result.problems)
 
-    log.info("Package", extra=HEADING)
+    log.info("Merged patches", extra=HEADING)
     installation = result.installation
     held = sum(file.status.included for file in result.files)
     if not installation.written.empty:
-        log.info(f"Wrote {installation.package_dir} ({held} file(s))")
+        log.info(f"Wrote {installation.package_dir} ({held} screen(s))")
     elif installation.written.removed:
-        log.info(f"The package holds no files, so there is none ({installation.package_dir} removed, if it was there); "
-                 "mods.settings left as it is")
+        log.info(f"Nothing to merge, so there are no merged patches ({installation.package_dir} removed, if it was "
+                 "there); mods.settings left as it is")
     else:
-        log.warning(f"The package holds no files, but {installation.package_dir} holds files the merger didn't write, "
-                    "so it stays")
+        log.warning(f"Nothing to merge, but {installation.package_dir} holds files the merger didn't write, so it "
+                    "stays")
     for name in installation.written.unknown_files:
-        log.warning(f"{name} in the package folder wasn't written by the merger: remove it")
+        log.warning(f"{name} in the merged patches' folder wasn't written by the merger: remove it")
     if installation.entry_changed is not None:
         log.info(f"mods.settings: {'entry written' if installation.entry_changed else 'entry already as needed'}")
     for problem in result.check_problems:

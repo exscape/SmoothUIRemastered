@@ -76,7 +76,7 @@ def write_package(package_dir: Path, installed: Installed, files: list[PackageFi
     manifest = package_manifest(installed, files)
     if not included:
         removed, unknown = remove_package(package_dir)
-        log.info("The package holds no files: " + ("removed it" if removed else "its folder stays, as it holds other files"))
+        log.info("Nothing to merge: " + ("removed the merged patches" if removed else "their folder stays, as it holds other files"))
         if record is not None:
             make_dirs(Path(record).parent)
             write_file(record, _manifest_bytes(manifest))

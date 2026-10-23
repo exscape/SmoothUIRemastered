@@ -24,6 +24,7 @@ from ..witcher3.mods_settings import read_mods_settings
 from ..witcher3.source_file import SourceFile
 from .installed import Installed, installed_build, is_smoothui_folder
 from .load_order import Mod, load_order, make_mods, undetermined_for
+from .screens import screen_name
 
 log = logging.getLogger(__name__)
 
@@ -135,16 +136,15 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
         result.undetermined = undetermined_for(others)
         if COMPAT_PATCH.fullmatch(result.loaded.folder if result.loaded else "") and not others:
             # Not necessarily a mistake: a mod that only ships .redswf files works through its compat patch alone
-            problems.append(Problem(ProblemKind.ORPHANED_COMPAT, f"{result.loaded.folder} ships {key}, which no other "
-                                    "enabled mod ships, and the game loads its copy. That is fine if you use the "
-                                    "compat patch in place of the mod it was made for. If that mod was disabled or "
-                                    "removed by mistake, enable it again, or remove the compat patch",
-                                    result.loaded.folder, key))
+            problems.append(Problem(ProblemKind.ORPHANED_COMPAT, f"the game uses {result.loaded.folder}'s {screen_name(key)}, "
+                                    "though no other enabled mod changes that screen. Fine if you use this compat patch "
+                                    "in place of its mod; if that mod was disabled or removed by mistake, enable it "
+                                    "again, or remove the compat patch", result.loaded.folder, key))
         if result.undetermined:
             names = ", ".join(mod.folder for mod in result.undetermined)
-            problems.append(Problem(ProblemKind.UNDETERMINED, f"the load order can't be determined for {key}: it is shipped by "
-                                    f"{names}, and at least one of them has a mods.settings entry without a "
-                                    "Priority. Give it a Priority", file=key))
+            problems.append(Problem(ProblemKind.UNDETERMINED, f"the load order doesn't decide whose {screen_name(key)} the "
+                                    f"game uses: {names} change it, and at least one of them has a mods.settings entry "
+                                    "without a Priority. Give it one", file=key))
         elif others:
             winner = others[0]
             result.winner = SourceFile.in_bundle(key, winner.folder, *shipped[winner][key])
@@ -235,9 +235,9 @@ def modio_problems(keys, modio_root=None) -> list[Problem]:
             for entry in read_toc(bundle, ".redswf"):
                 key = profile_key(entry.path)
                 if key in keys:
-                    problems.append(Problem(ProblemKind.MODIO, f"a mod.io mod ships {key} ({bundle}); mod.io mods always load "
-                                            "before anything in Mods\\, so it can't be patched. Install it from "
-                                            "Nexus Mods instead (it may be disabled in game)", file=key))
+                    problems.append(Problem(ProblemKind.MODIO, f"a mod.io mod changes {screen_name(key)} ({bundle}): mod.io "
+                                            "mods always load first, so it can't be patched. Install it from Nexus Mods "
+                                            "instead (it may be disabled in game)", file=key))
         return problems
     except Exception as e:  # noqa: BLE001 (a check we can't test against real mod.io files: never fail the scan)
         return [Problem(ProblemKind.MODIO, f"couldn't check mod.io mods: {e}")]

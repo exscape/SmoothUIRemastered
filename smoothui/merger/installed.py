@@ -80,7 +80,7 @@ def smoothui_mod(folders, mods: list[Mod]) -> Mod | Installed:
     if disabled:
         return Installed(Status.DISABLED, f"Smooth UI Remastered is disabled ({disabled[0]}): enable it first",
                          folder=disabled[0])
-    return Installed(Status.NOT_INSTALLED, "Smooth UI Remastered is not installed: install it first")
+    return Installed(Status.NOT_INSTALLED, "Smooth UI Remastered isn't installed: install it first")
 
 
 def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | None,
@@ -95,18 +95,18 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
     manifests = {version: manifest for version, manifest in manifests.items() if version not in too_new}
     record_version = _record_version(record_text)
     if record_version in too_new:
-        return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, which needs a newer version "
-                         "of the merger: update the merger", folder=folder, version=record_version)
+        return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, which needs a newer "
+                         "merger: update the merger", folder=folder, version=record_version)
     if record_version is not None:
         manifest = manifests.get(record_version)
         if manifest is None:
-            return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, which this version of "
-                             "the merger doesn't know: update the merger", folder=folder, version=record_version)
+            return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, which this merger "
+                             "doesn't know: update the merger", folder=folder, version=record_version)
         sizes_only = _matches(files, manifest)
         if sizes_only is None:
-            return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, but its files differ "
-                             "from that release's: some are modified, or from another version. Reinstall Smooth UI "
-                             "Remastered", folder=folder, version=record_version)
+            return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, but some of its "
+                             "files are modified or from another version: reinstall Smooth UI", folder=folder,
+                             version=record_version)
         return _known(folder, record_version, manifest, sizes_only, manifests)
 
     # Releases first. Dev builds only in the repo (the frozen merger ships no dev manifests), for a dev build
@@ -120,9 +120,8 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
         if matches:
             break
     if not matches:
-        return Installed(Status.UNKNOWN, "the installed Smooth UI Remastered matches none of the releases this version of "
-                         "the merger knows: its files are modified or mixed, or it is newer than the merger. "
-                         "Update the merger, or reinstall Smooth UI Remastered", folder=folder)
+        return Installed(Status.UNKNOWN, "the installed Smooth UI Remastered is modified, mixed, or newer than this "
+                         "merger: update the merger, or reinstall Smooth UI", folder=folder)
     # Only possible for a build whose record was deleted: the releases' files all differ
     version = max(matches, key=version_key)
     return _known(folder, version, manifests[version], matches[version], manifests)
@@ -157,8 +156,8 @@ def _matches(files, manifest):
 
 def _known(folder, version, manifest, sizes_only, manifests):
     if "fps" not in manifest:
-        return Installed(Status.TOO_OLD, f"Smooth UI Remastered {version} is installed, which is from before the 60 and "
-                         "120 fps builds: update Smooth UI Remastered", folder=folder, version=version)
+        return Installed(Status.TOO_OLD, f"Smooth UI Remastered {version} is installed, which is too old for the merger "
+                         "(from before the 60 and 120 fps builds): update Smooth UI", folder=folder, version=version)
     releases = [v for v in manifests if version_key(v) is not None and not is_dev_version(v)]
     newest = max(releases, key=version_key, default=None)
     newer = newest.split("-")[0] if newest and version_key(newest) > version_key(version) else None
@@ -166,7 +165,7 @@ def _known(folder, version, manifest, sizes_only, manifests):
     if sizes_only:
         message += " (identified by file sizes only: its manifest has no CRC32s)"
     if newer:
-        message += f"; a newer Smooth UI Remastered is available ({newer})"
+        message += f"; a newer one is available ({newer})"
     return Installed(Status.INSTALLED, message, folder=folder, version=version, fps=manifest["fps"], manifest=manifest,
                      sizes_only=sizes_only, newer_release=newer)
 

@@ -28,6 +28,7 @@ from . import merger_version
 from .installed import is_smoothui_folder
 from .package import PACKAGE_MANIFEST, PACKAGE_MANIFEST_FORMAT, record_path
 from .scan import COMPAT_PATCH, PACKAGE_FOLDER, Scan, is_package_folder, scan
+from .screens import screen_name
 
 
 class State(Enum):
@@ -120,10 +121,10 @@ def _has_package(result: Scan) -> bool:
 # What the last build did with a file it didn't put in the package, by the status the manifest records
 # (policy.FileStatus's values; policy.py isn't imported here, as the launch check doesn't need the patcher)
 NOT_HELD_TEXT = {
-    "unchanged": "needs no patching (already at the target frame rate)",
-    "left out": "left out, as Smooth UI can't patch it entirely",
+    "unchanged": "already smooth, nothing to patch",
+    "left out": "left out, as Smooth UI can't fully patch it",
     "failed": "left out, as it can't be patched",
-    "mod failed": "left out, as another file of the same mod can't be patched",
+    "mod failed": "left out, as another of the mod's screens can't be patched",
 }
 
 
@@ -141,12 +142,12 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     installed = result.installed
     built_for = (manifest or {}).get("smoothui", {})
     built_by = (manifest or {}).get("merger_version")
-    # Only the merger's version changed: nothing the game shows is wrong (rebuilt_severity LOW)
+    # Only the merger's version changed: nothing the game shows is wrong (severity LOW)
     if built_for.get("version") != installed.version or built_for.get("release_created_at") != installed.manifest.get("created_at"):
-        rebuilt = f"for Smooth UI {built_for.get('version')}, and {installed.version} is installed"
+        rebuilt = "Smooth UI was updated"
         merger_only = False
     elif built_by != merger_version():
-        rebuilt = f"by version {built_by} of the merger, and this is {merger_version()}"
+        rebuilt = "the merger was updated"
         merger_only = True
     else:
         rebuilt = None
@@ -166,65 +167,61 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             states.append(FileState(key, kind, message, origin, severity, needs_build))
 
         if file.undetermined:
-            state(State.UNDETERMINED, "which mod's copy the game loads isn't decided by the load order (see the problems)")
+            state(State.UNDETERMINED, "the load order doesn't decide which mod's copy the game uses (see the problems)")
         elif toc_problem and (key in held or (manifest is None and winner is not None)):
-            state(State.DAMAGED, f"the package can't be used ({toc_problem}): build it again", Severity.HIGH)
+            state(State.DAMAGED, f"the merged patches can't be used ({toc_problem}): merge again", Severity.HIGH)
         elif key in toc:
             record = held.get(key)
             entry = toc[key][1]
             if record is None:
-                why = manifest_problem or "its manifest doesn't record this file"
-                state(State.DAMAGED, f"the package holds a copy, but {why}: build it again", Severity.HIGH)
+                why = manifest_problem or "its manifest doesn't list this screen"
+                state(State.DAMAGED, f"the merged patches are damaged ({why}): merge again", Severity.HIGH)
             elif winner is None:
                 after = file.loaded_without_package
-                state(State.NO_LONGER_NEEDED, f"the package holds {record['mod']}'s copy, which no other mod ships now: "
-                      f"build again, so that the game uses {_copy_name(after.folder) if after else 'no copy'}",
-                      Severity.HIGH)
+                state(State.NO_LONGER_NEEDED, f"{record['mod']} no longer changes it: merge again (the game then uses "
+                      f"{_copy_name(after.folder) if after else 'no copy'})", Severity.HIGH)
             elif (entry.size, entry.crc) != (record.get("output_size"), record.get("output_crc32")):
-                state(State.DAMAGED, "the package's copy isn't the one it built: build it again", Severity.HIGH)
+                state(State.DAMAGED, "the merged patches are damaged: merge again", Severity.HIGH)
             elif rebuilt:
-                state(State.CHANGED, f"the package was built {rebuilt}: build it again",
-                      Severity.LOW if merger_only else Severity.HIGH)
+                state(State.CHANGED, f"{rebuilt}: merge again", Severity.LOW if merger_only else Severity.HIGH)
             elif not _same_copy(record, winner):
-                state(State.CHANGED, _changed(record, winner) + ": build it again", Severity.HIGH)
+                state(State.CHANGED, f"{_changed(record, winner)}: merge again", Severity.HIGH)
             elif not (file.loaded and is_package_folder(file.loaded.folder)):
                 loaded = file.loaded.folder if file.loaded else "another mod"
                 if own_entry:
-                    state(State.OVERRIDDEN, f"the package holds it, but the game loads {loaded}'s copy: that mod has "
-                          "Priority 0 too, and its name comes first. Give it a higher number than 0 as its priority "
-                          "(in mods.settings, or in your mod manager), then scan again", Severity.MEDIUM)
+                    state(State.OVERRIDDEN, f"the game uses {loaded}'s copy: it has Priority 0 too, and its name sorts "
+                          "first. Give it a priority above 0 (in mods.settings or your mod manager), then scan again",
+                          Severity.MEDIUM)
                 else:
-                    state(State.OVERRIDDEN, f"the package holds it, but the game loads {loaded}'s copy, as the "
-                          "package's mods.settings entry is missing, disabled, or not at Priority 0: build again "
-                          "to write it", Severity.MEDIUM, needs_build=True)
+                    state(State.OVERRIDDEN, f"the game uses {loaded}'s copy, as the merged patches' mods.settings entry "
+                          "is missing or changed: merge again", Severity.MEDIUM, needs_build=True)
             else:
-                notes = ["forced"] if record.get("forced") else []
+                notes = ["patched anyway"] if record.get("forced") else []
                 if record.get("fixes_not_applied"):
                     notes.append(f"without {', '.join(record['fixes_not_applied'])}")
-                state(State.UP_TO_DATE, f"patched from {origin}'s copy" + (f" ({'; '.join(notes)})" if notes else ""))
+                state(State.UP_TO_DATE, f"patched ({origin}'s copy" + "".join(f"; {note}" for note in notes) + ")")
         elif key in held:
-            state(State.DAMAGED, "the package's manifest records it, but its bundle doesn't hold it: build it again",
-                  Severity.HIGH)
+            state(State.DAMAGED, "the merged patches are damaged (their manifest lists it, their bundle doesn't): "
+                  "merge again", Severity.HIGH)
         elif winner is None:
-            state(State.NOTHING_TO_DO, f"no other mod ships it: the game uses {_copy_name(file.loaded.folder)}"
-                  if file.loaded else "no mod ships it")
+            state(State.NOTHING_TO_DO, f"no other mod changes it: the game uses {_copy_name(file.loaded.folder)}"
+                  if file.loaded else "no mod has it")
         elif key in not_held:
             # The package doesn't hold it, so the game shows the winning copy, unpatched
             record = not_held[key]
             if rebuilt:
-                state(State.CHANGED, f"the last build was made {rebuilt}: build again",
-                      Severity.LOW if merger_only else Severity.MEDIUM)
+                state(State.CHANGED, f"{rebuilt}: merge again", Severity.LOW if merger_only else Severity.MEDIUM)
             elif not _same_copy(record, winner):
-                state(State.CHANGED, f"{_changed(record, winner)}, since the last build, which left it out: build again",
-                      Severity.MEDIUM)
+                state(State.CHANGED, f"{_changed(record, winner)}: merge again", Severity.MEDIUM)
             else:
-                state(State.NOT_HELD, f"{origin}'s copy: {NOT_HELD_TEXT.get(record['status'], record['status'])} "
-                      "at the last build")
+                text = NOT_HELD_TEXT.get(record["status"], record["status"])
+                if record["status"] in ("left out", "failed") and record.get("reasons"):
+                    text += f". Why: {'; '.join(record['reasons'])}"
+                state(State.NOT_HELD, f"{origin}'s copy: {text}")
         elif manifest is None and manifest_problem is None:
-            state(State.NOT_BUILT, f"{origin}'s copy isn't patched: there is no package. Build it", Severity.MEDIUM)
+            state(State.NOT_BUILT, f"{origin}'s copy isn't merged yet", Severity.MEDIUM)
         else:
-            state(State.NOT_BUILT, f"{origin}'s copy isn't in the package (installed since it was built?): build it again",
-                  Severity.MEDIUM)
+            state(State.NOT_BUILT, f"{origin}'s copy is new since the last merge: merge again", Severity.MEDIUM)
     return states
 
 
@@ -242,8 +239,8 @@ def carried_force(result: Scan) -> tuple[list[str], list[str]]:
         if file is not None and file.winner is not None and _same_copy(record, file.winner):
             force.append(key)
         else:
-            notes.append(f"{key} was forced into the package at the last build, but its copy changed: it isn't "
-                         "forced now")
+            notes.append(f"{screen_name(key)}: you chose to patch it anyway, but its copy changed since, so that "
+                         "choice no longer applies")
     return force, notes
 
 
@@ -291,8 +288,8 @@ def _same_copy(record, winner) -> bool:
 
 def _changed(record, winner):
     if str(record.get("mod", "")).lower() != winner.origin.lower():
-        return f"it was built from {record.get('mod')}'s copy, and {winner.origin}'s comes first now"
-    return f"{winner.origin}'s copy changed"
+        return f"{winner.origin}'s copy is used now, not {record.get('mod')}'s"
+    return f"{winner.origin} was updated"
 
 
 def _copy_name(folder):
