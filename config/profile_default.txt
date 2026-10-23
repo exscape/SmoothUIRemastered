@@ -81,7 +81,7 @@ gameplay/gui_new/swf/gwint/gwint_game.redswf # Default 24 fps
     # in Hero and a grey box in Decoy
     fix: gwent-card-fx-filter-fix
 
-    # Inject data from the Gwent speed options in the game's settings menu; see mod_files/
+    # Inject data from the Gwent speed options in the game's settings menu; see assets/mod_files/
     fix: gwent-speed-options
 
 # Speed up crafting a bit

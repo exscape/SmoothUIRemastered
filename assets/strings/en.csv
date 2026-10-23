@@ -1,7 +1,7 @@
 ;meta[language=en]
 ; id      |key(hex)|key(str)| text
-; Smooth UI Remastered's strings: the settings menu (mod_files/bin/.../modSmoothUIRemastered.xml).
-; Encoded into mod_files/mods/modSmoothUIRemastered/content/<language>.w3strings (English text for every
+; Smooth UI Remastered's strings: the settings menu (assets/mod_files/bin/.../modSmoothUIRemastered.xml).
+; Encoded into assets/mod_files/mods/modSmoothUIRemastered/content/<language>.w3strings (English text for every
 ; language) by the build scripts. Ids: 2113526000-2113526999 (id space 13526, the mod's Nexus Mods id).
 2113526000||panel_smoothui_remastered|Smooth UI Remastered
 2113526032||preset_mods_smoothui_remastered|Gwent speed preset

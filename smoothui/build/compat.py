@@ -26,7 +26,6 @@ import rarfile
 from ..common import fail, normalize_version, profile_key
 from ..log import HEADING
 from ..patcher import dev_mode
-from ..paths import APP_DIR
 from ..witcher3 import mod_bundles
 from ..witcher3.mod_bundles import list_bundles
 from ..witcher3.source_file import SourceFile
@@ -60,12 +59,11 @@ log = logging.getLogger(__name__)
 
 
 # rarfile looks for an external unrar in PATH and in the current directory. When neither has it,
-# point it at our UnRAR.exe (in the repo, or next to the frozen tool's exes), so .rar mods work from
-# any working directory.
+# point it at our UnRAR.exe (assets/unrar/ in the repo), so .rar mods work from any working directory.
 def setup_rar_tool():
     if shutil.which(rarfile.UNRAR_TOOL):
         return # a system unrar is preferred (e.g. under WSL)
-    bundled_unrar = APP_DIR / "UnRAR.exe"
+    bundled_unrar = REPO_ROOT / "assets" / "unrar" / "UnRAR.exe"
     if bundled_unrar.is_file():
         rarfile.UNRAR_TOOL = str(bundled_unrar)
 

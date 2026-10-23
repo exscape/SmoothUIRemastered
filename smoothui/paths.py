@@ -15,7 +15,7 @@ FROZEN = getattr(sys, "frozen", False)
 # and Steam start the tool from anywhere.
 APP_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parents[1]
 
-# For files only the command-line tools use (config/, mod_files/, strings/, their output). A frozen tool
+# For files only the command-line tools use (config/, assets/, their output). A frozen tool
 # has no repo, so these don't exist there.
 REPO_ROOT = APP_DIR
 

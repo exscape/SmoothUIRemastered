@@ -6,7 +6,7 @@
 // Without that code (another mod's gwint_game, with no compatibility patch), they are simply ignored.
 //
 // Each option's value is extracted from its name in the XML (see SmoothUI_GwentOption), so options can be added or
-// changed there alone (and in strings/en.csv, for their text).
+// changed there alone (and in assets/strings/en.csv, for their text).
 
 // Before the settings menu shows the settings
 @wrapMethod(CR4IngameMenu)

@@ -1,11 +1,11 @@
-"""Handles the settings menu's strings: strings/en.csv, encoded into a .w3strings file for every
-game language, in the mod's content folder in mod_files/, which the main build ships from.
+"""Handles the settings menu's strings: assets/strings/en.csv, encoded into a .w3strings file for every
+game language, in the mod's content folder in assets/mod_files/, which the main build ships from.
 Every main build these from scratch, as they take next to no time; they aren't tracked.
 
 Uses w3stringsr.exe: https://www.nexusmods.com/witcher3/mods/13094
 
 First checks that every name in the settings menu's XML has a string (as the menu looks it up: see
-strings/en.csv), so that the menu never shows a raw key."""
+assets/strings/en.csv), so that the menu never shows a raw key."""
 
 import logging
 import re
@@ -19,7 +19,7 @@ from .shared import MOD_FILES, REPO_ROOT
 
 log = logging.getLogger(__name__)
 
-SOURCE = REPO_ROOT / "strings" / "en.csv"
+SOURCE = REPO_ROOT / "assets" / "strings" / "en.csv"
 ID_SPACE = "13526"
 # The languages the game has .w3strings files for (content/content0/*.w3strings)
 LANGUAGES = ("ar", "br", "cn", "cz", "de", "en", "es", "esmx", "fr", "hu", "it", "jp", "kr", "pl", "ru", "tr",

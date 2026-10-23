@@ -250,10 +250,10 @@ for p in manifests:
 # with files in the build, from its .dist-info folder, and the window's font's.
 LICENSE_FILE_PREFIXES = ("LICENSE", "LICENCE", "COPYING", "NOTICE")
 # PySide6's and shiboken6's .dist-info hold only Qt's commercial license text: their LGPL texts, where their
-# source code is, and the notices of the third-party code in Qt are in licenses/PySide6/ instead (written by
+# source code is, and the notices of the third-party code in Qt are in assets/licenses/PySide6/ instead (written by
 # dev-tools/qt-licenses.py, its README by hand)
 QT_DISTRIBUTIONS = {"PySide6_Essentials", "shiboken6"}
-QT_LICENSES = Path(SPECPATH) / "licenses" / "PySide6"
+QT_LICENSES = Path(SPECPATH) / "assets" / "licenses" / "PySide6"
 FONT_LICENSE = Path(SPECPATH) / "smoothui" / "merger" / "fonts" / "OFL.txt"
 
 

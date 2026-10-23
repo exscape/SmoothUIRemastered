@@ -159,7 +159,7 @@ def main():
         game_file_text, game_files_changed = game_file_report(paths['uncooked_files'], latest.values())
         log.log(logging.WARNING if game_files_changed else logging.INFO, game_file_text)
 
-    # The settings menu's strings, which every build ships (from mod_files/; see strings.py)
+    # The settings menu's strings, which every build ships (from assets/mod_files/; see strings.py)
     if not args.dry_run:
         check_tool(paths.get('w3stringsr'))
     build_strings(paths.get('w3stringsr'), paths['working_dir'] / "strings", OUTPUT_MOD_NAME, dry_run=args.dry_run)

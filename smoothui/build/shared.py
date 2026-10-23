@@ -46,7 +46,7 @@ REVIEWED_WARNINGS = REPO_ROOT / "config" / "reviewed_warnings.txt"
 COMPAT_MANIFEST_DIR = MANIFEST_DIR / "compat"
 # Files the main mod ships as they are (scripts, the settings menu), laid out as in its zip:
 # mods/<the mod's folder>/, and bin/ (for the game's bin/ folder)
-MOD_FILES = REPO_ROOT / "mod_files"
+MOD_FILES = REPO_ROOT / "assets" / "mod_files"
 
 REQUIRED_CONFIG_KEYS = ("working_dir",)
 
