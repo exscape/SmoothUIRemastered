@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Build from the repo root, on 64-bit Windows Python (env_gui, see requirements_gui.txt), never under WSL's
-# Python (build-merger.sh runs this from WSL):
+# Python (build-tools.sh runs this from WSL):
 #     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec
 #     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec -- --dev-manifests
 # --dev-manifests: also ship the manifests of Smooth UI's dev builds, so a test build knows an installed dev

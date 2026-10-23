@@ -4,6 +4,8 @@ __pycache__/
 *.w3strings
 
 /build/
+/data/
+/docs/
 /config/profile_dev*.txt
 /dev-tools/debug/
 /dist/
@@ -13,4 +15,5 @@ __pycache__/
 /releases/
 /requirements_dev.txt
 /test-tools/
+/tests/
 /TODO.txt
