@@ -96,9 +96,6 @@ gameplay/gui_new/swf/noticeboard/panel_noticeboard.redswf
 gameplay/gui_new/swf/repair/panel_blacksmith.redswf
 gameplay/gui_new/swf/repair/panel_transmog.redswf # Default 22 fps(!)
 gameplay/gui_new/swf/worldmap/panel_worldmap.redswf
-
-# Not yet verified as required, but seems very likely
-gameplay/gui_new/swf/preparation/panel_preparation.redswf
 gameplay/gui_new/swf/repair/panel_enchanting.redswf
 
 # Verified as NOT required, even though they may appear relevant to patch
