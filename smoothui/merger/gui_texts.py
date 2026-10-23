@@ -282,6 +282,15 @@ def row_status(file: FileState) -> tuple[str, str]:
             State.UNDETERMINED: (WARNING, "Load order unclear")}[state]
 
 
+def merging_status(patched: str | None) -> tuple[str, str]:
+    """A screen's tone and short status in the list while merging: patched is None until its file is
+    patched, then how ("patched", "kept" or "failed"). What goes in is only decided once every file is
+    patched (a patched screen may still be left out), so until then it is only "Done"."""
+    if patched is None:
+        return NEUTRAL, "Waiting"
+    return (ERROR, "Can't patch") if patched == "failed" else (NEUTRAL, "Done")
+
+
 def also_changed(file: FileResult, winner: str | None) -> str | None:
     """Which other mods change the screen, whose copies the game doesn't use (None if no other)"""
     others = [mod.folder for mod in file.shippers if not is_own_folder(mod.folder) and mod.folder != winner]

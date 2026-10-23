@@ -4,9 +4,10 @@ what to do (the status card), the screens other mods change and notes below it, 
 It scans at once (state.check, the launcher's check), in a thread started before the window is even made:
 on a hard disk with many mods that can take seconds, and the window shows regardless, saying it is
 checking until it's done. Merge builds the package (builder.build_package) in a thread too, in a process
-pool started after the window shows. Only Tk's thread touches the widgets: threads hand their results (and
-log records) over through queues, which a timer empties. What the card shows comes from
-gui_texts.status_card, with the window's other texts. The merger's data folder (DATA_DIR) is passed on
+pool started after the window shows (and again after each merge); the card counts the screens done, and
+each screen's row says when it's done. Only Tk's thread touches the widgets: threads hand their results
+(and log records, and a merge's progress) over through queues, which a timer empties. What the card shows
+comes from gui_texts.status_card, with the window's other texts. The merger's data folder (DATA_DIR) is passed on
 explicitly, not left to the library's defaults, so that a test can point it elsewhere.
 
 Colors and fonts are in theme.json: customtkinter's "blue" theme (its font is Roboto, which customtkinter
@@ -85,6 +86,7 @@ from .gui_texts import (
     Card,
     also_changed,
     capitalized,
+    merging_status,
     row_status,
     status_card,
     unchanged_screens,
@@ -105,6 +107,9 @@ ICON_FILE = APP_DIR / "smoothui.ico"     # optional: customtkinter's own icon wi
 SYMBOL_FONT = "Segoe UI Symbol"
 WIDTH, HEIGHT = 920, 680                # the window's size at first, before Windows' scaling
 MIN_WIDTH, MIN_HEIGHT = 720, 520
+# A row's status label is at least as wide as the widest status ("Another mod loads first"), so that a status
+# changing (as while merging) doesn't move the arrows after it, nor lay out the list again (it would tear)
+STATUS_WIDTH = 140
 BAR_DELAY = 300                         # ms before a progress bar without progress shows (most scans end first)
 
 # Imported in main, after the scan has started: it takes a while (see the module's docstring)
@@ -243,6 +248,7 @@ class MergerWindow:
         self.scan_error = None
         self.merged = None
         self.merge_error = None
+        self.progress = None        # the merge's (done, total), once known
         self.busy = None            # what runs in a thread: "scan", "build", "remove"
         self.card: Card | None = None
         self.busy_since = 0.0       # when it started (time.perf_counter)
@@ -252,6 +258,7 @@ class MergerWindow:
         self.pool = None
         self.reports = []           # merge_report for each merge, written to REPORT_FILE
         self.exit_code = CLOSED
+        self.closing = False        # closed while merging: no new workers (see restart_pool)
         self.shown = False
         self.polling = False
 
@@ -296,7 +303,8 @@ class MergerWindow:
         self.screens._parent_canvas.bind("<Configure>", self.fit_scrollbar, add="+")
         self.expanded = set()       # the screens whose details show
         self.list_content = None    # what the list shows (show_screens)
-        self.rows = {}              # by path: (FileState, its arrow, the grid row for its details)
+        self.rows = {}              # by path: (FileState, its cells, the grid row for its details)
+        self.rows_merging = False   # whether rows show a merge's progress, not their FileState
         self.details_frames = {}    # by path
         self.detail_buttons = []    # Patch anyway and Revert, disabled while something runs
         self.list_row = 0
@@ -437,7 +445,7 @@ class MergerWindow:
         always there (hidden in the card's color), and a card without buttons keeps the last card's,
         disabled."""
         card = status_card(self.found, stale=self.stale, busy=self.busy, scan_error=self.scan_error,
-                           merged=self.merged, merge_error=self.merge_error)
+                           merged=self.merged, merge_error=self.merge_error, progress=self.progress)
         if card == self.card:
             self.enable_buttons(True)
             return
@@ -536,12 +544,18 @@ class MergerWindow:
     def show_screens(self):
         """The screens other mods change, by mod, then the line for the others, then notes. Rebuilding the list
         takes a moment, during which it shows blank: so not while it would show the same."""
+        if self.rows_merging and self.busy:     # the scan after a merge: the rows show the merge's until it ends
+            return
         states = self.found.states if self.found else []
         shown = sorted((state for state in states if state.state != State.NOTHING_TO_DO), key=_row_order)
         others = len(states) - len(shown)
         notes = self.notes() if self.found else []
         content = ([(state, self.found.scan.files[state.path].shippers) for state in shown], others, notes)
+        merging, self.rows_merging = self.rows_merging, False
         if content == self.list_content:
+            if merging:     # back from the merge's progress to what the check says
+                for state in shown:
+                    self.show_row_status(state.path, *row_status(state))
             return
         same_rows = (self.list_content is not None and self.list_content[1:] == content[1:]
                      and [state.path for state, _ in self.list_content[0]] == [state.path for state in shown])
@@ -590,7 +604,7 @@ class MergerWindow:
             ctk.CTkLabel(self.screens, text=GLYPHS[tone], font=(SYMBOL_FONT, 13), text_color=color(tone), width=20),
             ctk.CTkLabel(self.screens, text=screen_name(state.path), anchor="w"),
             ctk.CTkLabel(self.screens, text=state.winner or "", anchor="w", text_color=color("muted_text")),
-            ctk.CTkLabel(self.screens, text=status, anchor="w"),
+            ctk.CTkLabel(self.screens, text=status, anchor="w", width=STATUS_WIDTH),
             ctk.CTkLabel(self.screens, text="▸", font=(SYMBOL_FONT, 16), text_color=color("muted_text")),
         ]
         for column, cell in enumerate(cells):
@@ -606,13 +620,16 @@ class MergerWindow:
         """A screen's row (and its details, if open) for its new state"""
         _, cells, row = self.rows[state.path]
         self.rows[state.path] = (state, cells, row)
-        tone, status = row_status(state)
-        cells[0].configure(text=GLYPHS[tone], text_color=color(tone))
+        self.show_row_status(state.path, *row_status(state))
         cells[2].configure(text=state.winner or "")
-        cells[3].configure(text=status)
         if frame := self.details_frames.pop(state.path, None):
             frame.destroy()
             self.show_details(state.path)
+
+    def show_row_status(self, path, tone, status):
+        cells = self.rows[path][1]
+        cells[0].configure(text=GLYPHS[tone], text_color=color(tone))
+        cells[3].configure(text=status)
 
     def toggle_row(self, path):
         """Show or hide a screen's details (only those: rebuilding the list would blank it for a moment)"""
@@ -724,12 +741,17 @@ class MergerWindow:
         """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once.
         patch_anyway: a file to force too; revert: a forced file not to force (see build)"""
         self.set_busy("build")
-        self.merged = self.merge_error = None
+        self.merged = self.merge_error = self.progress = None
         self.refresh()
+        for path in self.rows:      # each says "Done" when its file is (see merged_file)
+            if self.found.scan.files[path].winner:
+                self.show_row_status(path, *merging_status(None))
+                self.rows_merging = True
         log.info("Merging", extra=HEADING)
 
         def finished(result, error):
             self.set_busy(None)
+            self.progress = None
             if error is not None:
                 self.merge_error = _error_text(error)
                 log.error(f"Merging failed: {self.merge_error}")
@@ -739,14 +761,21 @@ class MergerWindow:
                     self.exit(PLAY)
                     return
             self.rescan(keep_result=True)
-        in_thread(self.calls, self.build, finished, patch_anyway, revert)
+        in_thread(self.calls, self.build, finished, play, patch_anyway, revert)
 
-    def build(self, patch_anyway=None, revert=None):
+    def build(self, play=False, patch_anyway=None, revert=None):
         """Build the package, forcing what the last build forced (the same copies), and patch_anyway, but
-        not revert"""
+        not revert. Its progress goes to the window as it goes (merged_file, progressed). Then new workers
+        for the next merge, unless the game starts now (play, and the build is clean)."""
         # Imported here: the patcher takes a while to import, and only a build needs it
+        from ..build.shared import print_file_result
         from .builder import build_package, merge_report
         from .cli import show_build
+
+        def on_file(path, status, *args, **kwargs):
+            print_file_result(path, status, *args, **kwargs)    # the log, as without on_file
+            self.calls.put(("merged_file", (path, status)))
+
         start = time.perf_counter()
         started = time.strftime("%Y-%m-%d %H:%M:%S")
         settings = mods_settings()
@@ -761,7 +790,13 @@ class MergerWindow:
         if revert in force:
             log.info(f"Reverting {screen_label(revert)} to the unpatched screen, as you chose")
             force.remove(revert)
-        result = build_package(self.game, settings, force=force, pool=self.pool, data_dir=DATA_DIR)
+        result = None
+        try:
+            result = build_package(self.game, settings, force=force, pool=self.pool, data_dir=DATA_DIR,
+                                   on_file=on_file, progress=lambda *progress: self.calls.put(("progressed", progress)))
+        finally:
+            if not (play and result is not None and result.clean):
+                self.restart_pool()
         self.reports.append(merge_report(result, started))
         try:
             write_file(DATA_DIR / REPORT_FILE, json.dumps(self.reports, indent=1).encode("utf-8"))
@@ -771,6 +806,29 @@ class MergerWindow:
         show_build(result)
         log.info(f"Built in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
         return result
+
+    def progressed(self, done, total):
+        """A merge's progress (build_package's progress)"""
+        if self.busy == "build":
+            self.progress = (done, total)
+            self.show_card()
+
+    def merged_file(self, path, status):
+        """A file is patched (build_package's on_file): its row says so until the scan after the merge"""
+        if self.busy == "build" and path in self.rows:
+            self.show_row_status(path, *merging_status(status))
+
+    def restart_pool(self):
+        """Replace the pool, in the build's thread (starting workers takes a moment): its workers keep the
+        memory the merge used (Python doesn't give it back to Windows), and a pool whose worker died
+        can't be used again. Not when the window is closing: killing the workers made the build fail, and
+        new ones would outlive the merger."""
+        if self.pool is None or self.closing:
+            return
+        start = time.perf_counter()
+        self.pool.shutdown(wait=False, cancel_futures=True)
+        self.start_pool()
+        log.debug(f"New workers started for the next merge in {time.perf_counter() - start:.2f} s")
 
     def remove(self, play=False):
         """Remove the package (after asking, unless play: stale mode's Remove them and play), then scan
@@ -805,9 +863,12 @@ class MergerWindow:
             if not ask_yes_no(STOP_MERGE_TITLE, STOP_MERGE[self.stale], icon="warning"):
                 return
             log.warning("Closed while merging: deleting the package" + ("; the game starts" if self.stale else ""))
+            self.closing = True
             if self.pool is not None:
                 kill_workers(self.pool)
             self.delete_package_now()
+            if self.pool is not None:   # again: the build's thread may have started new ones just before
+                kill_workers(self.pool)
             logging.shutdown()
             os._exit(PLAY if self.stale else CLOSED)    # without waiting for the build's thread or the pool
         self.exit(CLOSED)
