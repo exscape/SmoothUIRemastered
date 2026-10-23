@@ -138,10 +138,12 @@ launcher_a = Analysis(
     optimize=0,  # keep asserts
 )
 # Files a module reads next to itself (Path(__file__)), at its path in _internal\: the fixes' compiled
-# ActionScript (gwent_speed.abc). grep -rn __file__ smoothui finds the code that does it.
+# ActionScript (gwent_speed.abc), and the merger window's theme. grep -rn __file__ smoothui finds the code
+# that does it.
 module_files = [(str(p), p.parent.relative_to(SPECPATH).as_posix()) for p in sorted(Path(SPECPATH, "smoothui").rglob("*.abc"))]
 if not module_files:
     raise SystemExit("ERROR: no .abc files found in smoothui/")
+module_files.append((str(Path(SPECPATH, "smoothui", "merger", "theme.json")), "smoothui/merger"))
 merger_a = Analysis(
     ["merger-gui.py"],
     pathex=[],

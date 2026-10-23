@@ -1,18 +1,23 @@
-"""The merger's window (SmoothUIMerger.exe, see merger-gui.py): a test version, until the real GUI. Plain
-on purpose: the scan's result, a log, and buttons.
+"""The merger's window (SmoothUIMerger.exe, see merger-gui.py): whether the merged patches are up to date and
+what to do (the status card), the screens other mods change and notes below it, and the log when asked for.
 
 It scans at once (state.check, the launcher's check), in a thread started before the window is even made:
 on a hard disk with many mods that can take seconds, and the window shows regardless, saying it is
-scanning until it's done. Merge builds the package (builder.build_package) in a thread too, in a process
-pool started after the window shows; the build's log shows in the window. Only Tk's thread touches the
-widgets: threads hand their results (and log records) over through queues, which a timer empties. The
-merger's data folder (DATA_DIR) is passed on explicitly, not left to the library's defaults, so that a
-test can point it elsewhere.
+checking until it's done. Merge builds the package (builder.build_package) in a thread too, in a process
+pool started after the window shows. Only Tk's thread touches the widgets: threads hand their results (and
+log records) over through queues, which a timer empties. What the card shows comes from
+gui_texts.status_card, with the window's other texts. The merger's data folder (DATA_DIR) is passed on
+explicitly, not left to the library's defaults, so that a test can point it elsewhere.
 
-With --stale, the launcher opened it before starting the game (see launcher.py, for the exit codes): a
-smaller window over it says why, with Merge and play, Play without merging (worded by how much that
-costs, state.Severity), and Abort game launch. Closing the window means play; while a build runs, only
-after a warning: the package, which may be half written, is then deleted, and the game doesn't start.
+Colors and fonts are in theme.json: customtkinter's "blue" theme (its font is Roboto, which customtkinter
+ships; CTkFont's "Windows" family changes it), and the window's own colors under "SmoothUI" (by tone, see
+gui_texts; each a light and a dark mode color).
+
+With --stale, the launcher opened it before starting the game (see launcher.py, for the exit codes). The
+window is the same, but it comes to the front, the card offers Merge and play, Play without merging
+(worded by what that costs, state.Severity) and Don't start the game, and a clean merge exits at once
+(play). Closing the window means play; while a merge runs, only after a warning: the package, which may
+be half written, is then deleted, and the game starts without it.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ import sys
 import threading
 import time
 import traceback
+import webbrowser
 from pathlib import Path
 
 from ..common import SmoothUIError
@@ -34,9 +40,9 @@ from ..files import check_data_writable, make_dirs, rotate, stop_writes, write_f
 from ..launcher import ABORT, CLOSED, PLAY
 from ..log import HEADING
 from ..parallel import MAX_WORKERS, kill_workers, make_pool, warm_up, worker_count
-from ..paths import DATA_DIR
+from ..paths import APP_DIR, DATA_DIR
 from ..windows import MB_ICONERROR, ms_since_process_start, msg_box
-from . import merger_version
+from . import SMOOTHUI_URL, merger_version
 from .game import (
     GAME_PATH_ENV,
     MODS_SETTINGS_ENV,
@@ -47,11 +53,39 @@ from .game import (
     mods_settings,
     save_settings,
 )
-from .gui_texts import COST, PLAY_WITHOUT_MERGING
-from .installed import Status
+from .gui_texts import (
+    COMPAT_PATCH,
+    DELETE_FAILED,
+    ERROR,
+    FAILED,
+    GLYPHS,
+    HIDE_LOG,
+    INFO,
+    NEWER_RELEASE,
+    NO_GAME,
+    NOTES_HEADING,
+    OK,
+    REMOVE_FAILED,
+    REMOVE_QUESTION,
+    REMOVE_TITLE,
+    SCREENS_HEADING,
+    SHOW_LOG,
+    STOP_MERGE,
+    STOP_MERGE_TITLE,
+    TEST_MODE,
+    TITLE,
+    UNKNOWN_FILES,
+    WARNING,
+    WELCOME,
+    WELCOME_TITLE,
+    Card,
+    status_card,
+    unchanged_screens,
+)
 from .package import remove_package
 from .scan import PACKAGE_FOLDER, is_package_folder, scan
-from .state import Check, Severity, State, carried_force, check
+from .screens import screen_name
+from .state import FileState, Severity, State, carried_force, check
 
 log = logging.getLogger(__name__)
 
@@ -59,26 +93,15 @@ LOG_FILE = "merger.log"
 # The full reports of the merges logged in LOG_FILE (kept in step with it: merger.1.report.json belongs to
 # merger.1.log); missing when that run didn't merge.
 REPORT_FILE = "merger.report.json"
+THEME_FILE = Path(__file__).with_name("theme.json")
+ICON_FILE = APP_DIR / "smoothui.ico"     # optional: customtkinter's own icon without it
+SYMBOL_FONT = "Segoe UI Symbol"
+WIDTH, HEIGHT = 920, 680                # the window's size at first, before Windows' scaling
+MIN_WIDTH, MIN_HEIGHT = 720, 520
+BAR_DELAY = 300                         # ms before a progress bar without progress shows (most scans end first)
 
 # Imported in main, after the scan has started: it takes a while (see the module's docstring)
 ctk = None
-
-SEVERITY_COLORS = {Severity.HIGH: "#e05252", Severity.MEDIUM: "#e69500"}
-LOG_COLORS = {"warning": "#e69500", "error": "#e05252"}
-
-WELCOME = """Welcome to Smooth UI Remastered's merger (a test version).
-
-Some of your other mods ship their own copies of the screens Smooth UI patches. The game then shows those copies, \
-without Smooth UI's frame rate patches. The merger patches those copies, and puts them into a mod of its own \
-(mod0000_SmoothUI_MergedPatches), which the game loads first.
-
-Start the game with SmoothUILauncher.exe: it checks your mods first, and opens the merger when they changed.
-
-Game folder (for now, the first one found): {game}"""
-
-STOP_BUILD = ("The merger is still building the package. Closing now stops it halfway, so the package is deleted "
-              "(a half-written one could break the game), and the game won't start.\n\nOnly do this if the merger "
-              "seems stuck.\n\nClose anyway?")
 
 
 def main() -> int:
@@ -90,15 +113,19 @@ def main() -> int:
     settings, first_run = _settings()
     game = game_path(settings)
     if game is None:
-        msg_box("The game wasn't found. Its folder can't be chosen in this test version of the merger.", MB_ICONERROR)
+        msg_box(NO_GAME, MB_ICONERROR)
         return CLOSED
     log.info(f"Game folder: {game}")
+    for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV):
+        if os.environ.get(name):
+            log.info(f"Test mode: {name}={os.environ[name]}")
     calls = queue.Queue()       # (function, args) to call on Tk's thread
     start_scan(game, calls)
 
     global ctk
     import customtkinter as ctk  # see ctk above
     ctk.set_appearance_mode("system")
+    ctk.set_default_color_theme(str(THEME_FILE))
     window = MergerWindow(game, stale, first_run, calls, log_records)
     window.root.mainloop()
     return window.exit_code
@@ -192,60 +219,116 @@ def _error_text(error) -> str:
     return str(error) if isinstance(error, SmoothUIError) else f"{type(error).__name__}: {error}"
 
 
+def color(name):
+    """One of the window's own colors (theme.json's "SmoothUI"): (light, dark)"""
+    return tuple(ctk.ThemeManager.theme["SmoothUI"][name])
+
+
+def font(size=13, weight="normal"):
+    return ctk.CTkFont(size=size, weight=weight)
+
+
 class MergerWindow:
     def __init__(self, game: Path, stale: bool, first_run: bool, calls: queue.Queue, log_records: queue.Queue):
         self.game, self.stale, self.calls, self.log_records = game, stale, calls, log_records
-        self.found: Check | None = None
+        # What status_card shows (see there)
+        self.found = None
+        self.scan_error = None
+        self.merged = None
+        self.merge_error = None
         self.busy = None            # what runs in a thread: "scan", "build", "remove"
+        self.card: Card | None = None
+        self.card_text = None
         self.pool = None
         self.reports = []           # merge_report for each merge, written to REPORT_FILE
         self.exit_code = CLOSED
         self.shown = False
+        self.polling = False
 
         self.root = root = ctk.CTk()
-        root.title(f"Smooth UI Remastered merger {_version()} (test version)")
-        root.geometry("1000x720")
+        if ICON_FILE.exists():
+            root.iconbitmap(str(ICON_FILE))     # before customtkinter sets its own, 200 ms after the window
+        root.title(TITLE)
+        self.center(WIDTH, HEIGHT)
+        root.minsize(MIN_WIDTH, MIN_HEIGHT)
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self.callback_failed
         root.bind("<Map>", self.on_map, add="+")
+        root.bind("<Return>", self.press_default)
+        root.grid_columnconfigure(0, weight=1)
+        pad = {"padx": 16}
 
-        ctk.CTkLabel(root, text=_command_line(), justify="left", anchor="w", text_color="gray").pack(
-            fill="x", padx=16, pady=(10, 0))
-        self.status = ctk.CTkLabel(root, text="", justify="left", anchor="w", font=ctk.CTkFont(size=18, weight="bold"))
-        self.status.pack(fill="x", padx=16, pady=(6, 6))
-        self.results = ctk.CTkTextbox(root, height=230, wrap="word", state="disabled")
-        self.results.pack(fill="x", padx=16)
+        header = ctk.CTkFrame(root, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", pady=(12, 0), **pad)
+        ctk.CTkLabel(header, text=TITLE, font=font(20, "bold"), anchor="w").pack(fill="x")
+        self.context = ctk.CTkLabel(header, text="", anchor="w", text_color=color("muted_text"))
+        self.context.pack(fill="x")
+        self.notices = ctk.CTkFrame(root, fg_color="transparent", height=0)
+        self.notices.grid(row=1, column=0, sticky="ew", **pad)
+        self.card_frame = ctk.CTkFrame(root, border_width=2, fg_color=color("card"))
+        self.card_frame.grid(row=2, column=0, sticky="ew", pady=(8, 8), **pad)
+        self.card_frame.grid_columnconfigure(1, weight=1)
+        self.card_frame.bind("<Configure>", lambda event: self.wrap_card())
+        self.screens = ctk.CTkScrollableFrame(root, fg_color="transparent")
+        self.screens.grid(row=3, column=0, sticky="nsew", padx=8)
+        self.screens.grid_columnconfigure(3, weight=1)
+        root.grid_rowconfigure(3, weight=1)
 
-        self.buttons = ctk.CTkFrame(root, fg_color="transparent")
-        self.buttons.pack(fill="x", padx=16, pady=8)
-        self.rescan_button = ctk.CTkButton(self.buttons, text="Re-scan", command=self.rescan)
-        self.merge_button = ctk.CTkButton(self.buttons, text="Merge", command=self.merge)
-        self.remove_button = ctk.CTkButton(self.buttons, text="Remove the package", command=self.remove)
-        if not stale:
-            self.rescan_button.pack(side="left", padx=(0, 8))
-            self.merge_button.pack(side="left", padx=(0, 8))
+        self.log_view = ctk.CTkTextbox(root, wrap="word", state="disabled", height=180)
+        mode = 1 if ctk.get_appearance_mode() == "Dark" else 0     # tags don't follow later changes
+        for tag in (WARNING, ERROR):
+            self.log_view.tag_config(tag, foreground=color(tag)[mode])
+        footer = ctk.CTkFrame(root, fg_color="transparent")
+        footer.grid(row=5, column=0, sticky="ew", pady=(4, 10), **pad)
+        self.log_button = self.button(footer, SHOW_LOG, self.toggle_log, quiet=True)
+        self.log_button.pack(side="left")
 
-        ctk.CTkLabel(root, text="Log", anchor="w").pack(fill="x", padx=16)
-        self.log_view = ctk.CTkTextbox(root, wrap="word", state="disabled")
-        self.log_view.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-        for tag, color in LOG_COLORS.items():
-            self.log_view.tag_config(tag, foreground=color)
-
-        self.popup = StalePopup(self) if stale else None
-        root.after(0, self.poll)
+        self.refresh()
+        # What threads hand over is shown once the window shows (redrawing it first would delay that), or
+        # after a while at the latest (e.g. started minimized)
+        root.after(1000, self.start_polling)
         root.after(300, self.start_pool)       # after the window shows
         if first_run:
-            root.after(200, lambda: show_info("Welcome", WELCOME.format(game=game)))
+            root.after(200, lambda: show_info(WELCOME_TITLE, WELCOME.format(game=game)))
+
+    def center(self, width, height):
+        """Size the window, and center it on the main screen (geometry's size is scaled, its position isn't)"""
+        scaling = ctk.ScalingTracker.get_window_scaling(self.root)
+        x = (self.root.winfo_screenwidth() - round(width * scaling)) // 2
+        y = (self.root.winfo_screenheight() - round(height * scaling)) // 2
+        self.root.geometry(f"{width}x{height}+{max(x, 0)}+{max(y, 0)}")
 
     def on_map(self, event):
         if event.widget is self.root and not self.shown:     # not its widgets' (they have the window's bind tag)
             self.shown = True
             ms = ms_since_process_start()
             log.debug(f"The window shows, {ms:.0f} ms after the merger started" if ms is not None else "The window shows")
-            if self.popup:
-                self.root.after(50, self.popup.place)   # it shows later than the popup, and would cover it
+            if self.stale:
+                self.to_front()
+            self.root.after_idle(self.start_polling)    # once it is drawn
+
+    def to_front(self):
+        """The launcher opened the window: the user expects the game, so it must not open behind another
+        window. Windows may not give a background process the focus: on top for a moment helps."""
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        self.root.after(300, lambda: self.root.attributes("-topmost", False))
+        self.root.focus_force()
+
+    def button(self, parent, text, command, quiet=False):
+        """A button; quiet: drawn as a secondary one (a card's buttons but the default)"""
+        if not quiet:
+            return ctk.CTkButton(parent, text=text, command=command)
+        return ctk.CTkButton(parent, text=text, command=command, fg_color="transparent", border_width=1,
+                             border_color=color("quiet_button_border"), hover_color=color("quiet_button_hover"),
+                             text_color=color("quiet_button_text"))
 
     # ---- Tk's thread: what threads hand over ----
+
+    def start_polling(self):
+        if not self.polling:
+            self.polling = True
+            self.poll()
 
     def poll(self):
         self.root.after(50, self.poll)      # first: a call below may fail
@@ -264,11 +347,22 @@ class MergerWindow:
 
     def show_log(self, record):
         text = ("\n" if getattr(record, "heading", None) else "") + LogFormatter().format(record)
-        tag = "error" if record.levelno >= logging.ERROR else "warning" if record.levelno >= logging.WARNING else None
+        tag = ERROR if record.levelno >= logging.ERROR else WARNING if record.levelno >= logging.WARNING else None
         self.log_view.configure(state="normal")
         self.log_view.insert("end", text + "\n", tag)
         self.log_view.see("end")
         self.log_view.configure(state="disabled")
+
+    def toggle_log(self):
+        if self.log_view.winfo_ismapped():
+            self.log_view.grid_forget()
+            self.root.grid_rowconfigure(4, weight=0)
+            self.log_button.configure(text=SHOW_LOG)
+        else:
+            self.log_view.grid(row=4, column=0, sticky="nsew", padx=16, pady=(8, 0))
+            self.root.grid_rowconfigure(4, weight=1)
+            self.log_button.configure(text=HIDE_LOG)
+            self.log_view.see("end")
 
     def start_pool(self):
         workers = worker_count(MAX_WORKERS)
@@ -276,80 +370,205 @@ class MergerWindow:
             self.pool = make_pool(workers)
             warm_up(self.pool, workers, "smoothui.patcher.patcher_core")
 
+    # ---- What the window shows ----
+
+    def refresh(self):
+        """Show the window's state: the header's context line, the notices, the card, the screens"""
+        installed = self.found.scan.installed if self.found else None
+        context = [str(self.game)]
+        if installed and installed.usable:
+            context.insert(0, f"Smooth UI Remastered {installed.version.split('-')[0]}, {installed.fps} fps")
+        self.context.configure(text="  ·  ".join(context))
+        self.show_notices(installed)
+        self.show_card()
+        self.show_screens()
+
+    def show_notices(self, installed):
+        for child in self.notices.winfo_children():
+            child.destroy()
+        notices = []
+        if names := [name for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV) if os.environ.get(name)]:
+            notices.append(TEST_MODE.format(names=" and ".join(names)))
+        if installed and installed.newer_release:
+            notices.append(NEWER_RELEASE.format(version=installed.newer_release))
+        for text in notices:
+            banner = ctk.CTkFrame(self.notices, fg_color=color("notice"))
+            banner.pack(fill="x", pady=(8, 0))
+            ctk.CTkLabel(banner, text=GLYPHS[INFO], font=(SYMBOL_FONT, 14), text_color=color(INFO)).pack(
+                side="left", padx=(10, 6), pady=4)
+            ctk.CTkLabel(banner, text=text, anchor="w").pack(side="left", fill="x", pady=4)
+
+    def show_card(self):
+        self.card = card = status_card(self.found, stale=self.stale, busy=self.busy, scan_error=self.scan_error,
+                                       merged=self.merged, merge_error=self.merge_error)
+        frame = self.card_frame
+        for child in frame.winfo_children():
+            child.destroy()
+        frame.configure(border_color=color(card.tone))
+        ctk.CTkLabel(frame, text=GLYPHS[card.tone], font=(SYMBOL_FONT, 26), text_color=color(card.tone),
+                     width=36).grid(row=0, column=0, rowspan=2, sticky="n", padx=(16, 4), pady=(14, 0))
+        ctk.CTkLabel(frame, text=card.headline, font=font(17, "bold"), anchor="w").grid(
+            row=0, column=1, sticky="ew", padx=(4, 16), pady=(14, 0))
+        self.card_text = ctk.CTkLabel(frame, text=" ".join(card.sentences), anchor="w", justify="left")
+        if card.sentences:
+            self.card_text.grid(row=1, column=1, sticky="ew", padx=(4, 16), pady=(2, 0))
+        if card.busy:
+            bar = ctk.CTkProgressBar(frame, mode="indeterminate" if card.progress is None else "determinate")
+            if card.progress is None:
+                bar.start()
+                self.root.after(BAR_DELAY, lambda: bar.winfo_exists() and self.card is card and bar.grid(
+                    row=2, column=1, sticky="ew", padx=(4, 16), pady=(8, 0)))
+            else:
+                bar.set(card.progress)
+                bar.grid(row=2, column=1, sticky="ew", padx=(4, 16), pady=(8, 0))
+        actions = self.actions()
+        buttons = [(label, action) for label, action in card.buttons if action in actions]
+        row = ctk.CTkFrame(frame, fg_color="transparent")
+        row.grid(row=3, column=0 if self.stale else 1, columnspan=2 if self.stale else 1, sticky="ew",
+                 padx=16, pady=(0 if not buttons else 12 if card.sentences or card.busy else 4, 14))
+        for index, (label, action) in enumerate(buttons):
+            button = self.button(row, label, actions[action], quiet=index > 0)
+            if self.stale:      # stacked, at full width, so that each always fits
+                button.pack(fill="x", pady=3)
+            else:               # at the right, the default last
+                button.pack(side="right", padx=(8, 0))
+        self.wrap_card()
+
+    def wrap_card(self):
+        """Wrap the card's sentences at its width (wraplength is in unscaled pixels, as sizes are)"""
+        if self.card_text is not None and self.card_text.winfo_exists():
+            scaling = ctk.ScalingTracker.get_widget_scaling(self.card_frame)
+            width = self.card_frame.winfo_width() / scaling - 36 - 56
+            self.card_text.configure(wraplength=max(width, 200))
+
+    def press_default(self, event):
+        actions = self.actions()
+        buttons = [action for _, action in self.card.buttons if action in actions] if self.card else []
+        if buttons:
+            actions[buttons[0]]()
+
+    def actions(self):
+        """What the card's buttons do, by action (see gui_texts.Card); a button whose action isn't here
+        isn't shown"""
+        return {
+            "merge": self.merge,
+            "merge_and_play": lambda: self.merge(play=True),
+            "play": lambda: self.exit(PLAY),
+            "abort": lambda: self.exit(ABORT),
+            "remove": self.remove,
+            "remove_and_play": lambda: self.remove(play=True),
+            "rescan": self.rescan,
+            "smoothui_page": lambda: webbrowser.open(SMOOTHUI_URL),
+        }
+
+    def show_screens(self):
+        """The screens other mods change, the most important first, then notes"""
+        for child in self.screens.winfo_children():
+            child.destroy()
+        shown = sorted((state for state in self.found.states if state.state != State.NOTHING_TO_DO),
+                       key=_row_order) if self.found else []
+        others = len(self.found.states) - len(shown) if self.found else 0
+        notes = self.notes() if self.found else []
+        if not (shown or others or notes):
+            self.screens.grid_remove()      # an empty list would still show its scroll bar
+            return
+        self.screens.grid()
+        row = 0
+
+        def heading(text):
+            nonlocal row
+            ctk.CTkLabel(self.screens, text=text, font=font(14, "bold"), anchor="w").grid(
+                row=row, column=0, columnspan=4, sticky="ew", padx=8, pady=(10 if row else 0, 4))
+            row += 1
+
+        def line(text, glyph="", tone=None):
+            nonlocal row
+            ctk.CTkLabel(self.screens, text=glyph, font=(SYMBOL_FONT, 13), width=20,
+                         text_color=color(tone) if tone else None).grid(row=row, column=0, sticky="nw", padx=(8, 4))
+            ctk.CTkLabel(self.screens, text=text, anchor="w", justify="left", wraplength=760).grid(
+                row=row, column=1, columnspan=3, sticky="ew")
+            row += 1
+
+        if shown or others:
+            heading(SCREENS_HEADING)
+        for state in shown:
+            tone = _row_tone(state)
+            ctk.CTkLabel(self.screens, text=GLYPHS[tone], font=(SYMBOL_FONT, 13), text_color=color(tone),
+                         width=20).grid(row=row, column=0, sticky="nw", padx=(8, 4), pady=2)
+            ctk.CTkLabel(self.screens, text=screen_name(state.path), anchor="w").grid(
+                row=row, column=1, sticky="nw", padx=(0, 16), pady=2)
+            ctk.CTkLabel(self.screens, text=state.winner or "", anchor="w", text_color=color("muted_text")).grid(
+                row=row, column=2, sticky="nw", padx=(0, 16), pady=2)
+            ctk.CTkLabel(self.screens, text=state.message, anchor="w", justify="left", wraplength=420).grid(
+                row=row, column=3, sticky="ew", pady=2)
+            row += 1
+        if others:
+            line(unchanged_screens(others))
+        if notes:
+            heading(NOTES_HEADING)
+            for text, tone in notes:
+                line(text, GLYPHS[tone], tone)
+
+    def notes(self) -> list[tuple[str, str]]:
+        """(text, tone): the scan's problems, the compat patches, and the last merge's problems and notes"""
+        result = self.found.scan
+        notes = [(problem.message, WARNING) for problem in result.problems]
+        if self.merged is not None:
+            notes += [(problem, ERROR) for problem in self.merged.check_problems]
+            notes += [(note, INFO) for note in self.merged.notes]
+            if unknown := self.merged.installation.written.unknown_files:
+                notes.append((UNKNOWN_FILES.format(names=", ".join(unknown)), INFO))
+        else:
+            notes += [(COMPAT_PATCH.format(folder=folder), INFO) for folder in result.compat_patches]
+        return [(text[:1].upper() + text[1:], tone) for text, tone in notes]
+
     # ---- The scan ----
 
     def scanning(self):
         self.busy = "scan"
-        self.status.configure(text="Scanning your mods...", text_color=("black", "white"))
-        self.set_buttons()
-        if self.popup:
-            self.popup.scanning()
+        self.refresh()
 
     def scanned(self, result, error):
         self.busy = None
         if error is not None:
-            self.found = None
-            self.status.configure(text=f"The scan failed: {_error_text(error)}", text_color=LOG_COLORS["error"])
-            self.show_results([f"The scan failed: {_error_text(error)}"])
+            self.found, self.scan_error = None, _error_text(error)
+            log.error(f"The scan failed: {self.scan_error}")
         else:
-            self.found, elapsed = result
-            self.status.configure(text=_summary(self.found), text_color=SEVERITY_COLORS.get(self.found.severity,
-                                                                                            ("black", "white")))
-            self.show_results(_report(self.found) + [f"\nScanned in {elapsed:.2f} s"])
-            log.info(f"Scanned in {elapsed:.2f} s: {_summary(self.found)}")
+            (self.found, elapsed), self.scan_error = result, None
+            log.info(f"Scanned in {elapsed:.2f} s: {self.found.scan.installed.message}"
+                     + (f"; {len(self.found.needs_build)} screen(s) to merge" if self.found.needs_build else ""))
             if not self.found.scan.installed.usable:
                 log.warning(f"Smooth UI: {self.found.scan.installed.message}")
             for problem in self.found.scan.problems:
                 log.warning(problem.message)
-        self.set_buttons()
-        if self.popup:
-            self.popup.scanned(self.found, error)
+        self.refresh()
 
-    def show_results(self, lines):
-        self.results.configure(state="normal")
-        self.results.delete("1.0", "end")
-        self.results.insert("1.0", "\n".join(lines))
-        self.results.configure(state="disabled")
-
-    def rescan(self):
+    def rescan(self, keep_result=False):
+        """Scan again; the last merge's result stays only with keep_result (right after that merge)"""
+        if not keep_result:
+            self.merged = self.merge_error = None
         start_scan(self.game, self.calls)
-
-    def set_buttons(self):
-        idle = self.busy is None
-        self.rescan_button.configure(state="normal" if idle else "disabled")
-        usable = self.found is not None and self.found.scan.installed.usable
-        self.merge_button.configure(state="normal" if idle and usable else "disabled")
-        if not self.stale and self.can_remove():
-            self.remove_button.pack(side="left", padx=(0, 8))
-            self.remove_button.configure(state="normal" if idle else "disabled")
-        else:
-            self.remove_button.pack_forget()
-
-    def can_remove(self) -> bool:
-        """Whether to offer removing the package: it's there, for a Smooth UI that isn't installed or is
-        disabled (another build: the user updates the merger, or Smooth UI)"""
-        return (self.found is not None and self.found.package_without_smoothui
-                and self.found.scan.installed.status in (Status.NOT_INSTALLED, Status.DISABLED))
 
     # ---- Merge, remove ----
 
-    def merge(self, done=None):
-        """Build the package in a thread; then done(result, error) if given, and a new scan"""
+    def merge(self, play=False):
+        """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once"""
         self.busy = "build"
-        self.set_buttons()
-        self.status.configure(text="Merging...", text_color=("black", "white"))
+        self.merged = self.merge_error = None
+        self.refresh()
         log.info("Merging", extra=HEADING)
 
         def finished(result, error):
             self.busy = None
             if error is not None:
-                log.error(f"Merging failed: {_error_text(error)}")
-            self.status.configure(text="Merging failed: see the log" if error else "Merged: see the log")
-            self.set_buttons()
-            if done:
-                done(result, error)
+                self.merge_error = _error_text(error)
+                log.error(f"Merging failed: {self.merge_error}")
             else:
-                self.rescan()
+                self.merged = result
+                if play and result.clean:
+                    self.exit(PLAY)
+                    return
+            self.rescan(keep_result=True)
         in_thread(self.calls, self.build, finished)
 
     def build(self):
@@ -375,12 +594,13 @@ class MergerWindow:
         log.info(f"Built in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
         return result
 
-    def remove(self, done=None):
-        if done is None and not ask_yes_no("Remove the package?", "Remove the merger's package from your Mods "
-                                           "folder? Its mods.settings entry stays."):
+    def remove(self, play=False):
+        """Remove the package (after asking, unless play: stale mode's Remove them and play), then scan
+        again, or play"""
+        if not play and not ask_yes_no(REMOVE_TITLE, REMOVE_QUESTION):
             return
         self.busy = "remove"
-        self.set_buttons()
+        self.refresh()
         folder = next(mod.folder for mod in self.found.scan.order if is_package_folder(mod.folder))
 
         def work():
@@ -393,24 +613,25 @@ class MergerWindow:
             self.busy = None
             if error is not None:
                 log.error(f"The package can't be removed: {_error_text(error)}")
-            if done:
-                done(result, error)
-            else:
-                self.rescan()
+                show_error(REMOVE_TITLE, REMOVE_FAILED.format(error=_error_text(error)))
+            elif play:
+                self.exit(PLAY)
+                return
+            self.rescan()
         in_thread(self.calls, work, finished)
 
     # ---- Closing ----
 
     def close(self):
         if self.busy == "build":
-            if not ask_yes_no("Stop merging?", STOP_BUILD, icon="warning"):
+            if not ask_yes_no(STOP_MERGE_TITLE, STOP_MERGE[self.stale], icon="warning"):
                 return
-            log.warning("Closed while building: deleting the package; the game doesn't start")
+            log.warning("Closed while merging: deleting the package" + ("; the game starts" if self.stale else ""))
             if self.pool is not None:
                 kill_workers(self.pool)
             self.delete_package_now()
             logging.shutdown()
-            os._exit(ABORT)     # without waiting for the build's thread or the pool
+            os._exit(PLAY if self.stale else CLOSED)    # without waiting for the build's thread or the pool
         self.exit(CLOSED)
 
     def delete_package_now(self):
@@ -442,8 +663,7 @@ class MergerWindow:
             log.info(f"Deleted the merger's files in {package_dir}")
             return
         log.error(f"The package can't be deleted: {error}")
-        msg_box(f"The package can't be deleted: {error}\n\nDelete the folder {package_dir} yourself before you play.",
-                MB_ICONERROR)
+        msg_box(DELETE_FAILED.format(error=error, folder=package_dir), MB_ICONERROR)
 
     def exit(self, code):
         log.info(f"Exit code {code}")
@@ -455,120 +675,22 @@ class MergerWindow:
     def callback_failed(self, kind, error, tb):
         """Tk's handler for an exception in a callback (it would only print it)"""
         log.error("".join(traceback.format_exception(kind, error, tb)).rstrip())
-        msg_box(f"Smooth UI's merger failed:\n\n{kind.__name__}: {error}\n\nDetails are in data\\{LOG_FILE}.",
-                MB_ICONERROR)
+        msg_box(FAILED.format(error=f"{kind.__name__}: {error}", log=LOG_FILE), MB_ICONERROR)
 
 
-class StalePopup:
-    """Stale mode's window: why the merger opened, and what to do"""
-    def __init__(self, window: MergerWindow):
-        self.window = window
-        self.top = top = ctk.CTkToplevel(window.root)
-        top.title("Smooth UI: before the game starts")
-        top.geometry("620x430")
-        top.transient(window.root)
-        top.protocol("WM_DELETE_WINDOW", window.close)
+def _row_tone(state: FileState) -> str:
+    """A screen's glyph and color in the list"""
+    if state.state == State.UP_TO_DATE or (state.state == State.NOT_HELD and state.cause == "unchanged"):
+        return OK
+    if state.state in (State.DAMAGED, State.NOT_HELD):
+        return ERROR
+    return INFO if state.severity == Severity.LOW else WARNING
 
-        ctk.CTkLabel(top, text="Before the game starts", font=ctk.CTkFont(size=18, weight="bold")).pack(
-            anchor="w", padx=20, pady=(16, 4))
-        self.text = ctk.CTkLabel(top, text="", justify="left", anchor="w", wraplength=570)
-        self.text.pack(fill="x", padx=20)
-        self.cost = ctk.CTkLabel(top, text="", justify="left", anchor="w", wraplength=570)
-        self.cost.pack(fill="x", padx=20, pady=(8, 0))
-        buttons = ctk.CTkFrame(top, fg_color="transparent")
-        buttons.pack(side="bottom", fill="x", padx=20, pady=16)
-        self.merge_button = ctk.CTkButton(buttons, text="Merge and play", command=self.merge_and_play)
-        self.remove_button = ctk.CTkButton(buttons, text="Remove the package and play", command=self.remove_and_play)
-        self.play_button = ctk.CTkButton(buttons, text="Play without merging", fg_color="gray40",
-                                         command=lambda: window.exit(PLAY))
-        self.abort_button = ctk.CTkButton(buttons, text="Abort game launch", fg_color="gray40",
-                                          command=lambda: window.exit(ABORT))
-        self.show_buttons(play="Play without merging")
 
-    def place(self):
-        """Over the middle of the main window, so a bit of it shows around"""
-        root = self.window.root
-        self.top.update_idletasks()
-        x = root.winfo_rootx() + (root.winfo_width() - self.top.winfo_width()) // 2
-        y = root.winfo_rooty() + (root.winfo_height() - self.top.winfo_height()) // 3
-        self.top.wm_geometry(f"+{max(x, 0)}+{max(y, 0)}")    # wm_geometry: in pixels, as winfo gives them
-        self.top.lift()
-        self.top.focus_force()
-
-    def show_buttons(self, *, merge=False, remove=False, play=None, color=None, abort=True):
-        for button in (self.merge_button, self.remove_button, self.play_button, self.abort_button):
-            button.pack_forget()
-        if merge:
-            self.merge_button.pack(fill="x", pady=3)
-        if remove:
-            self.remove_button.pack(fill="x", pady=3)
-        if play:
-            self.play_button.configure(text=play, fg_color=color or "gray40")
-            self.play_button.pack(fill="x", pady=3)
-        if abort:
-            self.abort_button.pack(fill="x", pady=3)
-
-    def say(self, text, cost="", color=None):
-        self.text.configure(text=text)
-        self.cost.configure(text=cost, text_color=color or ("black", "white"))
-
-    def scanning(self):
-        self.say("Checking your mods...")
-        self.show_buttons(play="Play without merging")
-
-    def scanned(self, found: Check | None, error):
-        if error is not None:
-            self.say(f"The merger can't check your mods: {_error_text(error)}")
-            self.show_buttons(play="Play")
-        elif found.package_without_smoothui or found.scan.conflicts:
-            package = found.package_without_smoothui
-            why = ("The merger's package was made for a Smooth UI build that can't be used now." if package else
-                   f"These mods ship files Smooth UI changes: {', '.join(found.scan.conflicts)}.")
-            text = f"Smooth UI: {found.scan.installed.message}.\n\n{why}"
-            if self.window.can_remove():    # Smooth UI disabled or missing: the merger can't enable it
-                text = (f"{_without_smoothui(found)}. It holds your other mods' screens, patched for Smooth UI.\n\n"
-                        "To play without Smooth UI, remove the package. To keep Smooth UI, abort, enable it again "
-                        "(for example in your mod manager), and start the game again.")
-            self.say(text, "Until this is fixed, some of your mods' screens may look wrong or not work at all.",
-                     SEVERITY_COLORS[Severity.HIGH])
-            self.show_buttons(remove=self.window.can_remove(), play="Play anyway", color=SEVERITY_COLORS[Severity.HIGH])
-        elif found.stale:
-            lines = [f"- {Path(state.path).name}: {state.message}" for state in found.states if state.severity]
-            button, cost = PLAY_WITHOUT_MERGING[found.severity], COST[found.severity]
-            self.say("Smooth UI's patches for your other mods are out of date:\n\n" + "\n".join(lines), cost,
-                     SEVERITY_COLORS.get(found.severity))
-            self.show_buttons(merge=True, play=button, color=SEVERITY_COLORS.get(found.severity))
-        else:
-            self.say("Nothing to merge: the package is up to date now.")
-            self.show_buttons(play="Play")
-
-    def merge_and_play(self):
-        self.say("Merging... (the log is in the window behind this one)")
-        self.show_buttons(abort=False)      # closing the window warns first
-        self.window.merge(done=self.merged)
-
-    def merged(self, result, error):
-        if error is not None:
-            self.say(f"Merging failed: {_error_text(error)}\n\nDetails are in the log behind this window.")
-            self.show_buttons(merge=True, play="Play without merging")
-        elif result.clean:
-            self.window.exit(PLAY)
-        else:
-            self.say("Merged, with problems: see the log behind this window. Files the merger couldn't patch "
-                     "are left out of the package, so the game shows those mods' own copies, unpatched.")
-            self.show_buttons(play="Play")
-
-    def remove_and_play(self):
-        self.say("Removing the package...")
-        self.show_buttons(abort=False)
-
-        def removed(result, error):
-            if error is None:
-                self.window.exit(PLAY)
-            else:
-                self.say(f"The package can't be removed: {_error_text(error)}")
-                self.show_buttons(remove=True, play="Play with the package as it is")
-        self.window.remove(done=removed)
+def _row_order(state: FileState):
+    """Those needing attention first"""
+    rank = {ERROR: 0, WARNING: 1, INFO: 2, OK: 3}[_row_tone(state)]
+    return rank, -(state.severity or 0), screen_name(state.path).lower()
 
 
 def show_info(title, text):
@@ -576,53 +698,11 @@ def show_info(title, text):
     messagebox.showinfo(title, text)
 
 
+def show_error(title, text):
+    from tkinter import messagebox
+    messagebox.showerror(title, text)
+
+
 def ask_yes_no(title, text, icon="question") -> bool:
     from tkinter import messagebox
     return messagebox.askyesno(title, text, icon=icon, default="no")
-
-
-def _command_line():
-    lines = [f"Command line: {subprocess.list2cmdline(sys.argv[1:]) or '(no arguments)'}"]
-    lines += [f"{name}={os.environ[name]}" for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV) if os.environ.get(name)]
-    return "   ".join(lines)
-
-
-def _without_smoothui(found: Check) -> str:
-    """For a package whose Smooth UI is disabled or not installed"""
-    state = "disabled" if found.scan.installed.status == Status.DISABLED else "not installed"
-    return f"Smooth UI Remastered is {state}, but the merger's package for it is still installed"
-
-
-def _summary(found: Check) -> str:
-    installed = found.scan.installed
-    if found.package_without_smoothui and installed.status in (Status.NOT_INSTALLED, Status.DISABLED):
-        return f"{_without_smoothui(found)}: remove the package, or enable Smooth UI again"
-    if found.package_without_smoothui:
-        return f"The package doesn't fit: {installed.message}"
-    if not installed.usable:
-        return f"Smooth UI: {installed.message}"
-    if found.stale:
-        return (f"A merge is needed: {len(found.needs_build)} file(s) (playing without merging: "
-                f"{found.severity.name.lower()})")
-    return "Up to date: nothing to merge"
-
-
-def _report(found: Check) -> list[str]:
-    """The scan's result, as merge.py --scan shows it (shorter)"""
-    result = found.scan
-    lines = [f"Smooth UI: {result.installed.message}", ""]
-    if result.conflicts:
-        lines += [f"Other mods ship files Smooth UI changes: {', '.join(result.conflicts)}", ""]
-    shown = [state for state in found.states if state.state != State.NOTHING_TO_DO]
-    for state in shown:
-        severity = f" ({state.severity.name.lower()})" if state.severity else ""
-        lines.append(f"{state.path}: {state.state.value}{severity}: {state.message}")
-    others = len(found.states) - len(shown)
-    if others:
-        lines.append(f"{others} more file(s): no other mod ships them, so there is nothing to merge")
-    notes = [problem.message for problem in result.problems]
-    notes += [f"{folder} is a Smooth UI compat patch: the package replaces it for every file the package holds"
-              for folder in result.compat_patches]
-    if notes:
-        lines += ["", "Problems:", *notes]
-    return lines

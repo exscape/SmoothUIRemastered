@@ -7,8 +7,9 @@ from pathlib import Path
 from ..common import fail
 from ..paths import FROZEN, REPO_ROOT
 
-# Where users report a file the merger can't patch
-REPORT_URL = "https://www.nexusmods.com/witcher3/mods/13526?tab=bugs"
+# Smooth UI Remastered's page, and where users report a file the merger can't patch
+SMOOTHUI_URL = "https://www.nexusmods.com/witcher3/mods/13526"
+REPORT_URL = f"{SMOOTHUI_URL}?tab=bugs"
 
 # The merger's version is [versions] merger_version in config/config.toml. A frozen tool has no config:
 # smoothui-merger.spec writes the version into this file (in _internal\, at this module's path).

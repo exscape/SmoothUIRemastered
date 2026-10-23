@@ -19,6 +19,48 @@ if TYPE_CHECKING:
 
 # The card's tones (its color and glyph)
 NEUTRAL, OK, INFO, WARNING, ERROR = "neutral", "ok", "info", "warning", "error"
+# Glyphs by tone, from Segoe UI Symbol (in Windows 10 and later)
+GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕"}
+
+# ---- The window ----
+
+TITLE = "Smooth UI Merger"
+SCREENS_HEADING = "Screens other mods change"
+NOTES_HEADING = "Notes"
+SHOW_LOG, HIDE_LOG = "Show log", "Hide log"
+# Notices, above the card
+TEST_MODE = "Test mode: {names} set (their values are in merger.log)"
+NEWER_RELEASE = "A newer Smooth UI Remastered is available ({version})"
+# Notes, below the screens
+COMPAT_PATCH = "{folder} is a Smooth UI compat patch: the merged patches replace it for every screen they hold"
+UNKNOWN_FILES = "The merged patches' folder holds files the merger didn't write, so they stay: {names}"
+
+REMOVE_TITLE = "Remove the merged patches?"
+REMOVE_QUESTION = "Remove the merged patches from your Mods folder? Their mods.settings entry stays."
+REMOVE_FAILED = "The merged patches can't be removed: {error}"
+STOP_MERGE_TITLE = "Stop merging?"
+# By stale mode (the game starts once the window closes)
+STOP_MERGE = {
+    False: ("Merging isn't done yet. Closing now stops it halfway, so the merged patches are deleted (half-written "
+            "ones could break the game).\n\nOnly do this if the merger seems stuck.\n\nClose anyway?"),
+    True: ("Merging isn't done yet. Closing now stops it halfway, so the merged patches are deleted (half-written "
+           "ones could break the game), and the game starts without them.\n\nOnly do this if the merger seems "
+           "stuck.\n\nClose anyway?"),
+}
+DELETE_FAILED = "The merged patches can't be deleted: {error}\n\nDelete the folder {folder} yourself before you play."
+FAILED = "Smooth UI Merger failed:\n\n{error}\n\nDetails are in data\\{log}."
+NO_GAME = "The game wasn't found. Its folder can't be chosen in this version of the merger yet."
+
+WELCOME_TITLE = "Welcome"
+WELCOME = """Welcome to Smooth UI Merger.
+
+Some of your other mods ship their own copies of the screens Smooth UI patches. The game then shows those copies, \
+without Smooth UI's frame rate patches. The merger patches those copies, and puts them into a mod of its own \
+(mod0000_SmoothUI_MergedPatches), which the game loads first. Your mods themselves are never changed.
+
+Start the game with SmoothUILauncher.exe: it checks your mods first, and opens the merger when they changed.
+
+Game folder (the first one found): {game}"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,6 +252,11 @@ def _unusable(installed, stale):
                                                                                     "Unknown Smooth UI build")
         card = Card(WARNING, headline, (_sentence(installed.message),), (RESCAN,))
     return replace(card, buttons=(PLAY, DONT_START)) if stale else card
+
+
+def unchanged_screens(count) -> str:
+    """The line below the list's screens, for those no other mod changes"""
+    return f"{_count(count, 'more screen')}: no other mod changes {'it' if count == 1 else 'them'}"
 
 
 def _cause(file: FileState) -> str:

@@ -14,6 +14,7 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()    # first: in a frozen worker, this runs the worker instead
 
     from smoothui.merger.gui import LOG_FILE, main
+    from smoothui.merger.gui_texts import FAILED
     from smoothui.windows import MB_ICONERROR, msg_box
 
     try:
@@ -21,7 +22,6 @@ if __name__ == "__main__":
     except Exception as e:  # a windowed exe has no console
         import logging
         logging.getLogger("smoothui.merger.gui").exception("Unexpected error")
-        msg_box(f"Smooth UI's merger failed:\n\n{type(e).__name__}: {e}\n\nDetails are in data\\{LOG_FILE}.",
-                MB_ICONERROR)
+        msg_box(FAILED.format(error=f"{type(e).__name__}: {e}", log=LOG_FILE), MB_ICONERROR)
         code = 1
     sys.exit(code)
