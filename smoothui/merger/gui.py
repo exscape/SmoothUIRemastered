@@ -64,6 +64,7 @@ from .gui_texts import (
     NEWER_RELEASE,
     NO_GAME,
     NOTES_HEADING,
+    OK,
     PATCH_ANYWAY,
     PATCH_ANYWAY_NOTE,
     REMOVE_FAILED,
@@ -244,7 +245,10 @@ class MergerWindow:
         self.merge_error = None
         self.busy = None            # what runs in a thread: "scan", "build", "remove"
         self.card: Card | None = None
-        self.card_text = None
+        self.busy_since = 0.0       # when it started (time.perf_counter)
+        self.card_buttons = None    # the frame of the card's buttons, made again when they change
+        self.card_buttons_shown = ()
+        self.notices_shown = None
         self.pool = None
         self.reports = []           # merge_report for each merge, written to REPORT_FILE
         self.exit_code = CLOSED
@@ -274,12 +278,27 @@ class MergerWindow:
         self.card_frame = ctk.CTkFrame(root, border_width=2, fg_color=color("card"))
         self.card_frame.grid(row=2, column=0, sticky="ew", pady=(8, 8), **pad)
         self.card_frame.grid_columnconfigure(1, weight=1)
+        self.card_frame.grid_rowconfigure(4, minsize=14)    # its bottom margin
         self.card_frame.bind("<Configure>", lambda event: self.wrap_card())
+        # The card's widgets are made once, and changed in place (made anew, they show half drawn for a moment)
+        self.card_glyph = ctk.CTkLabel(self.card_frame, text="", font=(SYMBOL_FONT, 26), width=36)
+        self.card_glyph.grid(row=0, column=0, rowspan=2, sticky="n", padx=(16, 4), pady=(14, 0))
+        self.card_headline = ctk.CTkLabel(self.card_frame, text="", font=font(17, "bold"), anchor="w")
+        self.card_headline.grid(row=0, column=1, sticky="ew", padx=(4, 16), pady=(14, 0))
+        # Always there, also without text: so one line of it doesn't change the card's height
+        self.card_text = ctk.CTkLabel(self.card_frame, text="", anchor="w", justify="left")
+        self.card_text.grid(row=1, column=1, sticky="ew", padx=(4, 16), pady=(2, 0))
+        self.card_bar = ctk.CTkProgressBar(self.card_frame, fg_color=color("card"), progress_color=color("card"))
+        self.card_bar.grid(row=2, column=1, sticky="ew", padx=(4, 16), pady=(8, 0))
         self.screens = ctk.CTkScrollableFrame(root, fg_color="transparent")
         self.screens.grid(row=3, column=0, sticky="nsew", padx=8)
         self.screens.grid_columnconfigure(5, weight=1)
         self.screens._parent_canvas.bind("<Configure>", self.fit_scrollbar, add="+")
         self.expanded = set()       # the screens whose details show
+        self.list_content = None    # what the list shows (show_screens)
+        self.rows = {}              # by path: (FileState, its arrow, the grid row for its details)
+        self.details_frames = {}    # by path
+        self.detail_buttons = []    # Patch anyway and Revert, disabled while something runs
         self.list_row = 0
         root.grid_rowconfigure(3, weight=1)
 
@@ -387,19 +406,24 @@ class MergerWindow:
         context = [str(self.game)]
         if installed and installed.usable:
             context.insert(0, f"Smooth UI Remastered {installed.version.split('-')[0]}, {installed.fps} fps")
-        self.context.configure(text="  ·  ".join(context))
+        if self.context.cget("text") != "  ·  ".join(context):
+            self.context.configure(text="  ·  ".join(context))
         self.show_notices(installed)
         self.show_card()
         self.show_screens()
 
     def show_notices(self, installed):
-        for child in self.notices.winfo_children():
-            child.destroy()
+        """The notices, made again only when they change"""
         notices = []
         if names := [name for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV) if os.environ.get(name)]:
             notices.append(TEST_MODE.format(names=" and ".join(names)))
         if installed and installed.newer_release:
             notices.append(NEWER_RELEASE.format(version=installed.newer_release))
+        if notices == self.notices_shown:
+            return
+        self.notices_shown = notices
+        for child in self.notices.winfo_children():
+            child.destroy()
         for text in notices:
             banner = ctk.CTkFrame(self.notices, fg_color=color("notice"))
             banner.pack(fill="x", pady=(8, 0))
@@ -408,44 +432,83 @@ class MergerWindow:
             ctk.CTkLabel(banner, text=text, anchor="w").pack(side="left", fill="x", pady=4)
 
     def show_card(self):
-        self.card = card = status_card(self.found, stale=self.stale, busy=self.busy, scan_error=self.scan_error,
-                                       merged=self.merged, merge_error=self.merge_error)
+        """The card for the window's state (see gui_texts.status_card), changing its widgets in place. Its
+        layout doesn't change while something runs, so the list below doesn't move: the progress bar is
+        always there (hidden in the card's color), and a card without buttons keeps the last card's,
+        disabled."""
+        card = status_card(self.found, stale=self.stale, busy=self.busy, scan_error=self.scan_error,
+                           merged=self.merged, merge_error=self.merge_error)
+        if card == self.card:
+            self.enable_buttons(True)
+            return
+        self.card = card
         frame = self.card_frame
-        for child in frame.winfo_children():
-            child.destroy()
         frame.configure(border_color=color(card.tone))
-        ctk.CTkLabel(frame, text=GLYPHS[card.tone], font=(SYMBOL_FONT, 26), text_color=color(card.tone),
-                     width=36).grid(row=0, column=0, rowspan=2, sticky="n", padx=(16, 4), pady=(14, 0))
-        ctk.CTkLabel(frame, text=card.headline, font=font(17, "bold"), anchor="w").grid(
-            row=0, column=1, sticky="ew", padx=(4, 16), pady=(14, 0))
-        self.card_text = ctk.CTkLabel(frame, text=" ".join(card.sentences), anchor="w", justify="left")
-        if card.sentences:
-            self.card_text.grid(row=1, column=1, sticky="ew", padx=(4, 16), pady=(2, 0))
-        if card.busy:
-            bar = ctk.CTkProgressBar(frame, mode="indeterminate" if card.progress is None else "determinate")
-            if card.progress is None:
-                bar.start()
-                self.root.after(BAR_DELAY, lambda: bar.winfo_exists() and self.card is card and bar.grid(
-                    row=2, column=1, sticky="ew", padx=(4, 16), pady=(8, 0)))
-            else:
-                bar.set(card.progress)
-                bar.grid(row=2, column=1, sticky="ew", padx=(4, 16), pady=(8, 0))
-        actions = self.actions()
-        buttons = [(label, action) for label, action in card.buttons if action in actions]
-        row = ctk.CTkFrame(frame, fg_color="transparent")
-        row.grid(row=3, column=0 if self.stale else 1, columnspan=2 if self.stale else 1, sticky="ew",
-                 padx=16, pady=(0 if not buttons else 12 if card.sentences or card.busy else 4, 14))
-        for index, (label, action) in enumerate(buttons):
-            button = self.button(row, label, actions[action], quiet=index > 0)
-            if self.stale:      # stacked, at full width, so that each always fits
-                button.pack(fill="x", pady=3)
-            else:               # at the right, the default last
-                button.pack(side="right", padx=(8, 0))
+        self.card_glyph.configure(text=GLYPHS[card.tone], text_color=color(card.tone))
+        self.card_headline.configure(text=card.headline)
+        self.card_text.configure(text=" ".join(card.sentences))
+        self.show_bar(card)
         self.wrap_card()
+
+        actions = self.actions()
+        buttons = tuple((label, action) for label, action in card.buttons if action in actions)
+        if card.busy and not buttons:
+            self.enable_buttons(False)
+            return
+        if buttons != self.card_buttons_shown:
+            self.card_buttons_shown = buttons
+            old = self.card_buttons
+            self.card_buttons = None
+            if buttons:     # (an empty frame would be customtkinter's 200 pixels high)
+                self.card_buttons = row = ctk.CTkFrame(frame, fg_color="transparent")
+                for index, (label, action) in enumerate(buttons):
+                    button = self.button(row, label, actions[action], quiet=index > 0)
+                    if self.stale:      # stacked, at full width, so that each always fits
+                        button.pack(fill="x", pady=3)
+                    else:               # at the right, the default last
+                        button.pack(side="right", padx=(8, 0))
+                row.grid(row=3, column=0 if self.stale else 1, columnspan=2 if self.stale else 1, sticky="ew",
+                         padx=16, pady=(4, 0))
+            if old is not None:     # after the new ones are placed: else the card shows none for a moment
+                old.destroy()
+        self.enable_buttons(True)
+
+    def show_bar(self, card):
+        """The card's progress bar: shown while something runs; without progress, only after BAR_DELAY"""
+        bar = self.card_bar
+        if not card.busy:
+            bar.stop()
+            bar.configure(fg_color=color("card"), progress_color=color("card"))
+            return
+        if card.progress is None:
+            bar.configure(mode="indeterminate")
+            bar.start()
+        else:
+            bar.stop()
+            bar.configure(mode="determinate")
+            bar.set(card.progress)
+        delay = 0 if card.progress is not None else BAR_DELAY - round((time.perf_counter() - self.busy_since) * 1000)
+
+        def show():
+            if self.card is card:
+                theme = ctk.ThemeManager.theme["CTkProgressBar"]
+                bar.configure(fg_color=theme["fg_color"], progress_color=theme["progress_color"])
+        if delay > 0:
+            self.root.after(delay, show)
+        else:
+            show()
+
+    def enable_buttons(self, on):
+        """The card's buttons (on or off), and those in the screens' details (also off while something runs)"""
+        for button in self.card_buttons.winfo_children() if self.card_buttons is not None else []:
+            button.configure(state="normal" if on else "disabled")
+        for button in self.detail_buttons:
+            if button.winfo_exists():
+                button.configure(state="normal" if on and not self.busy else "disabled")
 
     def wrap_card(self):
         """Wrap the card's sentences at its width (wraplength is in unscaled pixels, as sizes are)"""
-        if self.card_text is not None and self.card_text.winfo_exists():
+        if self.card_text.winfo_exists():
             scaling = ctk.ScalingTracker.get_widget_scaling(self.card_frame)
             width = self.card_frame.winfo_width() / scaling - 36 - 56
             self.card_text.configure(wraplength=max(width, 200))
@@ -471,23 +534,34 @@ class MergerWindow:
         }
 
     def show_screens(self):
-        """The screens other mods change, by mod, then the line for the others, then notes"""
-        for child in self.screens.winfo_children():
-            child.destroy()
+        """The screens other mods change, by mod, then the line for the others, then notes. Rebuilding the list
+        takes a moment, during which it shows blank: so not while it would show the same."""
         states = self.found.states if self.found else []
         shown = sorted((state for state in states if state.state != State.NOTHING_TO_DO), key=_row_order)
         others = len(states) - len(shown)
         notes = self.notes() if self.found else []
+        content = ([(state, self.found.scan.files[state.path].shippers) for state in shown], others, notes)
+        if content == self.list_content:
+            return
+        same_rows = (self.list_content is not None and self.list_content[1:] == content[1:]
+                     and [state.path for state, _ in self.list_content[0]] == [state.path for state in shown])
+        self.list_content = content
+        if same_rows:       # the same screens: only what they show changes
+            for state in shown:
+                self.update_row(state)
+            return
+        for child in self.screens.winfo_children():
+            child.destroy()
+        self.rows, self.details_frames, self.detail_buttons = {}, {}, []
         if not (shown or others or notes):
             self.screens.grid_remove()      # an empty list would still show its scroll bar
             return
         self.screens.grid()
         self.list_row = 0
-        width = max(self.screens.winfo_width() / ctk.ScalingTracker.get_widget_scaling(self.screens), 600)
         if shown or others:
             self.list_heading(SCREENS_HEADING)
         for state in shown:
-            self.screen_row(state, width)
+            self.screen_row(state)
         if others:
             self.list_line(unchanged_screens(others))
         if notes:
@@ -508,59 +582,79 @@ class MergerWindow:
             row=self.list_row, column=1, columnspan=5, sticky="ew", pady=(4, 0))
         self.list_row += 1
 
-    def screen_row(self, state: FileState, width):
-        """A screen's row: its glyph, name, mod and status; a click shows its details"""
+    def screen_row(self, state: FileState):
+        """A screen's row: its glyph, name, mod and status; a click shows its details, in the grid row below
+        it, kept for them"""
         tone, status = row_status(state)
-        expanded = state.path in self.expanded
-        cells = {
-            0: ctk.CTkLabel(self.screens, text=GLYPHS[tone], font=(SYMBOL_FONT, 13), text_color=color(tone), width=20),
-            1: ctk.CTkLabel(self.screens, text=screen_name(state.path), anchor="w"),
-            2: ctk.CTkLabel(self.screens, text=state.winner or "", anchor="w", text_color=color("muted_text")),
-            3: ctk.CTkLabel(self.screens, text=status, anchor="w"),
-            4: ctk.CTkLabel(self.screens, text="▾" if expanded else "▸", font=(SYMBOL_FONT, 16),
-                            text_color=color("muted_text")),
-        }
-        for column, cell in cells.items():
+        cells = [
+            ctk.CTkLabel(self.screens, text=GLYPHS[tone], font=(SYMBOL_FONT, 13), text_color=color(tone), width=20),
+            ctk.CTkLabel(self.screens, text=screen_name(state.path), anchor="w"),
+            ctk.CTkLabel(self.screens, text=state.winner or "", anchor="w", text_color=color("muted_text")),
+            ctk.CTkLabel(self.screens, text=status, anchor="w"),
+            ctk.CTkLabel(self.screens, text="▸", font=(SYMBOL_FONT, 16), text_color=color("muted_text")),
+        ]
+        for column, cell in enumerate(cells):
             cell.grid(row=self.list_row, column=column, sticky="w", pady=1, padx=(8, 4) if column == 0 else (0, 16))
             cell.configure(cursor="hand2")
             cell.bind("<Button-1>", lambda event, path=state.path: self.toggle_row(path))
-        self.list_row += 1
-        if expanded:
-            self.details(state, width)
+        self.rows[state.path] = (state, cells, self.list_row + 1)
+        self.list_row += 2
+        if state.path in self.expanded:
+            self.show_details(state.path)
 
-    def details(self, state: FileState, width):
+    def update_row(self, state: FileState):
+        """A screen's row (and its details, if open) for its new state"""
+        _, cells, row = self.rows[state.path]
+        self.rows[state.path] = (state, cells, row)
+        tone, status = row_status(state)
+        cells[0].configure(text=GLYPHS[tone], text_color=color(tone))
+        cells[2].configure(text=state.winner or "")
+        cells[3].configure(text=status)
+        if frame := self.details_frames.pop(state.path, None):
+            frame.destroy()
+            self.show_details(state.path)
+
+    def toggle_row(self, path):
+        """Show or hide a screen's details (only those: rebuilding the list would blank it for a moment)"""
+        self.expanded ^= {path}
+        if path in self.expanded:
+            self.show_details(path)
+        elif frame := self.details_frames.pop(path, None):
+            frame.destroy()
+            self.rows[path][1][4].configure(text="▸")
+        self.root.after_idle(self.fit_scrollbar)
+
+    def show_details(self, path):
         """Below a screen's row: its file name, the full message, the other mods that change it, and Patch
         anyway (a screen left out for its rescale's problems, never for a failure) or its revert"""
-        frame = ctk.CTkFrame(self.screens, fg_color=color("card"))
-        frame.grid(row=self.list_row, column=1, columnspan=5, sticky="ew", padx=(0, 16), pady=(2, 8))
-        self.list_row += 1
-        wrap = width - 140
-        lines = [(screen_label(state.path), color("muted_text")), (capitalized(state.message), None)]
-        if also := also_changed(self.found.scan.files[state.path], state.winner):
+        state, cells, row = self.rows[path]
+        cells[4].configure(text="▾")
+        self.details_frames[path] = frame = ctk.CTkFrame(self.screens, fg_color=color("card"))
+        wrap = max(self.screens.winfo_width() / ctk.ScalingTracker.get_widget_scaling(self.screens), 600) - 140
+        lines = [(screen_label(path), color("muted_text")), (capitalized(state.message), None)]
+        if also := also_changed(self.found.scan.files[path], state.winner):
             lines.append((also, None))
         for line, text_color in lines:
             ctk.CTkLabel(frame, text=line, anchor="w", justify="left", wraplength=wrap, text_color=text_color).pack(
                 fill="x", padx=12, pady=(6, 0))
         if state.state == State.NOT_HELD and state.cause == "left out":
             button, note = PATCH_ANYWAY, PATCH_ANYWAY_NOTE
-            command = lambda: self.merge(self.stale, patch_anyway=state.path)
+            command = lambda: self.merge(self.stale, patch_anyway=path)
         elif state.state == State.UP_TO_DATE and state.cause == "forced":
             button, note = REVERT, REVERT_NOTE.format(mod=state.winner)
-            command = lambda: self.merge(self.stale, revert=state.path)
+            command = lambda: self.merge(self.stale, revert=path)
         else:
             button = None
         if button:
-            row = ctk.CTkFrame(frame, fg_color="transparent")
-            row.pack(fill="x", padx=12, pady=(8, 0))
-            self.button(row, button, command, quiet=True).pack(side="left")
-            ctk.CTkLabel(row, text=note, anchor="w").pack(side="left", padx=10)
-            if self.busy:
-                row.winfo_children()[0].configure(state="disabled")
+            buttons = ctk.CTkFrame(frame, fg_color="transparent")
+            buttons.pack(fill="x", padx=12, pady=(8, 0))
+            widget = self.button(buttons, button, command, quiet=True)
+            widget.pack(side="left")
+            widget.configure(state="disabled" if self.busy else "normal")
+            self.detail_buttons.append(widget)
+            ctk.CTkLabel(buttons, text=note, anchor="w").pack(side="left", padx=10)
         ctk.CTkFrame(frame, fg_color="transparent", height=8).pack()
-
-    def toggle_row(self, path):
-        self.expanded ^= {path}
-        self.show_screens()
+        frame.grid(row=row, column=1, columnspan=5, sticky="ew", padx=(0, 16), pady=(2, 8))     # once filled
 
     def fit_scrollbar(self, event=None):
         """Show the list's scroll bar only when the list doesn't fit (customtkinter always shows it; its
@@ -586,12 +680,25 @@ class MergerWindow:
 
     # ---- The scan ----
 
+    def set_busy(self, what):
+        """What runs in a thread now ("scan", "build", "remove"; None: nothing)"""
+        if what and not self.busy:
+            self.busy_since = time.perf_counter()
+        self.busy = what
+
     def scanning(self):
-        self.busy = "scan"
-        self.refresh()
+        """A scan started. The window's first shows at once; a later one (Re-scan, after a merge) only if it
+        takes a while: most end first, and showing it would make the window flicker"""
+        first = self.found is None and self.scan_error is None
+        self.set_busy("scan")
+        if first:
+            self.refresh()
+            return
+        self.enable_buttons(False)
+        self.root.after(BAR_DELAY, lambda: self.busy == "scan" and self.refresh())
 
     def scanned(self, result, error):
-        self.busy = None
+        self.set_busy(None)
         if error is not None:
             self.found, self.scan_error = None, _error_text(error)
             log.error(f"The scan failed: {self.scan_error}")
@@ -616,13 +723,13 @@ class MergerWindow:
     def merge(self, play=False, patch_anyway=None, revert=None):
         """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once.
         patch_anyway: a file to force too; revert: a forced file not to force (see build)"""
-        self.busy = "build"
+        self.set_busy("build")
         self.merged = self.merge_error = None
         self.refresh()
         log.info("Merging", extra=HEADING)
 
         def finished(result, error):
-            self.busy = None
+            self.set_busy(None)
             if error is not None:
                 self.merge_error = _error_text(error)
                 log.error(f"Merging failed: {self.merge_error}")
@@ -670,7 +777,7 @@ class MergerWindow:
         again, or play"""
         if not play and not ask_yes_no(REMOVE_TITLE, REMOVE_QUESTION):
             return
-        self.busy = "remove"
+        self.set_busy("remove")
         self.refresh()
         folder = next(mod.folder for mod in self.found.scan.order if is_package_folder(mod.folder))
 
@@ -681,7 +788,7 @@ class MergerWindow:
             log.info(f"Removed the package{'' if removed else ' (its folder stays)'}")
 
         def finished(result, error):
-            self.busy = None
+            self.set_busy(None)
             if error is not None:
                 log.error(f"The package can't be removed: {_error_text(error)}")
                 show_error(REMOVE_TITLE, REMOVE_FAILED.format(error=_error_text(error)))
@@ -750,8 +857,10 @@ class MergerWindow:
 
 
 def _row_order(state: FileState):
-    """By mod, then by screen (a screen no other mod changes now, e.g. its mod was removed, first)"""
-    return (state.winner or "").lower(), screen_name(state.path).lower()
+    """By status (errors, then warnings, then the rest), then by mod (a screen no other mod changes now, e.g.
+    its mod was removed, first), then by screen"""
+    rank = {ERROR: 0, WARNING: 1, INFO: 2, OK: 3}[row_status(state)[0]]
+    return rank, (state.winner or "").lower(), screen_name(state.path).lower()
 
 
 def show_info(title, text):
