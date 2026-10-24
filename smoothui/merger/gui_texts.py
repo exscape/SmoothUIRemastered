@@ -172,6 +172,11 @@ CAUSES = {
     "overridden": "{mod} has priority 0 too, and its name sorts first.",
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
 }
+# What a Smooth UI that can't be used costs, beyond the mods' screens (by installed.Status)
+RISKS = {
+    Status.TWO_FOLDERS: "Until then, the game's menus may look wrong or break.",
+    Status.UNKNOWN: "Until then, Smooth UI itself may not work as intended.",
+}
 MORE_CAUSES = "And {count} more: see the list below."
 MAX_CAUSES = 2          # sentences about causes on a card, the last one perhaps MORE_CAUSES
 
@@ -193,7 +198,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
         buttons = (("Play without waiting", "play"), DONT_START) if stale else ()
         return Card(NEUTRAL, "Checking your mods...", buttons=buttons, default=False, busy=True)
     if scan_error is not None:
-        return Card(ERROR, "Can't read your mods", (_sentence(scan_error),), (PLAY, DONT_START) if stale else (RESCAN,))
+        return Card(ERROR, "Can't read your mods", (_sentence(scan_error),), (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
     if merge_error is not None:
         if stale:
             play = PLAY_WITHOUT_MERGING[found.severity] if found and found.severity else "Play without merging"
@@ -236,7 +241,7 @@ def _merged(result: BuildResult, stale):
         notes.append("See the notes below.")
     headline = ("Merged, but some screens couldn't be merged" if any(file.severity == "error" for file in result.files)
                 else "Merged, with problems")
-    return Card(WARNING, headline, _sentences(causes, notes), (PLAY, DONT_START) if stale else (RESCAN,))
+    return Card(WARNING, headline, _sentences(causes, notes), (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
 
 
 def _checked(found: Check, stale):
@@ -254,6 +259,10 @@ def _checked(found: Check, stale):
         return Card(ERROR, "The merged patches don't fit the installed Smooth UI", (_sentence(installed.message),),
                     (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
     if not installed.usable:
+        if found.scan.conflicts and installed.status in RISKS:
+            card = _unusable(installed, stale)
+            mods = f"These mods' screens may look wrong too: {_join(found.scan.conflicts)}."
+            return replace(card, tone=ERROR, sentences=(*card.sentences, *((mods,) if installed.status == Status.UNKNOWN else ())))
         if found.scan.conflicts:
             sentences = (_sentence(installed.message),
                          f"Until then, these mods' screens may look wrong: {_join(found.scan.conflicts)}.")
@@ -268,7 +277,7 @@ def _checked(found: Check, stale):
             # Only another mod at Priority 0 that sorts first: a merge changes nothing
             fix = "Give it a priority above 0 (in your mod manager or mods.settings), then re-scan."
             return Card(WARNING, "Another mod loads before the merged patches", _sentences(causes, [fix]),
-                        (PLAY, DONT_START) if stale else (RESCAN,))
+                        (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
         severity = found.severity
         buttons = ((("Merge and play", "merge_and_play"), (PLAY_WITHOUT_MERGING[severity], "play"), DONT_START) if stale
                    else (("Merge", "merge"), RESCAN))
@@ -307,8 +316,9 @@ def _unusable(installed, stale):
         headline = {Status.TOO_OLD: "Smooth UI Remastered is too old",
                     Status.TWO_FOLDERS: "Two Smooth UI folders are installed"}.get(installed.status,
                                                                                     "Unknown Smooth UI build")
-        card = Card(WARNING, headline, (_sentence(installed.message),), (RESCAN,))
-    return replace(card, buttons=(PLAY, DONT_START)) if stale else card
+        card = Card(WARNING, headline, (_sentence(installed.message), *([RISKS[installed.status]] if installed.status in RISKS else [])),
+                    (RESCAN,))
+    return replace(card, buttons=(PLAY_ANYWAY, DONT_START)) if stale else card
 
 
 def row_status(file: FileState) -> tuple[str, str]:

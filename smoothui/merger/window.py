@@ -576,7 +576,7 @@ class MergerWindow:
         return page
 
     def make_settings(self):
-        """The settings page: the game folder (saved with Save), the launcher, the data folder"""
+        """The settings page: the game folder (saved with Save), the launcher"""
         page, layout = self.make_page()
         self.heading(layout, SETTINGS, 0, 17)
         self.heading(layout, GAME_HEADING, 10)
@@ -584,16 +584,12 @@ class MergerWindow:
         layout.addWidget(self.settings_chooser.widget)
         self.heading(layout, LAUNCHER_HEADING)
         layout.addWidget(self.launcher_section(self.settings_chooser))
-        self.heading(layout, DATA_HEADING)
-        layout.addWidget(label(DATA.format(folder=gui.DATA_DIR), wrap=True))
-        layout.addSpacing(4)
-        layout.addWidget(button(OPEN_DATA, lambda: os.startfile(gui.DATA_DIR)), 0, Qt.AlignLeft)
         self.save_button = button(SAVE, self.save_settings_page, primary=True)
         self.page_buttons(layout, button(CANCEL, lambda: self.show_page(self.main_page)), self.save_button)
         return page
 
     def make_help(self):
-        """The help page: the versions, how to set the tools up, reporting a bug, the licenses"""
+        """The help page: the versions, how to set the tools up, reporting a bug, the data folder, the licenses"""
         page, layout = self.make_page()
         self.heading(layout, HELP, 0, 17)
         self.heading(layout, VERSIONS_HEADING, 10)
@@ -611,6 +607,10 @@ class MergerWindow:
         row.addWidget(QLabel(f'<a href="{REPORT_URL}">{REPORT_LINK}</a>', openExternalLinks=True))
         row.addStretch()
         layout.addLayout(row)
+        self.heading(layout, DATA_HEADING)
+        layout.addWidget(label(DATA.format(folder=gui.DATA_DIR), wrap=True))
+        layout.addSpacing(4)
+        layout.addWidget(button(OPEN_DATA, lambda: os.startfile(gui.DATA_DIR)), 0, Qt.AlignLeft)
         self.heading(layout, LICENSES_HEADING)
         layout.addWidget(label(LICENSES, wrap=True))
         layout.addSpacing(4)
@@ -958,7 +958,7 @@ class MergerWindow:
         grid.setColumnMinimumWidth(3, STATUS_WIDTH + 16)
         self.rows, self.details = {}, {}
         self.list_row = 0
-        if shown or others:
+        if shown:
             self.list_heading(SCREENS_HEADING)
             if any("merged" in row_status(state)[1].lower() for state in shown):
                 note = label(SCREENS_NOTE, tone="muted", wrap=True)
@@ -967,7 +967,7 @@ class MergerWindow:
                 self.list_row += 1
         for state in shown:
             self.screen_row(state)
-        if others:
+        if others and shown:
             self.list_line(unchanged_screens(others))
         if notes:
             self.list_heading(NOTES_HEADING)
@@ -994,7 +994,7 @@ class MergerWindow:
         tone, status = row_status(state)
         toggle = lambda: self.toggle_row(state.path)
         cells = [glyph(tone, on_click=toggle), label(screen_name(state.path), on_click=toggle),
-                 label(state.winner or "", tone="muted", on_click=toggle), label(status, on_click=toggle),
+                 label(state.winner or state.previous or "", tone="muted", on_click=toggle), label(status, on_click=toggle),
                  label("▸", 16, tone="muted", on_click=toggle, family=SYMBOL_FONT)]
         cells[0].setFixedWidth(24)
         for column, cell in enumerate(cells):
