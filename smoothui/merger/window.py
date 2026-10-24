@@ -73,6 +73,7 @@ from PySide6.QtWidgets import (
 from ..common import SmoothUIError, fail
 from ..files import stop_writes, write_file
 from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
+from ..patcher.fixes import fix_consequence, fix_kind
 from ..paths import APP_DIR
 from ..windows import MB_ICONERROR, ms_since_process_start, msg_box, set_topmost
 from . import REPORT_URL, SMOOTHUI_URL, TOOLS_README_URL, gui
@@ -1029,7 +1030,9 @@ class MergerWindow:
         layout.setContentsMargins(12, 6, 12, 10)
         layout.setSpacing(6)
         layout.addWidget(label(screen_label(path), tone="muted", wrap=True))
-        layout.addWidget(label(capitalized(state.message), wrap=True))
+        layout.addWidget(label(capitalized(state.message) + (":" if state.fixes else ""), wrap=True))
+        for name in state.fixes:
+            layout.addWidget(label(f"•  {fix_text(name)}", wrap=True))
         if also := also_changed(self.found.scan.files[path], state.winner):
             layout.addWidget(label(also, wrap=True))
         widget = None
@@ -1373,6 +1376,15 @@ class GameChooser:
             return
         log.info(f"Game folder chosen: {folder}")
         self.show(self.folders, folder)
+
+
+def fix_text(name):
+    """What a missing fix means, e.g. "Game bug fix missing: in Gwent, the falling rain stops (gwent-rain-loop-fix)";
+    only its name for a fix this merger doesn't know"""
+    try:
+        return f"{fix_kind(name).header} {fix_consequence(name)} ({name})"
+    except ValueError:
+        return name
 
 
 def _row_order(state: FileState):

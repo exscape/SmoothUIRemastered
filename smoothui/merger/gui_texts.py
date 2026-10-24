@@ -277,11 +277,14 @@ def _checked(found: Check, stale):
 
     # Up to date: what the merged patches hold, and what they can't
     causes = [(_cause(file), file.winner) for file in found.states
-              if file.state == State.UNDETERMINED or (file.state == State.NOT_HELD and file.cause != "unchanged")]
+              if file.state == State.UNDETERMINED or (file.state == State.NOT_HELD and file.cause != "unchanged")
+              or file.cause == "fixes"]
     patched = [(file.winner, file.path) for file in found.states if file.state == State.UP_TO_DATE]
     buttons = (PLAY,) if stale else (RESCAN, ("Merge again", "merge"))
     if causes:
-        return Card(WARNING, "Some screens can't be merged", _sentences(causes), buttons)
+        headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
+                    else "Some screens can't be merged")
+        return Card(WARNING, headline, _sentences(causes), buttons)
     if patched:
         return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.",), buttons)
     if any(file.state == State.NOT_HELD for file in found.states):

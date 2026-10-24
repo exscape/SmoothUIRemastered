@@ -77,6 +77,7 @@ class FileState:
                                 # chose to patch it anyway
     previous: str | None = None     # CHANGED (but for "smoothui", "merger") and NO_LONGER_NEEDED: the mod whose
                                     # copy the last merge used
+    fixes: tuple[str, ...] = ()     # UP_TO_DATE: the fixes the merged copy lacks (a fix that can't apply)
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,9 +169,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         winner = file.winner
         origin = winner.origin if winner else None
 
-        def state(kind, message, severity=None, needs_build=None, cause=None, previous=None, key=key, origin=origin):
+        def state(kind, message, severity=None, needs_build=None, cause=None, previous=None, fixes=(), key=key,
+                  origin=origin):
             needs_build = kind.needs_build if needs_build is None else needs_build
-            states.append(FileState(key, kind, message, origin, severity, needs_build, cause, previous))
+            states.append(FileState(key, kind, message, origin, severity, needs_build, cause, previous, fixes))
 
         if file.undetermined:
             state(State.UNDETERMINED, "the load order doesn't decide which mod's copy the game uses (see the problems)")
@@ -209,12 +211,14 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                         "it: it may look or behave wrong in places")
                 if record.get("reasons"):
                     text += f". Why: {'; '.join(record['reasons'])}"
-                if record.get("fixes_not_applied"):
-                    text += f". Without {', '.join(record['fixes_not_applied'])}"
-                state(State.UP_TO_DATE, text, cause="forced")
+                fixes = tuple(record.get("fixes_not_applied") or ())
+                if fixes:
+                    text += ", and without some fixes"
+                state(State.UP_TO_DATE, text, cause="forced", fixes=fixes)
             else:
-                without = f"; without {', '.join(record['fixes_not_applied'])}" if record.get("fixes_not_applied") else ""
-                state(State.UP_TO_DATE, f"merged ({origin}'s copy{without})", cause="fixes" if without else None)
+                fixes = tuple(record.get("fixes_not_applied") or ())
+                state(State.UP_TO_DATE, f"merged ({origin}'s copy)" + (", without some fixes" if fixes else ""),
+                      cause="fixes" if fixes else None, fixes=fixes)
         elif key in held:
             state(State.DAMAGED, "the merged patches are damaged (their manifest lists it, their bundle doesn't): "
                   "merge again", Severity.HIGH)
