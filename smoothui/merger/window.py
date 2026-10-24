@@ -478,6 +478,7 @@ class MergerWindow:
         self.list_grid = None
         page.addWidget(self.screens, 1)
         self.expanded = set()       # the screens whose details show
+        self.auto_opened = set()    # the screens whose details opened by themselves (once, so closing sticks)
         self.list_content = None    # what the list shows (show_screens)
         self.rows = {}              # by path: (FileState, its cells, the grid row for its details)
         self.rows_merging = False   # whether rows show a merge's progress, not their FileState
@@ -1028,6 +1029,9 @@ class MergerWindow:
             self.list_grid.addWidget(cell, self.list_row, column)
         self.rows[state.path] = (state, cells, self.list_row + 1)
         self.list_row += 2
+        if (tone == ERROR or state.fixes) and state.path not in self.auto_opened:
+            self.auto_opened.add(state.path)    # the status alone doesn't say what went wrong
+            self.expanded.add(state.path)
         if state.path in self.expanded:
             self.show_details(state.path)
 
