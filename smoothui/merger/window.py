@@ -482,6 +482,8 @@ class MergerWindow:
         self.list_content = None    # what the list shows (show_screens)
         self.rows = {}              # by path: (FileState, its cells, the grid row for its details)
         self.rows_merging = False   # whether rows show a merge's progress, not their FileState
+        self.keep_order = False     # since a merge (until Re-scan): rows stay where they were (see show_screens)
+        self.row_order = {}         # by path: the row's position in the list, as last shown
         self.details = {}           # by path: (its frame, its button or None)
         self.list_row = 0
 
@@ -763,6 +765,7 @@ class MergerWindow:
         log.info(f"Game folder: {game}")
         self.game = game
         self.found = self.scan_error = self.merged = self.merge_error = None
+        self.keep_order = False
         if self.busy == "scan":
             self.scan_again = True
             self.refresh()
@@ -961,11 +964,16 @@ class MergerWindow:
 
     def show_screens(self):
         """The screens other mods change, by status, mod and screen, then the line for the others, then notes:
-        made again when that changes (open details stay open)"""
+        made again when that changes (open details stay open). After a merge, until Re-scan, the rows keep
+        their places: else the next "Left out" row would move up under the mouse, as if the click had failed."""
         if self.rows_merging and self.busy:     # the scan after a merge: the rows show the merge's until it ends
             return
         states = self.found.states if self.found else []
-        shown = sorted((state for state in states if state.state != State.NOTHING_TO_DO), key=_row_order)
+        order = _row_order
+        if self.keep_order:     # a row that wasn't shown goes after the others
+            order = lambda state: (self.row_order.get(state.path, len(self.row_order)), _row_order(state))
+        shown = sorted((state for state in states if state.state != State.NOTHING_TO_DO), key=order)
+        self.row_order = {state.path: index for index, state in enumerate(shown)}
         others = len(states) - len(shown)
         notes = self.notes() if self.found else []
         content = ([(state, self.found.scan.files[state.path].shippers) for state in shown], others, notes)
@@ -1144,9 +1152,11 @@ class MergerWindow:
         self.refresh()
 
     def rescan(self, keep_result=False):
-        """Scan again; the last merge's result stays only with keep_result (right after that merge)"""
+        """Scan again; the last merge's result (and the rows' places) stays only with keep_result (right after
+        that merge)"""
         if not keep_result:
             self.merged = self.merge_error = None
+            self.keep_order = False
         start_scan(self.game, self.calls)
 
     # ---- Merge, remove ----
@@ -1156,6 +1166,7 @@ class MergerWindow:
         patch_anyway: a file to force too; revert: a forced file not to force (see build)"""
         self.set_busy("build")
         self.merged = self.merge_error = self.progress = None
+        self.keep_order = True
         self.refresh()
         for path in self.rows:      # each says "Done" when its file is (see merged_file)
             if self.found.scan.files[path].winner:
