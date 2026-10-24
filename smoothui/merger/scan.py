@@ -20,16 +20,18 @@ from pathlib import Path
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
 from ..witcher3.bundle import read_toc
 from ..witcher3.mod_bundles import read_bundle_tocs
-from ..witcher3.mods_settings import read_mods_settings
+from ..witcher3.mods_settings import ModSettings, read_mods_settings
 from ..witcher3.source_file import SourceFile
 from .installed import Installed, installed_build, is_smoothui_folder
-from .load_order import Mod, load_order, make_mods, undetermined_for
+from .load_order import Mod, compare, load_order, make_mods, undetermined_for
 from .screens import screen_name
 
 log = logging.getLogger(__name__)
 
 # The merger's own package (the name isn't final)
 PACKAGE_FOLDER = "mod0000_SmoothUI_MergedPatches"
+# Script Merger's mod: scripts and text files only, so it may load before the package
+SCRIPT_MERGER_FOLDER = "mod0000_MergedFiles"
 # Compat patches built by build-compat.py (see compat.py's mod_folder_name); the short name is accepted too
 COMPAT_PATCH = re.compile(r"mod000_SmoothUI(Remastered)?_.+_Compat", re.IGNORECASE | re.DOTALL)
 # The longest path of a mod's file (its metadata.store or a bundle) known to load properly. Seen in game: a
@@ -111,6 +113,18 @@ def is_own_folder(name: str) -> bool:
 
 def is_package_folder(name: str) -> bool:
     return name.lower() == PACKAGE_FOLDER.lower()
+
+
+def entry_needed(order: list[Mod], ours: ModSettings | None) -> bool:
+    """Whether the package, with its current mods.settings section (ours; None if it has none), needs the
+    entry a build writes: some enabled mod in order loads before it. Script Merger's mod may (it holds no
+    .redswf files, so it never conflicts), and the package may have any valid priority, as long as it loads
+    first."""
+    if ours is not None and (not ours.enabled or ours.priority is None):
+        return True
+    package = Mod(PACKAGE_FOLDER, ours)
+    return any(compare(mod, package) < 0 for mod in order
+               if not is_package_folder(mod.folder) and mod.folder.lower() != SCRIPT_MERGER_FOLDER.lower())
 
 
 def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None, manifests=None) -> Scan:

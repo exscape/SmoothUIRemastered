@@ -98,6 +98,7 @@ The launcher is optional, but recommended: without it, nothing tells you when yo
 
 ## Good to know
 
+- **Your mods are never changed:** The tools only write to its own `mod0000_SmoothUI_MergedPatches` mod, and sets itself as prioritized in `mods.settings`. Everything else is left alone; deleting the patches reverts every change. (The `mods.settings` entry is harmless by itself, and mod managers may remove it automatically.)
 - **What the merger fixes:** the game uses only one mod's copy of each UI file. When other mods change a file that Smooth UI also changes, the merger takes the copy the game would use anyway (from the mod that comes first in your load order) and adds Smooth UI's changes to it. So Smooth UI's own place in the load order doesn't matter.
 - **What the merger doesn't do** is combine two **other** mods that change the same file: as without Smooth UI, only the first one's changes show, unless you install a compatibility patch for those two mods and place it above the original mods in the load order. The merger then uses that patch's copy and makes it high framerate.
 - **Load order:** the merged patches must load before every other UI mod (Priority 0 in `mods.settings`, which the merger sets). If another mod that ships one of the patched files is put ahead of them, the launcher notices and offers to fix it.

@@ -27,7 +27,7 @@ from ..witcher3.mods_settings import ModSettings
 from . import merger_version
 from .installed import is_smoothui_folder
 from .package import PACKAGE_MANIFEST, PACKAGE_MANIFEST_FORMAT, record_path, same_copy
-from .scan import COMPAT_PATCH, PACKAGE_FOLDER, Scan, is_package_folder, scan
+from .scan import COMPAT_PATCH, PACKAGE_FOLDER, Scan, entry_needed, is_package_folder, scan
 from .screens import screen_name
 
 
@@ -159,7 +159,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         rebuilt = rebuilt_text = None
     merger_only = rebuilt == "merger"
     # Whether the package's own mods.settings entry is as a build writes it (see mods_settings.write_entry)
-    own_entry = any(is_package_folder(mod.folder) and mod.settings == ModSettings(True, 0) for mod in result.order)
+    # (Priority 0, or any entry that a build wouldn't change because the package loads first anyway)
+    own_entry = any(is_package_folder(mod.folder) and mod.settings is not None
+                    and (mod.settings == ModSettings(True, 0) or not entry_needed(result.order, mod.settings))
+                    for mod in result.order)
     held = (manifest or {}).get("files", {})
     not_held = (manifest or {}).get("not_held", {})
 

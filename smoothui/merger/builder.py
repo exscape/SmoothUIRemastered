@@ -18,11 +18,11 @@ from ..common import fail, profile_key
 from ..files import make_dirs
 from ..patcher.patcher_core import RuleIssues
 from ..paths import DATA_DIR
-from ..witcher3.mods_settings import write_entry
+from ..witcher3.mods_settings import read_mods_settings, write_entry
 from .game import MODS_SETTINGS_BACKUP
 from .package import Written, record_path, write_package
 from .policy import PackageFile, decide
-from .scan import PACKAGE_FOLDER, Scan, is_package_folder, scan
+from .scan import PACKAGE_FOLDER, Scan, entry_needed, is_package_folder, scan
 from .screens import screen_label
 
 log = logging.getLogger(__name__)
@@ -54,7 +54,8 @@ class Installation:
 def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_dir: Path | None = None,
             data_dir: Path | None = DATA_DIR) -> Installation:
     """Write the package into the game's Mods\\ folder and give it its mods.settings entry (the file at
-    mods_settings; its old content goes to MODS_SETTINGS_BACKUP in data_dir first, if it changes). With
+    mods_settings; its old content goes to MODS_SETTINGS_BACKUP in data_dir first, if it changes). The
+    file is only written if another mod (not mod0000_MergedFiles) loads before the package. With
     out_dir, write the package there instead, for a look at it, and leave mods.settings alone. A package
     that holds no files is removed instead, with a record in data_dir (see package.py), and mods.settings
     is left alone: an entry it has stays, as a later build would write it again. data_dir None: no
@@ -68,6 +69,8 @@ def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_
     if data_dir is not None:
         make_dirs(data_dir)
         backup = Path(data_dir) / MODS_SETTINGS_BACKUP
+    if not entry_needed(result.order, read_mods_settings(mods_settings).get(PACKAGE_FOLDER.lower())):
+        return Installation(package_dir, written, False)
     return Installation(package_dir, written, write_entry(mods_settings, PACKAGE_FOLDER, backup=backup))
 
 
