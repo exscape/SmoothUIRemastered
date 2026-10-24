@@ -26,6 +26,7 @@ GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕"}
 
 TITLE = "Smooth UI Merger"
 SCREENS_HEADING = "Screens other mods change"
+SCREENS_NOTE = "Merged: the mod's copy of the screen now runs at Smooth UI's frame rate, with Smooth UI's fixes."
 NOTES_HEADING = "Notes"
 SHOW_LOG, HIDE_LOG = "Show log", "Hide log"
 # Notices, above the card
@@ -49,9 +50,9 @@ STOP_MERGE = {
 }
 # The list
 ALSO_CHANGED = "Also changed by {mods}; the game uses {mod}'s copy, which comes first in the load order."
-PATCH_ANYWAY = "Patch anyway"
+PATCH_ANYWAY = "Merge anyway"
 PATCH_ANYWAY_NOTE = "It may then look or behave wrong in places."
-REVERT = "Revert to the unpatched screen"
+REVERT = "Revert to the mod's own copy"
 REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate."
 
 DELETE_FAILED = "The merged patches can't be deleted: {error}\n\nDelete the folder {folder} yourself before you play."
@@ -60,9 +61,9 @@ FAILED = "Smooth UI Merger failed:\n\n{error}\n\nDetails are in data\\{log}."
 # ---- The welcome page (first run) and the settings page ----
 
 WELCOME_HEADING = "Welcome to Smooth UI Merger"
-WELCOME = ("Some of your mods change the same screens as Smooth UI Remastered. The game then shows their copies, "
-           "without Smooth UI's frame rate. The merger patches those copies into a mod of its own ({folder}), "
-           "which the game loads first. Your mods themselves are never changed.")
+WELCOME = ("Many UI mods change the same screens as Smooth UI Remastered. The game then shows their copies, "
+           "without Smooth UI's improved frame rate. The merger adds Smooth UI's changes to those copies, in a mod "
+           "of its own ({folder}) that the game loads first. Your mods themselves are never changed.")
 CONTINUE = "Continue"
 PLAY_WITHOUT_SETUP = "Play without setting up"
 SETTINGS = "Settings"
@@ -99,7 +100,7 @@ GUIDE_HEADING = "Setting up"
 GUIDE_LINK = "How to set up and use Smooth UI's tools ↗"
 BUG_HEADING = "Reporting a bug"
 BUG = ("Save a bug report, then attach it to your report. It is a zip with the merger's logs and settings, your "
-       "mods.settings (i.e. your mod list is likely included) and what the merger merged; your Windows user name is left out.")
+       "mods.settings (so it lists your mods) and what the merger merged. Your Windows user name is removed.")
 REPORT_LINK = "Report a bug ↗"
 SAVE_BUG_REPORT = "Save a bug report"
 BUG_REPORT_TITLE = "Bug report"
@@ -118,6 +119,7 @@ class Card:
     headline: str
     sentences: tuple[str, ...] = ()
     buttons: tuple[tuple[str, str], ...] = ()
+    default: bool = True                # whether the first button is the default (Enter presses it)
     busy: bool = False                  # something runs: show a progress bar
     progress: float | None = None       # busy: how far (0 to 1); None: unknown
 
@@ -131,7 +133,7 @@ DONT_START = ("Don't start the game", "abort")
 # A merge is needed: by what playing without it costs (state.Severity)
 HEADLINES = {
     Severity.HIGH: "Your merged patches are out of date",
-    Severity.MEDIUM: "Some screens aren't patched",
+    Severity.MEDIUM: "Some screens aren't merged",
     Severity.LOW: "Merging again is recommended",
 }
 # What playing without merging costs, where the headline doesn't say it
@@ -141,23 +143,24 @@ COST = {
 }
 PLAY_WITHOUT_MERGING = {
     Severity.HIGH: "Play without merging (may break mods)",
-    Severity.MEDIUM: "Play without merging (unpatched screens)",
+    Severity.MEDIUM: "Play without merging (screens not merged)",
     Severity.LOW: "Play without merging",
 }
 TONES = {Severity.HIGH: ERROR, Severity.MEDIUM: WARNING, Severity.LOW: INFO}
 
 # Causes are keyed by FileState.cause, or its state's value, and by policy.FileStatus's values, with "fixes"
-# for a copy patched without some fixes. The card names no screens: the list below it does. Those about
+# for a copy merged without some fixes. The card names no screens: the list below it does. Those about
 # mods' copies name the mods: one sentence per kind (MOD_CAUSES), from MODS (for one mod, for more).
-MOD_CAUSES = {"updated": "changed", "load order": "changed", "no longer needed": "changed", "not built": "unpatched",
+MOD_CAUSES = {"updated": "changed", "load order": "changed", "no longer needed": "changed", "not built": "not merged",
               "left out": "left out", "failed": "left out", "fixes": "fixes"}
 MODS = {
     "changed": ("{count} changed since the last merge: {mods}.", "{count} changed since the last merge: {mods}."),
-    "unpatched": ("{count} contains unpatched screens: {mods}.", "{count} contain unpatched screens: {mods}."),
-    "left out": ("{count} has screens that can't be fully patched: {mods}.",
-                 "{count} have screens that can't be fully patched: {mods}."),
-    "fixes": ("{count} has screens patched without some fixes: {mods}.",
-              "{count} have screens patched without some fixes: {mods}."),
+    "not merged": ("{count} contains screens that aren't merged: {mods}.",
+                 "{count} contain screens that aren't merged: {mods}."),
+    "left out": ("{count} has screens that can't be fully merged: {mods}.",
+                 "{count} have screens that can't be fully merged: {mods}."),
+    "fixes": ("{count} has screens merged without some fixes: {mods}.",
+              "{count} have screens merged without some fixes: {mods}."),
 }
 NUMBERS = ("No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten")
 # The other causes, one sentence each: one with {mod} once per mod, one without it once
@@ -166,7 +169,7 @@ CAUSES = {
     "merger": "The merger was updated.",
     "damaged": "The merged patches are damaged.",
     "entry": "The merged patches' mods.settings entry is missing or changed.",
-    "overridden": "{mod} has Priority 0 too, and its name sorts first.",
+    "overridden": "{mod} has priority 0 too, and its name sorts first.",
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
 }
 MORE_CAUSES = "And {count} more: see the list below."
@@ -188,7 +191,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
         return Card(NEUTRAL, "Removing the merged patches...", busy=True)
     if busy == "scan" or (found is None and scan_error is None):
         buttons = (("Play without waiting", "play"), DONT_START) if stale else ()
-        return Card(NEUTRAL, "Checking your mods...", buttons=buttons, busy=True)
+        return Card(NEUTRAL, "Checking your mods...", buttons=buttons, default=False, busy=True)
     if scan_error is not None:
         return Card(ERROR, "Can't read your mods", (_sentence(scan_error),), (PLAY, DONT_START) if stale else (RESCAN,))
     if merge_error is not None:
@@ -231,7 +234,7 @@ def _merged(result: BuildResult, stale):
         notes.append("Some merged screens don't load as they should: see the notes below.")
     if result.problems or result.installation.written.unknown_files:
         notes.append("See the notes below.")
-    headline = ("Merged, but some screens couldn't be patched" if any(file.severity == "error" for file in result.files)
+    headline = ("Merged, but some screens couldn't be merged" if any(file.severity == "error" for file in result.files)
                 else "Merged, with problems")
     return Card(WARNING, headline, _sentences(causes, notes), (PLAY, DONT_START) if stale else (RESCAN,))
 
@@ -278,9 +281,9 @@ def _checked(found: Check, stale):
     patched = [(file.winner, file.path) for file in found.states if file.state == State.UP_TO_DATE]
     buttons = (PLAY,) if stale else (RESCAN, ("Merge again", "merge"))
     if causes:
-        return Card(WARNING, "Some screens can't be patched", _sentences(causes), buttons)
+        return Card(WARNING, "Some screens can't be merged", _sentences(causes), buttons)
     if patched:
-        return Card(OK, "Your merged patches are up to date", (f"They patch {_patched(patched)}.",), buttons)
+        return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.",), buttons)
     if any(file.state == State.NOT_HELD for file in found.states):
         return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens are already smooth.",),
                     (PLAY,) if stale else (RESCAN,))
@@ -309,13 +312,15 @@ def row_status(file: FileState) -> tuple[str, str]:
     """A screen's tone (its glyph and color) and short status in the list"""
     state, cause = file.state, file.cause
     if state == State.UP_TO_DATE:
-        return OK, "Patched anyway" if cause == "forced" else "Patched"
+        if cause == "fixes":
+            return WARNING, "Merged, fixes missing"
+        return OK, "Merged anyway" if cause == "forced" else "Merged"
     if state == State.NOT_HELD:
-        return {"unchanged": (OK, "Already smooth"), "failed": (ERROR, "Can't patch"),
+        return {"unchanged": (OK, "Already smooth"), "failed": (ERROR, "Can't merge"),
                 "mod failed": (ERROR, "Mod left out")}.get(cause, (ERROR, "Left out"))
     if state == State.CHANGED:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
-                "load order": (WARNING, "Load order changed")}.get(cause, (WARNING, "Updated"))
+                "load order": (WARNING, "Load order changed")}.get(cause, (WARNING, "Mod updated"))
     return {State.NOTHING_TO_DO: (OK, "Smooth UI's own copy"), State.NOT_BUILT: (WARNING, "Not merged yet"),
             State.NO_LONGER_NEEDED: (WARNING, "Mod removed"), State.DAMAGED: (ERROR, "Damaged"),
             State.OVERRIDDEN: (WARNING, "Another mod loads first"),
@@ -328,7 +333,7 @@ def merging_status(patched: str | None) -> tuple[str, str]:
     patched (a patched screen may still be left out), so until then it is only "Done"."""
     if patched is None:
         return NEUTRAL, "Waiting"
-    return (ERROR, "Can't patch") if patched == "failed" else (NEUTRAL, "Done")
+    return (ERROR, "Can't merge") if patched == "failed" else (NEUTRAL, "Done")
 
 
 def also_changed(file: FileResult, winner: str | None) -> str | None:

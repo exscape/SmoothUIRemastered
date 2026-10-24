@@ -139,6 +139,7 @@ from .gui_texts import (
     SAVE,
     SAVE_BUG_REPORT,
     SCREENS_HEADING,
+    SCREENS_NOTE,
     SETTINGS,
     SETTINGS_NOT_SAVED,
     SETUP_LINK,
@@ -863,13 +864,13 @@ class MergerWindow:
                     layout = QVBoxLayout(row)
                     layout.setSpacing(6)
                     for index, (text, action) in enumerate(buttons):
-                        layout.addWidget(button(text, actions[action], primary=index == 0))
+                        layout.addWidget(button(text, actions[action], primary=index == 0 and card.default))
                 else:               # at the right, the default last
                     layout = QHBoxLayout(row)
                     layout.setSpacing(8)
                     layout.addStretch()
                     for index, (text, action) in reversed(list(enumerate(buttons))):
-                        layout.addWidget(button(text, actions[action], primary=index == 0))
+                        layout.addWidget(button(text, actions[action], primary=index == 0 and card.default))
                 layout.setContentsMargins(0, 4, 0, 0)
                 self.card_grid.addWidget(row, 3, 0 if self.stale else 1, 1, 2 if self.stale else 1)
         self.enable_buttons(True)
@@ -913,7 +914,7 @@ class MergerWindow:
         actions = self.card_actions()
         buttons = [action for _, action in self.card.buttons if action in actions] if self.card else []
         shown = self.card_buttons.findChildren(QPushButton) if self.card_buttons is not None else []
-        if buttons and all(widget.isEnabled() for widget in shown):     # (not while a re-scan has them disabled)
+        if buttons and self.card.default and all(widget.isEnabled() for widget in shown):  # (not while re-scanning)
             actions[buttons[0]]()
 
     def card_actions(self):
@@ -958,6 +959,11 @@ class MergerWindow:
         self.list_row = 0
         if shown or others:
             self.list_heading(SCREENS_HEADING)
+            if any("merged" in row_status(state)[1].lower() for state in shown):
+                note = label(SCREENS_NOTE, tone="muted", wrap=True)
+                note.setContentsMargins(0, 0, 0, 4)
+                self.list_grid.addWidget(note, self.list_row, 0, 1, 6)
+                self.list_row += 1
         for state in shown:
             self.screen_row(state)
         if others:

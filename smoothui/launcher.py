@@ -143,7 +143,7 @@ def package_stale(game: Path, log: Log) -> bool:
         found = check(game, mods_settings())
     except Exception as e:  # noqa: BLE001 (the game starts anyway)
         text = log.failure("The check failed", e)
-        msg_box(f"Smooth UI couldn't check whether its patches for your other mods are up to date:\n\n{text}\n\n"
+        msg_box(f"Smooth UI couldn't check whether your merged patches are up to date:\n\n{text}\n\n"
                 f"The game starts anyway. {DETAILS}")
         return False
     log(f"Checked in {(time.perf_counter() - start) * 1000:.0f} ms: {found.scan.installed.message}")
@@ -171,7 +171,7 @@ def open_merger(log: Log) -> bool:
         code = subprocess.run(command, check=False).returncode
     except Exception as e:  # noqa: BLE001 (the game starts anyway)
         text = log.failure("The merger can't be started", e)
-        msg_box(f"Smooth UI's merger can't be started:\n\n{text}\n\nThe game starts anyway. {DETAILS}")
+        msg_box(f"Smooth UI Merger can't be started:\n\n{text}\n\nThe game starts anyway. {DETAILS}")
         return True
     if code in (PLAY, CLOSED):
         log(f"The merger says: play{' (its window was closed)' if code == CLOSED else ''}")
@@ -209,6 +209,6 @@ def run():
         code = main(sys.argv[1:], log)
     except Exception as e:  # noqa: BLE001 (a windowed exe has no console)
         text = log.failure("Unexpected error", e)
-        msg_box(f"Smooth UI's launcher failed:\n\n{text}\n\n{DETAILS}", MB_ICONERROR)
+        msg_box(f"Smooth UI Launcher failed:\n\n{text}\n\n{DETAILS}", MB_ICONERROR)
         code = 1
     sys.exit(code)

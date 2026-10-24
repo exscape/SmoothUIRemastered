@@ -107,28 +107,28 @@ class PackageFile:
         they can do. The first line is the summary; the others are indented."""
         status, mod = self.status, self.mod
         if status == FileStatus.PATCHED:
-            summary = f"patched ({mod}'s copy)" + (", without some fixes:" if self.issues else "")
+            summary = f"merged ({mod}'s copy)" + (", without some fixes:" if self.issues else "")
             details = self._fix_lines()
         elif status == FileStatus.UNCHANGED:
             summary = f"{mod}'s copy is already smooth: used as it is" + (", without some fixes:" if self.issues else "")
             details = self._fix_lines()
         elif status == FileStatus.FORCED:
-            summary = (f"patched anyway ({mod}'s copy), as you chose, though Smooth UI can't fully patch it. It may "
+            summary = (f"merged anyway ({mod}'s copy), as you chose, though Smooth UI can't fully merge it. It may "
                        "look or behave wrong in places:")
             details = [*self._issue_lines(), *self._fix_lines()]
         elif status == FileStatus.MOD_FAILED:
-            summary = (f"not patched: another of {mod}'s screens can't be patched, so none of them are. "
+            summary = (f"not merged: another of {mod}'s screens can't be merged, so none of them are. "
                        f"{self._fallback_text()}")
             details = []
         elif status == FileStatus.FAILED:
-            summary = f"not patched: {mod}'s copy can't be patched, so none of {mod}'s screens are. {self._fallback_text()}"
+            summary = f"not merged: {mod}'s copy can't be merged, so none of {mod}'s screens are. {self._fallback_text()}"
             details = [f"Why: {self.error}",
                        (f"Most likely a bug or limitation of Smooth UI, not of {mod}: please report it at {REPORT_URL}, "
                         "with this log.")]
         else:
-            summary = f"left out: Smooth UI can't fully patch {mod}'s copy. {self._fallback_text()}"
+            summary = f"left out: Smooth UI can't fully merge {mod}'s copy. {self._fallback_text()}"
             details = ["Why:", *self._issue_lines(), *self._fix_lines(),
-                       ("You can patch it anyway (it may then look or behave wrong in places), or check for a newer "
+                       ("You can merge it anyway (it may then look or behave wrong in places), or check for a newer "
                         f"merger. Most likely a limitation of Smooth UI, not of {mod}: please report it at "
                         f"{REPORT_URL}, with this log.")]
         return "\n  ".join([f"{screen_label(self.path)}: {summary}", *details])

@@ -128,10 +128,10 @@ def _has_package(result: Scan) -> bool:
 # What the last build did with a file it didn't put in the package, by the status the manifest records
 # (policy.FileStatus's values; policy.py isn't imported here, as the launch check doesn't need the patcher)
 NOT_HELD_TEXT = {
-    "unchanged": "already smooth, nothing to patch",
-    "left out": "left out, as Smooth UI can't fully patch it",
-    "failed": "left out, as it can't be patched",
-    "mod failed": "left out, as another of the mod's screens can't be patched",
+    "unchanged": "already smooth, nothing to merge",
+    "left out": "left out, as Smooth UI can't fully merge it",
+    "failed": "left out, as it can't be merged",
+    "mod failed": "left out, as another of the mod's screens can't be merged",
 }
 
 
@@ -205,7 +205,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                           "is missing or changed: merge again", Severity.MEDIUM, needs_build=True)
             elif record.get("forced"):
                 since = f" on {record['forced_since']}" if record.get("forced_since") else ""
-                text = (f"patched anyway, as you chose{since} ({origin}'s copy), though Smooth UI can't fully patch "
+                text = (f"merged anyway, as you chose{since} ({origin}'s copy), though Smooth UI can't fully merge "
                         "it: it may look or behave wrong in places")
                 if record.get("reasons"):
                     text += f". Why: {'; '.join(record['reasons'])}"
@@ -214,7 +214,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.UP_TO_DATE, text, cause="forced")
             else:
                 without = f"; without {', '.join(record['fixes_not_applied'])}" if record.get("fixes_not_applied") else ""
-                state(State.UP_TO_DATE, f"patched ({origin}'s copy{without})")
+                state(State.UP_TO_DATE, f"merged ({origin}'s copy{without})", cause="fixes" if without else None)
         elif key in held:
             state(State.DAMAGED, "the merged patches are damaged (their manifest lists it, their bundle doesn't): "
                   "merge again", Severity.HIGH)
@@ -260,7 +260,7 @@ def carried_force(result: Scan) -> tuple[list[str], list[str]]:
         if file is not None and file.winner is not None and same_copy(record, file.winner):
             force.append(key)
         else:
-            notes.append(f"{screen_name(key)}: you chose to patch it anyway, but its copy changed since, so that "
+            notes.append(f"{screen_name(key)}: you chose to merge it anyway, but its copy changed since, so that "
                          "choice no longer applies")
     return force, notes
 

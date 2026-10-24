@@ -101,7 +101,7 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
         manifest = manifests.get(record_version)
         if manifest is None:
             return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, which this merger "
-                             "doesn't know: update the merger", folder=folder, version=record_version)
+                             "is too old to understand: update the merger", folder=folder, version=record_version)
         sizes_only = _matches(files, manifest)
         if sizes_only is None:
             return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, but some of its "
