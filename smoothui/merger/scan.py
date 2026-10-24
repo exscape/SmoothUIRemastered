@@ -30,8 +30,8 @@ log = logging.getLogger(__name__)
 
 # The merger's own package (the name isn't final)
 PACKAGE_FOLDER = "mod0000_SmoothUI_MergedPatches"
-# Compat patches built by build-compat.py (see compat.py's mod_folder_name)
-COMPAT_PATCH = re.compile(r"mod000_SmoothUIRemastered_.+_Compat", re.IGNORECASE | re.DOTALL)
+# Compat patches built by build-compat.py (see compat.py's mod_folder_name); the short name is accepted too
+COMPAT_PATCH = re.compile(r"mod000_SmoothUI(Remastered)?_.+_Compat", re.IGNORECASE | re.DOTALL)
 # The longest path of a mod's file (its metadata.store or a bundle) known to load properly. Seen in game: a
 # mod whose metadata.store path was 259 characters loaded; one whose bundle path was 260 had its screen
 # show blank, and a 255-character folder name made the game ignore the mod.
@@ -96,6 +96,13 @@ class Scan:
         holds (see builder.compat_notes)"""
         return [mod.folder for mod in self.order if COMPAT_PATCH.fullmatch(mod.folder)]
 
+    def removable_compat(self, held: set[str]) -> list[str]:
+        """The installed compat patches whose every file the merged patches hold (profile keys): they can be
+        removed. One the game still uses for a file they don't hold (a screen the merger left out) isn't."""
+        return [folder for folder in self.compat_patches
+                if all(key in held for key, file in self.files.items()
+                       if any(mod.folder == folder for mod in file.shippers))]
+
 
 def is_own_folder(name: str) -> bool:
     """Whether a mod folder is ours: Smooth UI itself, the package, or a compat patch"""
@@ -135,11 +142,10 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
         others = [mod for mod in result.shippers if not is_own_folder(mod.folder)]
         result.undetermined = undetermined_for(others)
         if COMPAT_PATCH.fullmatch(result.loaded.folder if result.loaded else "") and not others:
-            # Not necessarily a mistake: a mod that only ships .redswf files works through its compat patch alone
-            problems.append(Problem(ProblemKind.ORPHANED_COMPAT, f"the game uses {result.loaded.folder}'s {screen_name(key)}, "
-                                    "though no other enabled mod changes that screen. Fine if you use this compat patch "
-                                    "in place of its mod; if that mod was disabled or removed by mistake, enable it "
-                                    "again, or remove the compat patch", result.loaded.folder, key))
+            # The merger replaces these compat patches, so one that the game still uses should go
+            problems.append(Problem(ProblemKind.ORPHANED_COMPAT,
+                                    f"{result.loaded.folder} is an old Smooth UI compat patch, which the merger "
+                                    "replaces: remove it", result.loaded.folder, key))
         if result.undetermined:
             names = ", ".join(mod.folder for mod in result.undetermined)
             problems.append(Problem(ProblemKind.UNDETERMINED, f"the load order doesn't decide whose {screen_name(key)} the "
@@ -212,7 +218,10 @@ def _mod_files(mod_dir, mod, keys, problems, mods_dir_length):
     try:
         return read_bundle_tocs(content, keys)
     except SmoothUIError as e:
-        problems.append(Problem(ProblemKind.MOD_ISSUE, f"{mod.folder} is left out: {e}", mod=mod.folder))
+        log.warning(f"{mod.folder} is left out: {e}")     # (the full text, with the path, is for the log)
+        reason = (f"its bundle files can't be read{' (not a Witcher 3 bundle)' if 'POTATO70' in str(e) else ''}"
+                  if str(e).startswith("can't read the bundles") else e)
+        problems.append(Problem(ProblemKind.MOD_ISSUE, f"{mod.folder} is left out: {reason}", mod=mod.folder))
         return {}
 
 

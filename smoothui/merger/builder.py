@@ -96,15 +96,10 @@ def check_package(files: list[PackageFile], rescan: Scan) -> list[str]:
 
 def compat_notes(result: Scan, files: list[PackageFile]) -> list[str]:
     """For each installed compat patch whose every file the package holds: that it can be removed. (One the
-    game still needs for a file the package doesn't hold, e.g. for a mod that only ships .redswf files and
-    is used through its compat patch alone, gets no such note.)"""
+    game still uses for a file the package doesn't hold, a screen the merger left out, gets no such note.)"""
     held = {file.path for file in files if file.status.included}
-    notes = []
-    for folder in result.compat_patches:
-        shipped = [key for key, file in result.files.items() if any(mod.folder == folder for mod in file.shippers)]
-        if all(key in held for key in shipped):
-            notes.append(f"{folder} is no longer needed (the merged patches replace it): you can remove it")
-    return notes
+    return [f"{folder} is no longer needed (the merged patches replace it): you can remove it"
+            for folder in result.removable_compat(held)]
 
 
 @dataclass(slots=True)

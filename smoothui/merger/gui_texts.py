@@ -33,7 +33,7 @@ SHOW_LOG, HIDE_LOG = "Show log", "Hide log"
 TEST_MODE = "Test mode: {names} set (their values are in merger.log)"
 NEWER_RELEASE = "A newer Smooth UI Remastered is available ({version})"
 # Notes, below the screens
-COMPAT_PATCH = "{folder} is a Smooth UI compat patch: the merged patches replace it for every screen they hold"
+COMPAT_REMOVABLE = "{folder} is no longer needed: the merged patches replace it. You can remove it."
 UNKNOWN_FILES = "The merged patches' folder holds files the merger didn't write, so they stay: {names}"
 
 REMOVE_TITLE = "Remove the merged patches?"

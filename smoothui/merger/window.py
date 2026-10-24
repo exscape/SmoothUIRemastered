@@ -99,7 +99,7 @@ from .gui_texts import (
     CANCEL,
     CHOOSE_FOLDER,
     CHOOSE_FOLDER_TITLE,
-    COMPAT_PATCH,
+    COMPAT_REMOVABLE,
     CONTINUE,
     CREATE_SHORTCUT,
     DATA,
@@ -955,6 +955,7 @@ class MergerWindow:
         grid.setHorizontalSpacing(0)
         grid.setVerticalSpacing(2)
         grid.setColumnStretch(5, 1)
+        grid.setColumnMinimumWidth(0, 24)
         grid.setColumnMinimumWidth(3, STATUS_WIDTH + 16)
         self.rows, self.details = {}, {}
         self.list_row = 0
@@ -1070,7 +1071,8 @@ class MergerWindow:
             if unknown := self.merged.installation.written.unknown_files:
                 notes.append((UNKNOWN_FILES.format(names=", ".join(unknown)), INFO))
         else:
-            notes += [(COMPAT_PATCH.format(folder=folder), INFO) for folder in result.compat_patches]
+            held = {state.path for state in self.found.states if state.state == State.UP_TO_DATE}
+            notes += [(COMPAT_REMOVABLE.format(folder=folder), INFO) for folder in result.removable_compat(held)]
         return [(capitalized(text), tone) for text, tone in notes]
 
     # ---- The scan ----
