@@ -87,6 +87,7 @@ from .game import (
     find_games,
     game_folder_of,
     game_path,
+    is_game_folder,
     mods_settings,
     save_settings,
 )
@@ -134,7 +135,6 @@ from .gui_texts import (
     OPEN_LOG_FOLDER,
     PATCH_ANYWAY,
     PATCH_ANYWAY_NOTE,
-    PLAY_WITHOUT_SETUP,
     REMOVE_FAILED,
     REMOVE_QUESTION,
     REMOVE_TITLE,
@@ -570,8 +570,8 @@ class MergerWindow:
 
     def make_welcome(self):
         """The first run's page: what the merger does, the game folder, the launcher. Continue saves the
-        settings; in stale mode, the game can also start without them (the launcher opens the merger again
-        next time)."""
+        settings. In stale mode, closing the window starts the game without them (the launcher opens the
+        merger again next time)."""
         page, layout = self.make_page()
         self.heading(layout, WELCOME_HEADING, 0, 17)
         layout.addWidget(label(WELCOME.format(folder=PACKAGE_FOLDER), wrap=True))
@@ -582,8 +582,7 @@ class MergerWindow:
         layout.addWidget(self.launcher_section(self.welcome_chooser))
         self.continue_button = button(CONTINUE, self.confirm_welcome, primary=True)
         self.continue_button.setEnabled(False)     # until a folder is chosen
-        extra = [button(PLAY_WITHOUT_SETUP, lambda: self.exit(PLAY))] if self.stale else []
-        self.page_buttons(layout, *extra, self.continue_button)
+        self.page_buttons(layout, self.continue_button)
         return page
 
     def make_settings(self):
@@ -1369,7 +1368,11 @@ class GameChooser:
 
     def show(self, folders: list[GameFolder], selected: Path | None = None, searching=False):
         """Offer folders (selected first, if it isn't one of them), selecting selected, else the first one;
-        searching: the search for folders isn't done yet"""
+        searching: the search for folders isn't done yet. Only game folders: e.g. the folder of the settings
+        or the test variable may not be one (any more)."""
+        folders = [folder for folder in folders if is_game_folder(folder.path)]
+        if selected is not None and not is_game_folder(selected):
+            selected = None
         if selected is not None and not any(same_folder(folder.path, selected) for folder in folders):
             folders = [GameFolder(selected, None), *folders]
         if self.rows is not None:

@@ -65,7 +65,6 @@ WELCOME = ("Many UI mods change the same screens as Smooth UI Remastered. The ga
            "without Smooth UI's improved frame rate. The merger adds Smooth UI's changes to those copies, in a mod "
            "of its own ({folder}) that the game loads first. Your mods themselves are never changed.")
 CONTINUE = "Continue"
-PLAY_WITHOUT_SETUP = "Play without setting up"
 SETTINGS = "Settings"
 SAVE, CANCEL = "Save", "Cancel"
 # The game folder
