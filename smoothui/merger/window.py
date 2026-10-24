@@ -53,6 +53,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -93,14 +94,17 @@ from .gui import LOG_FILE, REPORT_FILE, LogFormatter, error_text, in_thread, sta
 from .gui_texts import (
     BACK,
     BUG,
+    BUG_DIALOG,
     BUG_HEADING,
     BUG_REPORT_FAILED,
     BUG_REPORT_TITLE,
     CANCEL,
     CHOOSE_FOLDER,
     CHOOSE_FOLDER_TITLE,
+    CLOSE,
     COMPAT_REMOVABLE,
     CONTINUE,
+    COPY_REPORT,
     CREATE_SHORTCUT,
     DATA,
     DATA_HEADING,
@@ -134,11 +138,12 @@ from .gui_texts import (
     REMOVE_FAILED,
     REMOVE_QUESTION,
     REMOVE_TITLE,
+    REPORT_COPIED,
     REPORT_LINK,
     REVERT,
     REVERT_NOTE,
     SAVE,
-    SAVE_BUG_REPORT,
+    SAVE_ZIP,
     SCREENS_HEADING,
     SCREENS_NOTE,
     SETTINGS,
@@ -158,6 +163,8 @@ from .gui_texts import (
     WARNING,
     WELCOME,
     WELCOME_HEADING,
+    WRITE_BUG_REPORT,
+    ZIP_NOTE,
     Card,
     also_changed,
     capitalized,
@@ -177,6 +184,7 @@ log = logging.getLogger(__name__)
 THEME = json.loads(Path(__file__).with_name("theme.json").read_text(encoding="utf-8"))
 FONT_DIR = Path(__file__).with_name("fonts")
 FONT_FAMILY = "Roboto"
+MONO_FAMILY = "Consolas"                # the bug report (in Windows 10 and later)
 SYMBOL_FONT = "Segoe UI Symbol"         # the glyphs (in Windows 10 and later)
 ICON_FILE = APP_DIR / "smoothui.ico"     # optional: Qt's own icon without it
 LICENSES_DIR = APP_DIR / "licenses"      # (only next to the frozen exes)
@@ -485,7 +493,7 @@ class MergerWindow:
         footer.addWidget(self.log_button)
         footer.addStretch()
         footer.addWidget(button(OPEN_LOG_FOLDER, lambda: os.startfile(gui.DATA_DIR)))
-        footer.addWidget(button(SAVE_BUG_REPORT, self.save_bug_report))
+        footer.addWidget(button(WRITE_BUG_REPORT, self.open_bug_report))
         page.addLayout(footer)
         self.pages.addWidget(main)
 
@@ -603,7 +611,7 @@ class MergerWindow:
         layout.addSpacing(4)
         row = QHBoxLayout()
         row.setSpacing(16)
-        row.addWidget(button(SAVE_BUG_REPORT, self.save_bug_report))
+        row.addWidget(button(WRITE_BUG_REPORT, self.open_bug_report))
         row.addWidget(QLabel(f'<a href="{REPORT_URL}">{REPORT_LINK}</a>', openExternalLinks=True))
         row.addStretch()
         layout.addLayout(row)
@@ -629,8 +637,25 @@ class MergerWindow:
                                                                  else SMOOTHUI_NOT_CHECKED))
         self.show_page(self.help_page)
 
-    def save_bug_report(self):
-        """Save a bug report (see bug_report.py), then show it in Explorer"""
+    def open_bug_report(self):
+        """The short bug report in a dialog, to read, edit and copy (see bug_report.py)"""
+        from .bug_report import short_report
+        text = short_report(self.game, self.found, self.window_lines(), gui.DATA_DIR / LOG_FILE)
+        bug_report_dialog(self.root, text, self.save_report_zip).exec()
+
+    def window_lines(self) -> list[str]:
+        """What the window shows, as text: the card, the screens' rows and the notes"""
+        lines = []
+        if self.card is not None:
+            lines += [self.card.headline, *self.card.sentences]
+        for state, _, _ in self.rows.values():
+            tone, status = row_status(state)
+            line = f"{screen_name(state.path)}: {status}" + (f" ({state.winner})" if state.winner else "")
+            lines.append(f"{line}: {capitalized(state.message)}" if tone == ERROR else line)
+        return lines + [text for text, _ in self.notes()] if self.found else lines
+
+    def save_report_zip(self):
+        """Save the full bug report (see bug_report.py), then show it in Explorer"""
         from .bug_report import save_bug_report
         try:
             path = save_bug_report(gui.DATA_DIR, self.game, mods_settings(), self.found)
@@ -930,7 +955,7 @@ class MergerWindow:
             "remove_and_play": lambda: self.remove(play=True),
             "rescan": self.rescan,
             "smoothui_page": lambda: webbrowser.open(SMOOTHUI_URL),
-            "bug_report": self.save_bug_report,
+            "bug_report": self.open_bug_report,
         }
 
     def show_screens(self):
@@ -1399,6 +1424,40 @@ def _row_order(state: FileState):
 def ask_folder(parent, title, initial) -> str:
     """A folder the user picks ("" if none)"""
     return QFileDialog.getExistingDirectory(parent, title, initial)
+
+
+def bug_report_dialog(parent, text, save_zip) -> QDialog:
+    """The bug report's text, to read, edit and copy; save_zip: called by its second button"""
+    dialog = QDialog(parent)
+    dialog.setWindowTitle(BUG_REPORT_TITLE)
+    dialog.resize(640, 560)
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(20, 16, 20, 16)
+    layout.setSpacing(10)
+    layout.addWidget(label(BUG_DIALOG, wrap=True))
+    edit = QPlainTextEdit(text)
+    edit.setFont(font(12, family=MONO_FAMILY))
+    layout.addWidget(edit, 1)
+    copied = label(tone="muted")
+    link = QLabel(f'<a href="{REPORT_URL}">{REPORT_LINK}</a>', openExternalLinks=True)
+
+    def copy():
+        QApplication.clipboard().setText(edit.toPlainText())
+        copied.setText(REPORT_COPIED)
+    row = QHBoxLayout()
+    row.setSpacing(16)
+    row.addWidget(button(COPY_REPORT, copy, primary=True))
+    row.addWidget(copied)
+    row.addStretch()
+    row.addWidget(link)
+    layout.addLayout(row)
+    layout.addWidget(label(ZIP_NOTE, wrap=True, tone="muted"))
+    zip_row = QHBoxLayout()
+    zip_row.addWidget(button(SAVE_ZIP, save_zip))
+    zip_row.addStretch()
+    zip_row.addWidget(button(CLOSE, dialog.accept))
+    layout.addLayout(zip_row)
+    return dialog
 
 
 def show_error(parent, title, text):

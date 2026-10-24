@@ -99,10 +99,18 @@ SMOOTHUI_NOT_CHECKED = "Smooth UI Remastered: not checked yet"
 GUIDE_HEADING = "Setting up"
 GUIDE_LINK = "How to set up and use Smooth UI's tools ↗"
 BUG_HEADING = "Reporting a bug"
-BUG = ("Save a bug report, then attach it to your report. It is a zip with the merger's logs and settings, your "
-       "mods.settings (so it lists your mods) and what the merger merged. Your Windows user name is removed.")
+BUG = ("A bug report lists your versions, what this window shows, the mods that change Smooth UI's screens, and "
+       "the last warnings in the log. You can read and edit all of it before you copy it. Nothing is sent from here.")
 REPORT_LINK = "Report a bug ↗"
-SAVE_BUG_REPORT = "Save a bug report"
+WRITE_BUG_REPORT = "Write a bug report..."
+BUG_DIALOG = ("This is everything the report says. Change it as you like (for example, to leave out a mod's name), "
+              "then copy it into your bug report.")
+CLOSE = "Close"
+COPY_REPORT = "Copy to clipboard"
+REPORT_COPIED = "Copied: paste it into your bug report."
+ZIP_NOTE = ("If you're asked for more, save the full report: a zip with the merger's logs and settings, and your "
+            "mods.settings (so it lists your mods). Your Windows user name is removed.")
+SAVE_ZIP = "Save the full report (zip)"
 BUG_REPORT_TITLE = "Bug report"
 BUG_REPORT_FAILED = "The bug report can't be saved: {error}"
 LICENSES_HEADING = "Licenses"
@@ -204,7 +212,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
             play = PLAY_WITHOUT_MERGING[found.severity] if found and found.severity else "Play without merging"
             buttons = (("Merge again", "merge_and_play"), (play, "play"), DONT_START)
         else:
-            buttons = (("Merge again", "merge"), (SAVE_BUG_REPORT, "bug_report"))
+            buttons = (("Merge again", "merge"), (WRITE_BUG_REPORT, "bug_report"))
         return Card(ERROR, "Merging failed", (_sentence(merge_error),), buttons)
     if merged is not None:
         return _merged(merged, stale)

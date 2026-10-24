@@ -1,4 +1,5 @@
-"""The bug report (the merger window's Save a bug report): a zip in the data folder's bug-reports\\ with what it
+"""The bug reports (the merger window's Bug report): a short text the user reads, edits and pastes into their
+report (short_report), and a zip for when more is needed (save_bug_report). The zip in the data folder's bug-reports\\ with what it
 takes to see what the merger did and why: its logs and merge reports (and the launcher's logs), its settings,
 the package manifest and the records of packages that hold no files, mods.settings and the merger's backup
 of it, and a summary (versions, the release manifests the merger has, Windows' version, the load order of
@@ -32,6 +33,7 @@ FOLDER = "bug-reports"
 # The logs and merge reports in the data folder, of every generation kept (see files.rotate)
 LOGS = re.compile(r"(merger|launcher)(\.\d+)?\.(log|report\.json)", re.IGNORECASE)
 PROFILE = "%USERPROFILE%"
+LOG_LINES, LOG_LINE_LENGTH = 15, 300     # the short report's share of the log
 
 
 def save_bug_report(data_dir: Path, game: Path | None, mods_settings: Path | None, found: Check | None) -> Path:
@@ -118,13 +120,55 @@ def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
             created = f"unreadable ({e})"
         lines.append(f"  {release}, created at {created} ({path})")
     if found is not None:
-        lines += ["", "Mods that ship Smooth UI's screens, in load order:"]
-        shippers = {mod for file in found.scan.files.values() for mod in file.shippers}
-        for mod in (mod for mod in found.scan.order if mod in shippers):
-            settings = mod.settings
-            where = ("no mods.settings entry" if settings is None
-                     else f"Priority {settings.priority}" if settings.priority is not None else "no Priority")
-            lines.append(f"  {mod.folder} ({where})")
+        lines += ["", *_load_order(found)]
     if unread:
         lines += ["", "Files that can't be read:", *(f"  {line}" for line in unread)]
     return lines
+
+
+def _load_order(found: Check) -> list[str]:
+    """The mods that ship Smooth UI's screens, in load order"""
+    lines = ["Mods that ship Smooth UI's screens, in load order:"]
+    shippers = {mod for file in found.scan.files.values() for mod in file.shippers}
+    for mod in (mod for mod in found.scan.order if mod in shippers):
+        settings = mod.settings
+        where = ("no mods.settings entry" if settings is None
+                 else f"Priority {settings.priority}" if settings.priority is not None else "no Priority")
+        lines.append(f"  {mod.folder} ({where})")
+    return lines
+
+
+def short_report(game: Path | None, found: Check | None, window_lines: list[str], log_path: Path) -> str:
+    """The short bug report as text for the user to read, edit and paste: the versions, what the window shows
+    (window_lines), the load order, and the last warnings and errors in the log at log_path. Nothing else
+    is in it, and the profile folder is replaced as in the zip."""
+    try:
+        version = merger_version()
+    except SmoothUIError as e:
+        version = f"unknown ({e})"
+    lines = [
+        f"Smooth UI Merger {version}" + ("" if FROZEN else " (run from source)"),
+        f"Windows: {platform.platform()}",
+        f"Game folder: {game or 'not chosen yet'}",
+    ]
+    if found is not None:
+        lines.append(f"Smooth UI: {found.scan.installed.message}")
+    if window_lines:
+        lines += ["", "What the merger's window shows:", *(f"  {line}" for line in window_lines)]
+    if found is not None:
+        lines += ["", *_load_order(found)]
+    problems = _log_problems(log_path)
+    if problems:
+        lines += ["", "Warnings and errors in the log:", *(f"  {line}" for line in problems)]
+    return redact("\n".join(lines).encode("utf-8"), os.environ.get("USERPROFILE")).decode("utf-8", "replace") + "\n"
+
+
+def _log_problems(path: Path) -> list[str]:
+    """The last LOG_LINES warning and error lines of the log (cut at LOG_LINE_LENGTH)"""
+    try:
+        text = read_file(path)
+    except SmoothUIError:
+        return []
+    lines = [line for line in (text or b"").decode("utf-8", "replace").splitlines()
+             if re.match(r"\S+ \S+ (WARNING|ERROR|CRITICAL) ", line)]
+    return [line[:LOG_LINE_LENGTH] for line in lines[-LOG_LINES:]]

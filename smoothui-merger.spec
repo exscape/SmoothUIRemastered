@@ -27,6 +27,9 @@ APP_DIR_NAME = "SmoothUIMerger"  # the folder in dist/
 COMPANY = "Aeluwas"
 PRODUCT = "Smooth UI Remastered"
 ICON = Path(SPECPATH) / "smoothui.ico"  # optional: used only if the file exists
+LAUNCHER_ICON = Path(SPECPATH) / "smoothui-launcher.ico"  # optional: the launcher's own small variant
+if not LAUNCHER_ICON.exists():
+    LAUNCHER_ICON = ICON
 
 # SHA-256 of the bootloaders that come prebuilt with each PyInstaller version (the same in its wheel and its
 # sdist). A release must use one compiled here; dev-tools/pyinstaller-hashes.py prints a new version's entry.
@@ -202,7 +205,7 @@ launcher_exe = EXE(
     name="SmoothUILauncher",
     console=False,
     upx=False,
-    icon=str(ICON) if ICON.exists() else None,
+    icon=str(LAUNCHER_ICON) if LAUNCHER_ICON.exists() else None,
     version=version_info("Smooth UI Remastered launcher", "SmoothUILauncher.exe"),
 )
 merger_exe = EXE(
@@ -272,6 +275,9 @@ def license_files(dist):
 
 
 shutil.copyfile(Path(SPECPATH) / "LICENSE.txt", out_dir / "LICENSE.txt")
+shutil.copyfile(Path(SPECPATH) / "README_tools.md", out_dir / "README_tools.md")
+if ICON.exists():  # the merger window's icon (window.py ICON_FILE)
+    shutil.copyfile(ICON, out_dir / ICON.name)
 licenses_dir = out_dir / "licenses"
 python_version = platform.python_version()
 (licenses_dir / "Python").mkdir(parents=True)
