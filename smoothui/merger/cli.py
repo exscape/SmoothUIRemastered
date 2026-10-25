@@ -4,18 +4,20 @@
 # builder.py). --scan (read-only) shows which Smooth UI build is installed, which mod's copy of each file it
 # patches the game loads, whether the package is up to date (see state.py), and what keeps mods or files
 # from being patched; it runs the launcher's check, and exits with code 2 when the launcher would open the
-# merger. --build builds the package.
+# merger. --build builds the package. --check-updates runs the window's update check (see updates.py).
 
 import argparse
 import logging
+import os
 import sys
 import time
 
 from ..build.shared import config_paths, load_config
 from ..common import fail, to_native
-from ..log import HEADING
+from ..log import HEADING, SUBHEADING
 from ..paths import DATA_DIR
 from ..witcher3.user_files import mods_settings_path
+from . import updates
 from .builder import build_package
 from .installed import is_smoothui_folder
 from .load_order import Group
@@ -38,6 +40,9 @@ def parse_args():
                            "changes nothing")
     mode.add_argument("--build", action="store_true",
                       help="build the package into the game's Mods folder, and give it its mods.settings entry")
+    mode.add_argument("--check-updates", action="store_true",
+                      help="ask GitHub (or SMOOTHUI_UPDATE_URL) for a newer Smooth UI Tools release, and download "
+                           "new release manifests into --data-dir (even if the last check was just now)")
     ap.add_argument("--game-path", type=to_native, default=None,
                     help="the game folder (default: game_path in config/config.toml)")
     ap.add_argument("--mods-settings", type=to_native, default=None,
@@ -55,6 +60,9 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.check_updates:
+        show_updates(args.data_dir)
+        return
     game_path = args.game_path or config_paths(load_config()).get("game_path")
     if game_path is None:
         fail("no game folder: give --game-path, or set game_path in config/config.toml")
@@ -123,6 +131,21 @@ def _show_verdict(found, elapsed):
     log.info(f"\nChecked in {elapsed:.2f} s")
     if found.stale:
         sys.exit(2)
+
+
+def show_updates(data_dir):
+    log.info("Update check", extra=HEADING)
+    test = f" (from {updates.UPDATE_URL_ENV})" if os.environ.get(updates.UPDATE_URL_ENV) else ""
+    log.info(f"Release list: {updates.releases_url()}{test}")
+    found = updates.check(data_dir, use_recent=False)
+    if found is None:
+        fail("the check failed: see above")
+    if found.update:
+        log.info(f"Download: {found.update.asset.url} ({found.update.asset.size} bytes)")
+        for version, notes in found.update.notes:
+            log.info(f"Smooth UI Tools v{version}", extra=SUBHEADING)
+            log.info(notes.strip() or "(no release notes)")
+    log.info(f"\nManifests downloaded into {data_dir / updates.MANIFESTS_DIR}: {', '.join(found.downloaded) or 'none'}")
 
 
 def build(args, game_path, mods_settings):
