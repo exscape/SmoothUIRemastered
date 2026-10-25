@@ -1,0 +1,62 @@
+# A Smooth UI Tools release: pushing a tag tools-vX.Y.Z builds SmoothUITools-X.Y.Z.zip from that commit,
+# attests it (gh attestation verify SmoothUITools-X.Y.Z.zip -R exscape/SmoothUIRemastered), and creates a
+# draft release with it, its notes taken from CHANGELOG_tools.md. Publishing the draft releases it to the
+# merger's update check. See dev-tools/release-notes.py for what the notes must look like.
+name: Release Smooth UI Tools
+
+on:
+  push:
+    tags: ["tools-v*"]
+
+permissions:
+  contents: write       # create the release
+  id-token: write       # sign the attestation
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Keep the files' LF line endings, as in a local checkout (the runner's Git converts to CRLF)
+      - name: Keep line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12.0"  # env_gui's
+          architecture: x64
+
+      # First, so that a release without notes fails before the slow build
+      - name: Check version and notes
+        run: |
+          version="${GITHUB_REF_NAME#tools-v}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          python dev-tools/release-notes.py "$version" build/release-notes.md
+
+      # PyInstaller from source, with its bootloader compiled here (smoothui-merger.spec refuses the prebuilt one)
+      - name: Install packages
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
+        run: python -m pip install --no-binary pyinstaller -r requirements_gui-lock.txt
+
+      - name: Build
+        run: python -m PyInstaller --clean --noconfirm smoothui-merger.spec
+
+      - name: Zip
+        run: python dev-tools/make-tools-zip.py dist/SmoothUIMerger "dist/SmoothUITools-$VERSION.zip"
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-path: dist/SmoothUITools-*.zip  # the only zip: the runner starts empty
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "dist/SmoothUITools-$VERSION.zip" --draft --verify-tag \
+              --title "Smooth UI Tools v$VERSION" --notes-file build/release-notes.md
