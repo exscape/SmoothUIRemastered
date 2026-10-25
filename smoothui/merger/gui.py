@@ -100,8 +100,7 @@ def main() -> int:
         start_scan(game, calls)
 
     from . import window  # imports Qt, which takes a while: after the scan has started
-    return window.run(game, stale, settings is None, calls, log_records,
-                      check_updates=settings.check_updates if settings else True, updated_from=updated_from)
+    return window.run(game, stale, settings, calls, log_records, updated_from=updated_from)
 
 
 class LogFormatter(logging.Formatter):
@@ -174,13 +173,14 @@ def start_scan(game: Path, calls: queue.Queue):
     in_thread(calls, work, "scanned")
 
 
-def find_updates(stale: bool):
-    """The update check (updates.check), in a thread. In stale mode the game waits: a shorter timeout, and
-    never the last check's result (the scan has just found what it may not have known)."""
+def find_updates(stale: bool, last_check):
+    """The update check (updates.check), in a thread; last_check: when the last one was (settings). In stale
+    mode the game waits: a shorter timeout, and even right after another check (the scan has just found
+    something that check may not have known)."""
     from . import updates  # imported here: it takes a while, and the window shows first
     if stale:
-        return updates.check(DATA_DIR, timeout=updates.QUICK_TIMEOUT, use_recent=False)
-    return updates.check(DATA_DIR)
+        return updates.check(DATA_DIR, timeout=updates.QUICK_TIMEOUT)
+    return updates.check(DATA_DIR, last_check=last_check)
 
 
 def error_text(error) -> str:

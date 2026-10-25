@@ -40,6 +40,7 @@ import sys
 import time
 import traceback
 import webbrowser
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
@@ -229,12 +230,11 @@ BAR_DELAY = 300                         # ms before a progress bar without progr
 VERSION_SPACING = 24                    # px above each version in the What's new dialog but the first (half above its notes' headings)
 
 
-def run(game: Path | None, stale: bool, first_run: bool, calls: queue.Queue, log_records: queue.Queue, *,
-        check_updates: bool = True, updated_from: str | None = None) -> int:
+def run(game: Path | None, stale: bool, settings: Settings | None, calls: queue.Queue, log_records: queue.Queue,
+        *, updated_from: str | None = None) -> int:
     """Show the window until it closes; returns the exit code. updated_from: the version this one replaced"""
     app = make_app()
-    window = MergerWindow(game, stale, first_run, calls, log_records, check_updates=check_updates,
-                          updated_from=updated_from)
+    window = MergerWindow(game, stale, settings, calls, log_records, updated_from=updated_from)
     sys.excepthook = window.callback_failed
     window.root.show()
     app.exec()
@@ -416,13 +416,13 @@ class Root(QWidget):
 
 
 class MergerWindow:
-    def __init__(self, game: Path | None, stale: bool, first_run: bool, calls: queue.Queue, log_records: queue.Queue,
-                 *, check_updates: bool = True, updated_from: str | None = None):
-        """game: None until the user chooses it (first_run: no settings yet); check_updates: the setting;
+    def __init__(self, game: Path | None, stale: bool, settings: Settings | None, calls: queue.Queue,
+                 log_records: queue.Queue, *, updated_from: str | None = None):
+        """game: None until the user chooses it; settings: as saved (None: the first run, none yet);
         updated_from: the tools were just updated (from this version)"""
         self.game, self.stale, self.calls, self.log_records = game, stale, calls, log_records
         self.updated_from = updated_from
-        self.check_updates = check_updates
+        self.settings = settings
         self.update_checked = False     # the update check ran (once per window)
         self.update = None              # the newer tools version it found (updates.ToolsUpdate)
         self.update_search = None       # stale mode: what the card says about it (see status_card)
@@ -545,7 +545,7 @@ class MergerWindow:
         self.pages.addWidget(main)
 
         self.refresh()
-        if first_run:
+        if settings is None:
             self.welcome_page = self.make_welcome()
             self.find_game_folders()
         self.show_page(self.welcome_page or main)
@@ -802,15 +802,20 @@ class MergerWindow:
         """Save the settings with the game folder, and check_updates (None: as it is); a failure is said in
         chooser"""
         check_updates = self.check_updates if check_updates is None else check_updates
+        settings = Settings(folder, check_updates, self.settings.last_update_check if self.settings else None)
         try:
-            save_settings(Settings(folder, check_updates), gui.DATA_DIR)
+            save_settings(settings, gui.DATA_DIR)
         except SmoothUIError as e:
             log.error(f"The settings can't be saved: {e}")
             chooser.say(SETTINGS_NOT_SAVED.format(error=e), ERROR)
             return False
         log.info(f"Settings saved: the game folder is {folder}; update check {'on' if check_updates else 'off'}")
-        self.check_updates = check_updates
+        self.settings = settings
         return True
+
+    @property
+    def check_updates(self) -> bool:
+        return self.settings.check_updates if self.settings else True
 
     def change_game(self, game):
         """Use another game folder: scan it, after the scan that runs now (if any), whose result is for the
@@ -1245,13 +1250,15 @@ class MergerWindow:
         if self.stale:
             self.update_search = LOOKING
             self.refresh()
-        in_thread(self.calls, gui.find_updates, "updates_checked", self.stale)
+        last_check = self.settings.last_update_check if self.settings else None
+        in_thread(self.calls, gui.find_updates, "updates_checked", self.stale, last_check)
 
     def updates_checked(self, found, error):
-        """The update check's result (updates.Found; None if it failed, which shows nothing). New manifests
-        may make an unknown Smooth UI build known: then it scans again."""
+        """The update check's result (updates.Found; None if it failed or was skipped, which shows nothing).
+        New manifests may make an unknown Smooth UI build known: then it scans again."""
         self.update_search = None
         if found is not None:
+            self.save_check_time()
             self.update = found.update
             if self.stale and found.update is None:
                 self.update_search = NOTHING_FOUND
@@ -1262,6 +1269,18 @@ class MergerWindow:
                 elif not self.busy:
                     self.rescan()
         self.refresh()
+
+    def save_check_time(self):
+        """Keep the time of the update check just made in the settings (see updates.RECENT)"""
+        if self.settings is None:
+            return      # none saved yet: the game folder came from the test variable
+        settings = replace(self.settings, last_update_check=int(time.time()))
+        try:
+            save_settings(settings, gui.DATA_DIR)
+        except SmoothUIError as e:
+            log.warning(f"The update check's time can't be saved: {e}")
+            return
+        self.settings = settings
 
     def whats_new(self):
         if whats_new_dialog(self.root, self.update).exec() == QDialog.Accepted:

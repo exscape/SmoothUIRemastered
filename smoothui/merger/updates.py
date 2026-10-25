@@ -2,8 +2,8 @@
 manifests, which it downloads into data\\manifests\\ (release_manifest_paths reads them from there at once).
 
 One request to GitHub's API lists every release with its assets (unauthenticated: 60 requests an hour per
-address, so never more than one per check, and none within RECENT of the last one). Two kinds of release
-count:
+address, so never more than one per check, and none within RECENT of the last one: the window keeps
+its time in the settings). Two kinds of release count:
 - the tools: tag tools-vX.Y.Z, published (no draft, no pre-release), with one .zip asset;
 - the manifests: tag "manifests", one long-lived release holding the manifests of every Smooth UI release
   (<version>.json), so that a Smooth UI release reaches the merger without a tools release.
@@ -23,16 +23,17 @@ import logging
 import os
 import re
 import ssl
+import time
 import urllib.error
 import urllib.request
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
 from functools import cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from ..common import SmoothUIError, fail, normalize_version
-from ..files import delete_file, make_dirs, read_file, write_file
+from ..files import delete_file, make_dirs, read_file
 from ..manifests import is_dev_version, version_key
 from ..paths import MANIFEST_DIR
 from . import RELEASES_URL, UPDATE_URL_ENV, merger_version
@@ -44,10 +45,10 @@ PER_PAGE = 100
 TIMEOUT = 10
 # When the game waits for the check (the launcher opened the merger)
 QUICK_TIMEOUT = 5
-# No new check within this long of the last one; its result is used instead
-RECENT = timedelta(minutes=10)
-# The last check's time, release list and result (see Found), in the data folder
-CHECK_FILE = "update-check.json"
+# No new check within this long of the last one (and no offer: the next start after it makes it again);
+# while the test variable is set, TEST_RECENT, so that tests can start the merger again at once
+RECENT = 10 * 60     # s
+TEST_RECENT = 5
 # Where downloaded manifests go, in the data folder
 MANIFESTS_DIR = "manifests"
 
@@ -83,15 +84,15 @@ def releases_url() -> str:
     return os.environ.get(UPDATE_URL_ENV) or RELEASES_URL
 
 
-def check(data_dir: Path, *, timeout: float = TIMEOUT, use_recent: bool = True) -> Found | None:
+def check(data_dir: Path, *, timeout: float = TIMEOUT, last_check: float | None = None) -> Found | None:
     """Look for a newer tools release, and download new manifests into data_dir\\manifests\\. Within
-    RECENT of the last check (unless use_recent is false), GitHub isn't asked: its result is used, and
-    nothing is downloaded. None if the check failed (logged)."""
+    RECENT of last_check (the last successful check, Unix time; None: never, or not to be taken into account),
+    nothing is asked or found. None if the check failed or was skipped (logged)."""
     url = releases_url()
+    if last_check is not None and _recent(time.time() - last_check):
+        return None
     try:
         current = merger_version()
-        if use_recent and (recent := _recent_check(data_dir, url, current)) is not None:
-            return recent
         releases = _get_json(_with_query(url, f"per_page={PER_PAGE}"), timeout)
         update = tools_update(releases, current)
         manifests = _manifests_release(releases)
@@ -113,9 +114,7 @@ def check(data_dir: Path, *, timeout: float = TIMEOUT, use_recent: bool = True) 
         log.info(f"Update check: no newer Smooth UI Tools (this is v{current})")
     folder = Path(data_dir) / MANIFESTS_DIR
     downloaded = download_manifests(manifests_to_download(assets, (MANIFEST_DIR, folder)), folder, timeout)
-    found = Found(update, downloaded)
-    _record_check(data_dir, url, found)
-    return found
+    return Found(update, downloaded)
 
 
 def tools_update(releases: list, current: str) -> ToolsUpdate | None:
@@ -293,36 +292,14 @@ def _asset(asset: dict) -> Asset | None:
     return Asset(asset["name"], asset["browser_download_url"], int(asset["size"]), match[1])
 
 
-def _recent_check(data_dir, url, current) -> Found | None:
-    """The last check's result if it was within RECENT, of the same release list; else None"""
-    try:
-        data = read_file(Path(data_dir) / CHECK_FILE)
-        if data is None:
-            return None
-        record = json.loads(data.decode("utf-8"))
-        age = datetime.now(UTC) - datetime.fromisoformat(record["checked_at"])
-        if record["url"] != url or not timedelta(0) <= age < RECENT:
-            return None
-        update = record["update"] and ToolsUpdate(record["update"]["version"],
-                                                  [tuple(notes) for notes in record["update"]["notes"]],
-                                                  Asset(**record["update"]["asset"]))
-        if update and _version_tuple(update.version) <= _version_tuple(current):
-            update = None   # installed since
-    except (SmoothUIError, ValueError, KeyError, TypeError, AttributeError):
-        return None
-    log.info(f"Update check: skipped (the last one was {int(age.total_seconds() // 60)} min ago): "
-             + (f"Smooth UI Tools v{update.version} is available" if update else "no newer Smooth UI Tools"))
-    return Found(update, [])
-
-
-def _record_check(data_dir, url, found: Found):
-    record = {"checked_at": datetime.now(UTC).isoformat(), "url": url,
-              "update": asdict(found.update) if found.update else None}
-    try:
-        make_dirs(data_dir)
-        write_file(Path(data_dir) / CHECK_FILE, (json.dumps(record, indent=1) + "\n").encode("utf-8"))
-    except SmoothUIError as e:
-        log.warning(f"Update check: its result can't be saved: {e}")
+def _recent(age: float) -> bool:
+    """Whether a check this long ago (s) is recent enough to skip a new one (logged); one in the future isn't"""
+    limit = TEST_RECENT if os.environ.get(UPDATE_URL_ENV) else RECENT
+    if not 0 <= age < limit:
+        return False
+    ago = f"{int(age // 60)} min" if age >= 60 else f"{int(age)} s"
+    log.info(f"Update check: skipped (the last one was {ago} ago)")
+    return True
 
 
 def _sha256(path: Path) -> str | None:

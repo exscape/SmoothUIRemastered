@@ -1,6 +1,6 @@
 """Where the game and its mods.settings are, the command that starts the game, and the merger's settings
-(data\\settings.json): the game folder the user confirmed in the merger. The launcher opens the merger
-while there are none.
+(data\\settings.json): the game folder the user confirmed in the merger, whether it checks for updates,
+and when it last did. The launcher opens the merger while there are none.
 
 The merger finds candidates for the game folder (find_games) for the user to confirm, and both exes read
 it from the settings, so nothing is passed between them. For tests only, two environment variables
@@ -44,6 +44,7 @@ log = logging.getLogger(__name__)
 class Settings:
     game_path: Path
     check_updates: bool = True      # whether the merger looks for updates when it starts (see updates.py)
+    last_update_check: int | None = None    # when it last did (Unix time), if ever
 
 
 def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
@@ -58,15 +59,20 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
         check_updates = settings.get("check_updates", True)
         if not isinstance(check_updates, bool):
             raise TypeError(f"check_updates is {check_updates!r}, not true or false")
-        return Settings(to_native(settings["game_path"]), check_updates)
+        last_check = settings.get("last_update_check")
+        if last_check is not None and type(last_check) is not int:
+            raise TypeError(f"last_update_check is {last_check!r}, not a whole number")
+        return Settings(to_native(settings["game_path"]), check_updates, last_check)
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
 
 
 def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
     make_dirs(data_dir)
-    text = json.dumps({"game_path": to_windows(settings.game_path), "check_updates": settings.check_updates},
-                      indent=1) + "\n"
+    fields = {"game_path": to_windows(settings.game_path), "check_updates": settings.check_updates}
+    if settings.last_update_check is not None:
+        fields["last_update_check"] = settings.last_update_check
+    text = json.dumps(fields, indent=1) + "\n"
     write_file(Path(data_dir) / SETTINGS_FILE, text.encode("utf-8"))
 
 
