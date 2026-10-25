@@ -27,7 +27,14 @@ from ..witcher3.mods_settings import ModSettings
 from . import tools_version
 from .installed import is_smoothui_folder
 from .package import PACKAGE_MANIFEST, PACKAGE_MANIFEST_FORMAT, record_path, same_copy
-from .scan import COMPAT_PATCH, PACKAGE_FOLDER, Scan, entry_needed, is_package_folder, scan
+from .scan import (
+    COMPAT_PATCH,
+    PACKAGE_FOLDER,
+    Scan,
+    entry_needed,
+    is_package_folder,
+    scan,
+)
 from .screens import screen_name
 
 
