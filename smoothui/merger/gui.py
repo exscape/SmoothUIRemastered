@@ -44,7 +44,7 @@ from ..files import check_data_writable, make_dirs, rotate
 from ..launcher import ABORT, CLOSED, PLAY
 from ..paths import APP_DIR, DATA_DIR
 from ..windows import MB_ICONERROR, bring_to_front, find_window, msg_box, only_instance
-from . import UPDATE_URL_ENV, merger_version, self_update
+from . import UPDATE_TOKEN_ENV, UPDATE_URL_ENV, merger_version, self_update
 from .game import (
     GAME_PATH_ENV,
     MODS_SETTINGS_ENV,
@@ -91,9 +91,10 @@ def main() -> int:
     if updated_from:
         log.info(f"Updated from Smooth UI Tools v{updated_from} to v{version()}")
     log.info(f"Game folder: {game or 'not chosen yet'}")
-    for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV):
+    for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV, UPDATE_TOKEN_ENV):
         if os.environ.get(name):
-            log.info(f"Test mode: {name}={os.environ[name]}")
+            value = "(set; not logged)" if name == UPDATE_TOKEN_ENV else os.environ[name]
+            log.info(f"Test mode: {name}={value}")
     self_update.start_cleanup(DATA_DIR)     # what an update left (it deletes data\\update\\)
     calls = queue.Queue()       # (function, args) to call on Qt's thread
     if game is not None:        # on the first run, once the welcome page knows the folders found

@@ -136,6 +136,8 @@ def _show_verdict(found, elapsed):
 def show_updates(data_dir):
     log.info("Update check", extra=HEADING)
     test = f" (from {updates.UPDATE_URL_ENV})" if os.environ.get(updates.UPDATE_URL_ENV) else ""
+    if updates.token():
+        test += f", with {updates.UPDATE_TOKEN_ENV}"
     log.info(f"Release list: {updates.releases_url()}{test}")
     found = updates.check(data_dir)
     if found is None:

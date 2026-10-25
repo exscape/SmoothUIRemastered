@@ -12,6 +12,7 @@ the SHA-256 GitHub lists for it.
 
 Every failure (offline, the limit reached, an unexpected answer) is one log line: check() never raises.
 HTTPS only, except to this computer (the test variable, UPDATE_URL_ENV, may name a local test server).
+With the test variable, UPDATE_TOKEN_ENV may give a token for a private test repo (sent to TOKEN_HOST only).
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ from ..common import SmoothUIError, fail, normalize_version
 from ..files import delete_file, make_dirs, read_file
 from ..manifests import is_dev_version, version_key
 from ..paths import MANIFEST_DIR
-from . import RELEASES_URL, UPDATE_URL_ENV, merger_version
+from . import RELEASES_URL, UPDATE_TOKEN_ENV, UPDATE_URL_ENV, merger_version
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,8 @@ TOOLS_TAG = re.compile(r"tools-v([0-9]+)\.([0-9]+)\.([0-9]+)")
 MANIFESTS_TAG = "manifests"
 DIGEST = re.compile(r"sha256:([0-9a-f]{64})")
 LOCAL_HOSTS = ("127.0.0.1", "localhost")
+# The only host the test token (UPDATE_TOKEN_ENV) is sent to
+TOKEN_HOST = "api.github.com"
 CHUNK = 64 * 1024
 
 
@@ -256,12 +259,20 @@ def _open(url, timeout, accept):
     headers = {"User-Agent": f"SmoothUITools/{merger_version()}", "Accept": accept,
                "X-GitHub-Api-Version": "2022-11-28"}
     request = urllib.request.Request(url, headers=headers)
+    if (secret := token()) and urlsplit(url).hostname == TOKEN_HOST:
+        # Unredirected: not sent on to the host an asset download redirects to
+        request.add_unredirected_header("Authorization", f"Bearer {secret}")
     request.urls = [url]    # then where it was redirected to
     try:
         return _opener().open(request, timeout=timeout)
     except (OSError, http.client.HTTPException) as e:
         e.failed_url = request.urls[-1]     # for _describe: after a redirect, the other host failed
         raise
+
+
+def token() -> str | None:
+    """The test token, if it and the test variable are set"""
+    return os.environ.get(UPDATE_TOKEN_ENV) if os.environ.get(UPDATE_URL_ENV) else None
 
 
 def _get_json(url, timeout):
@@ -306,7 +317,9 @@ def _asset(asset: dict) -> Asset | None:
     match = DIGEST.fullmatch(asset.get("digest") or "")
     if not match:
         return None
-    return Asset(asset["name"], asset["browser_download_url"], int(asset["size"]), match[1])
+    # With the test token, through the API: a private repo's download links need a browser login
+    url = asset["url"] if token() else asset["browser_download_url"]
+    return Asset(asset["name"], url, int(asset["size"]), match[1])
 
 
 def _recent(age: float) -> bool:
