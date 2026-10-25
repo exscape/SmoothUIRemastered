@@ -24,7 +24,7 @@ from ..files import read_file
 from ..paths import DATA_DIR
 from ..witcher3.mod_bundles import list_bundles, read_bundle_tocs
 from ..witcher3.mods_settings import ModSettings
-from . import merger_version
+from . import tools_version
 from .installed import is_smoothui_folder
 from .package import PACKAGE_MANIFEST, PACKAGE_MANIFEST_FORMAT, record_path, same_copy
 from .scan import COMPAT_PATCH, PACKAGE_FOLDER, Scan, entry_needed, is_package_folder, scan
@@ -149,11 +149,11 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         manifest, manifest_problem = _read_manifest(record_path(data_dir, result.mods_dir))
     installed = result.installed
     built_for = (manifest or {}).get("smoothui", {})
-    built_by = (manifest or {}).get("merger_version")
+    built_by = (manifest or {}).get("tools_version")
     # Only the merger's version changed: nothing the game shows is wrong (severity LOW)
     if built_for.get("version") != installed.version or built_for.get("release_created_at") != installed.manifest.get("created_at"):
         rebuilt, rebuilt_text = "smoothui", "Smooth UI was updated"
-    elif built_by != merger_version():
+    elif built_by != tools_version():
         rebuilt, rebuilt_text = "merger", "the merger was updated"
     else:
         rebuilt = rebuilt_text = None

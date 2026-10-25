@@ -39,7 +39,7 @@ from ..common import SmoothUIError, fail, normalize_version
 from ..files import delete_file, make_dirs, read_file
 from ..manifests import is_dev_version, version_key
 from ..paths import MANIFEST_DIR
-from . import RELEASES_URL, UPDATE_TOKEN_ENV, UPDATE_URL_ENV, merger_version
+from . import RELEASES_URL, UPDATE_TOKEN_ENV, UPDATE_URL_ENV, tools_version
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def check(data_dir: Path, *, timeout: float = TIMEOUT, last_check: float | None 
     if last_check is not None and _recent(time.time() - last_check):
         return None
     try:
-        current = merger_version()
+        current = tools_version()
         releases = _get_json(_with_query(url, f"per_page={PER_PAGE}"), timeout)
         update = tools_update(releases, current)
         manifests = _manifests_release(releases)
@@ -256,7 +256,7 @@ def _opener():
 def _open(url, timeout, accept):
     if not allowed_url(url):
         fail(f"{url} isn't HTTPS")
-    headers = {"User-Agent": f"SmoothUITools/{merger_version()}", "Accept": accept,
+    headers = {"User-Agent": f"SmoothUITools/{tools_version()}", "Accept": accept,
                "X-GitHub-Api-Version": "2022-11-28"}
     request = urllib.request.Request(url, headers=headers)
     if (secret := token()) and urlsplit(url).hostname == TOKEN_HOST:

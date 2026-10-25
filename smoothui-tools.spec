@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Build from the repo root, on 64-bit Windows Python (env_gui, see requirements_gui.txt), never under WSL's
 # Python (build-tools.sh runs this from WSL):
-#     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec
-#     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec -- --dev-manifests
+#     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-tools.spec
+#     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-tools.spec -- --dev-manifests
 # --dev-manifests: also ship the manifests of Smooth UI's dev builds, so a test build knows an installed dev
 # build. Never for a release.
 # --prebuilt-bootloader: allow PyInstaller's prebuilt bootloader (for your own builds: no C compiler needed).
@@ -28,16 +28,14 @@ from PyInstaller.utils.win32.versioninfo import (
 APP_DIR_NAME = "SmoothUIMerger"  # the folder in dist/
 COMPANY = "Aeluwas"
 PRODUCT = "Smooth UI Remastered"
-ICON = Path(SPECPATH) / "smoothui.ico"  # optional: used only if the file exists
-LAUNCHER_ICON = Path(SPECPATH) / "smoothui-launcher.ico"  # optional: the launcher's own small variant
-if not LAUNCHER_ICON.exists():
-    LAUNCHER_ICON = ICON
+MERGER_ICON = Path(SPECPATH) / "assets" / "Merger.ico"
+LAUNCHER_ICON = Path(SPECPATH) / "assets" / "Launcher.ico"
 
 # PyInstaller passes the arguments after -- in sys.argv
-spec_parser = argparse.ArgumentParser(prog="smoothui-merger.spec")
+spec_parser = argparse.ArgumentParser(prog="smoothui-tools.spec")
 spec_parser.add_argument("--dev-manifests", action="store_true",
                          help="also ship the dev builds' manifests (for test builds, never for a release)")
-spec_parser.add_argument("--version", help="X.Y.Z instead of merger_version in config.toml (for test builds)")
+spec_parser.add_argument("--version", help="X.Y.Z instead of tools_version in config.toml (for test builds)")
 spec_parser.add_argument("--prebuilt-bootloader", action="store_true",
                          help="allow PyInstaller's prebuilt bootloader (for your own builds, never for a release)")
 SPEC_ARGS = spec_parser.parse_args(sys.argv[1:])
@@ -79,28 +77,28 @@ def check_bootloader():
 check_bootloader()
 
 
-def read_merger_version():
-    """[versions] merger_version in config/config.toml: X.Y.Z (see smoothui/merger/__init__.py), or --version"""
+def read_tools_version():
+    """[versions] tools_version in config/config.toml: X.Y.Z (see smoothui/merger/__init__.py), or --version"""
     if SPEC_ARGS.version is not None:
         if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", SPEC_ARGS.version):
             raise SystemExit(f"ERROR: --version must be X.Y.Z, not {SPEC_ARGS.version!r}")
         return SPEC_ARGS.version
     path = Path(SPECPATH) / "config" / "config.toml"
     with open(path, "rb") as f:
-        version = tomllib.load(f).get("versions", {}).get("merger_version")
+        version = tomllib.load(f).get("versions", {}).get("tools_version")
     if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
-        raise SystemExit(f"ERROR: [versions] merger_version in {path} must be X.Y.Z, not {version!r}")
+        raise SystemExit(f"ERROR: [versions] tools_version in {path} must be X.Y.Z, not {version!r}")
     return version
 
 
 # The version of the exes, and of the merger, which reads it from the file written here (in _internal\, at
 # the path of smoothui/merger/, whose VERSION_FILE it is): a frozen tool has no config.toml
-MERGER_VERSION = read_merger_version()
-TOOL_VERSION = (*map(int, MERGER_VERSION.split(".")), 0)
-merger_version_file = Path(workpath) / "merger_version.txt"
-merger_version_file.parent.mkdir(parents=True, exist_ok=True)
-merger_version_file.write_text(MERGER_VERSION + "\n", encoding="utf-8")
-print(f"Merger version {MERGER_VERSION}")
+TOOLS_VERSION = read_tools_version()
+TOOL_VERSION = (*map(int, TOOLS_VERSION.split(".")), 0)
+tools_version_file = Path(workpath) / "tools_version.txt"
+tools_version_file.parent.mkdir(parents=True, exist_ok=True)
+tools_version_file.write_text(TOOLS_VERSION + "\n", encoding="utf-8")
+print(f"Tools version {TOOLS_VERSION}")
 
 
 def is_lgpl(dist):
@@ -153,19 +151,20 @@ launcher_a = Analysis(
     optimize=0,  # keep asserts
 )
 # Files a module reads next to itself (Path(__file__)), at its path in _internal\: the fixes' compiled
-# ActionScript (gwent_speed.abc), and the merger window's theme and fonts. grep -rn __file__ smoothui finds the
+# ActionScript (gwent_speed.abc), and the merger window's theme, fonts and icon. grep -rn __file__ smoothui finds the
 # code that does it.
 module_files = [(str(p), p.parent.relative_to(SPECPATH).as_posix()) for p in sorted(Path(SPECPATH, "smoothui").rglob("*.abc"))]
 if not module_files:
     raise SystemExit("ERROR: no .abc files found in smoothui/")
 module_files.append((str(Path(SPECPATH, "smoothui", "merger", "theme.json")), "smoothui/merger"))
+module_files.append((str(MERGER_ICON), "smoothui/merger"))  # the window's icon (window.py ICON_FILE)
 module_files += [(str(p), "smoothui/merger/fonts") for p in sorted(Path(SPECPATH, "smoothui", "merger", "fonts").glob("*.ttf"))]
 merger_a = Analysis(
     ["merger-gui.py"],
     pathex=[],
     binaries=[],
     # The merger's version, and the module files
-    datas=[(str(merger_version_file), "smoothui/merger"), *module_files],
+    datas=[(str(tools_version_file), "smoothui/merger"), *module_files],
     hiddenimports=[],
     # pybcj, pyppmd and inflate64 (for py7zr) fall back to importing importlib_metadata on Python < 3.8;
     # PyInstaller resolves that to setuptools' vendored copy, which pulls in all of setuptools.
@@ -217,7 +216,7 @@ launcher_exe = EXE(
     name="SmoothUILauncher",
     console=False,
     upx=False,
-    icon=str(LAUNCHER_ICON) if LAUNCHER_ICON.exists() else None,
+    icon=str(LAUNCHER_ICON),
     version=version_info("Smooth UI Remastered launcher", "SmoothUILauncher.exe"),
 )
 merger_exe = EXE(
@@ -228,7 +227,7 @@ merger_exe = EXE(
     name="SmoothUIMerger",
     console=False,
     upx=False,
-    icon=str(ICON) if ICON.exists() else None,
+    icon=str(MERGER_ICON),
     version=version_info("Smooth UI Remastered merger", "SmoothUIMerger.exe"),
 )
 
@@ -288,8 +287,6 @@ def license_files(dist):
 
 shutil.copyfile(Path(SPECPATH) / "LICENSE.txt", out_dir / "LICENSE.txt")
 shutil.copyfile(Path(SPECPATH) / "README_tools.md", out_dir / "README_tools.md")
-if ICON.exists():  # the merger window's icon (window.py ICON_FILE)
-    shutil.copyfile(ICON, out_dir / ICON.name)
 licenses_dir = out_dir / "licenses"
 python_version = platform.python_version()
 (licenses_dir / "Python").mkdir(parents=True)

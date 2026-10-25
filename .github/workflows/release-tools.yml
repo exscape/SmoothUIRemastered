@@ -38,14 +38,14 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
           python dev-tools/release-notes.py "$version" build/release-notes.md
 
-      # PyInstaller from source, with its bootloader compiled here (smoothui-merger.spec refuses the prebuilt one)
+      # PyInstaller from source, with its bootloader compiled here (smoothui-tools.spec refuses the prebuilt one)
       - name: Install packages
         env:
           PYINSTALLER_COMPILE_BOOTLOADER: "1"
         run: python -m pip install --no-binary pyinstaller -r requirements_gui-lock.txt
 
       - name: Build
-        run: python -m PyInstaller --clean --noconfirm smoothui-merger.spec
+        run: python -m PyInstaller --clean --noconfirm smoothui-tools.spec
 
       - name: Zip
         run: python dev-tools/make-tools-zip.py dist/SmoothUIMerger "dist/SmoothUITools-$VERSION.zip"

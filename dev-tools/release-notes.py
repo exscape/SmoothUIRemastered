@@ -3,7 +3,7 @@ missing: run first by .github/workflows/release-tools.yml, and before tagging.
 
     release-notes.py X.Y.Z OUT.md
 
-Checks that merger_version in config/config.toml is X.Y.Z, and that CHANGELOG_tools.md's first section is
+Checks that tools_version in config/config.toml is X.Y.Z, and that CHANGELOG_tools.md's first section is
 "# vX.Y.Z" and not empty. OUT.md gets that section without its heading: the merger adds its own.
 """
 
@@ -21,9 +21,9 @@ def main(version: str, out: Path):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise SystemExit(f"error: the version must be X.Y.Z, not {version!r}")
     with open(CONFIG, "rb") as f:
-        configured = tomllib.load(f).get("versions", {}).get("merger_version")
+        configured = tomllib.load(f).get("versions", {}).get("tools_version")
     if configured != version:
-        raise SystemExit(f"error: merger_version in {CONFIG.name} is {configured!r}, not {version!r}")
+        raise SystemExit(f"error: tools_version in {CONFIG.name} is {configured!r}, not {version!r}")
     if not CHANGELOG.is_file():
         raise SystemExit(f"error: no {CHANGELOG.name}")
     # The sections: "# vX.Y.Z" lines, each followed by its text

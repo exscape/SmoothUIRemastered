@@ -44,7 +44,7 @@ from ..files import check_data_writable, make_dirs, rotate
 from ..launcher import ABORT, CLOSED, PLAY
 from ..paths import APP_DIR, DATA_DIR
 from ..windows import MB_ICONERROR, bring_to_front, find_window, msg_box, only_instance
-from . import UPDATE_TOKEN_ENV, UPDATE_URL_ENV, merger_version, self_update
+from . import UPDATE_TOKEN_ENV, UPDATE_URL_ENV, self_update, tools_version
 from .game import (
     GAME_PATH_ENV,
     MODS_SETTINGS_ENV,
@@ -136,7 +136,7 @@ def setup_logging() -> queue.Queue:
 
 def version():
     try:
-        return merger_version()
+        return tools_version()
     except SmoothUIError as e:
         return f"unknown ({e})"
 

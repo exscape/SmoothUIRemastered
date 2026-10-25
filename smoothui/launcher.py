@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .common import SmoothUIError
 from .files import check_data_writable, make_dirs, rotate
-from .merger import merger_version
+from .merger import tools_version
 from .merger.game import (
     GameCommand,
     Settings,
@@ -88,7 +88,7 @@ class Log:
 
 def main(args: list[str], log: Log) -> int:
     try:
-        version = merger_version()
+        version = tools_version()
     except Exception as e:  # noqa: BLE001 (logged only)
         version = f"unknown ({e})"
     log(f"Smooth UI launcher {version}, started {log.ms():.0f} ms after its process was created; arguments: "

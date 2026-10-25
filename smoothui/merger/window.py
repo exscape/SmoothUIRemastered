@@ -83,7 +83,7 @@ from ..common import SmoothUIError, fail
 from ..files import stop_writes, write_file
 from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
 from ..patcher.fixes import fix_consequence, fix_kind
-from ..paths import APP_DIR
+from ..paths import APP_DIR, FROZEN, REPO_ROOT
 from ..windows import MB_ICONERROR, ms_since_process_start, msg_box, set_topmost
 from . import (
     FILES_URL,
@@ -92,8 +92,8 @@ from . import (
     TOOLS_README_URL,
     UPDATE_URL_ENV,
     gui,
-    merger_version,
     self_update,
+    tools_version,
 )
 from .game import (
     GAME_EXE,
@@ -219,7 +219,8 @@ FONT_DIR = Path(__file__).with_name("fonts")
 FONT_FAMILY = "Roboto"
 MONO_FAMILY = "Consolas"                # the bug report (in Windows 10 and later)
 SYMBOL_FONT = "Segoe UI Symbol"         # the glyphs (in Windows 10 and later)
-ICON_FILE = APP_DIR / "smoothui.ico"     # optional: Qt's own icon without it
+# The window's icon (Merger.ico, which is also the exe's): frozen, the spec puts it next to this module
+ICON_FILE = Path(__file__).with_name("Merger.ico") if FROZEN else REPO_ROOT / "assets" / "Merger.ico"
 LICENSES_DIR = APP_DIR / "licenses"      # (only next to the frozen exes)
 WIDTH, HEIGHT = 720, 680                # the window's size at first, before Windows' scaling
 MIN_WIDTH, MIN_HEIGHT = WIDTH, 520
@@ -902,7 +903,7 @@ class MergerWindow:
         if names := [name for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV) if os.environ.get(name)]:
             notices.append((TEST_MODE.format(names=" and ".join(names)), INFO, ()))
         if self.updated_from:
-            notices.append((UPDATED.format(version=merger_version()), OK, ()))
+            notices.append((UPDATED.format(version=tools_version()), OK, ()))
         if self.update and not self.stale:     # (in stale mode, the card offers it when it matters)
             notices.append((UPDATE_AVAILABLE.format(version=self.update.version), UPDATE,
                             ((WHATS_NEW, "whats_new"), (UPDATE_NOW, "update"))))
@@ -1310,7 +1311,7 @@ class MergerWindow:
             self.progress = None
             if error is None:
                 try:
-                    self_update.start_helper(root, gui.APP_DIR, merger_version(), self.pids())
+                    self_update.start_helper(root, gui.APP_DIR, tools_version(), self.pids())
                 except SmoothUIError as e:
                     error = e
             if error is not None:

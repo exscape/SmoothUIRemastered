@@ -1,10 +1,10 @@
-# The merger (merger-gui.py, launcher.py), run from source or built with smoothui-merger.spec: install in
+# The merger (merger-gui.py, launcher.py), run from source or built with smoothui-tools.spec: install in
 # env_gui, on 64-bit Windows Python. It does what the command-line tools do, so it needs their packages too.
 -r requirements.txt
 # The window: Qt Widgets (LGPL). Essentials is Qt's base modules only, without the add-ons.
 PySide6-Essentials==6.12.0
 
-# PyInstaller, with its bootloader compiled here rather than the prebuilt one (smoothui-merger.spec refuses to
+# PyInstaller, with its bootloader compiled here rather than the prebuilt one (smoothui-tools.spec refuses to
 # build with that). Install a C compiler first (MSVC Build Tools or MinGW-w64), then, in cmd.exe:
 #     set PYINSTALLER_COMPILE_BOOTLOADER=1
 #     pip cache remove pyinstaller            (else pip may reuse a PyInstaller it built without the variable)

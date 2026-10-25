@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from ..files import delete_file, make_dirs, remove_empty_dir, write_file
 from ..manifests import patcher_commit
 from ..witcher3.mod_bundles import pack_entries
-from . import merger_version
+from . import tools_version
 from .installed import Installed
 
 if TYPE_CHECKING:
@@ -167,7 +167,7 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
             }
     return {
         "format": PACKAGE_MANIFEST_FORMAT,
-        "merger_version": merger_version(),
+        "tools_version": tools_version(),
         "patcher_commit": commit,
         "patcher_uncommitted_changes": uncommitted,
         "created_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),

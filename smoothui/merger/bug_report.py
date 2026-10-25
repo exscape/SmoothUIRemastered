@@ -23,7 +23,7 @@ from ..common import SmoothUIError
 from ..files import make_dirs, read_file, write_file
 from ..manifests import load_manifest, release_manifest_paths
 from ..paths import FROZEN
-from . import merger_version
+from . import tools_version
 from .game import MODS_SETTINGS_BACKUP, SETTINGS_FILE
 from .package import PACKAGE_MANIFEST, RECORDS
 from .scan import PACKAGE_FOLDER
@@ -95,7 +95,7 @@ def redact(data: bytes, profile: str | None) -> bytes:
 
 def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
     try:
-        version = merger_version()
+        version = tools_version()
     except SmoothUIError as e:
         version = f"unknown ({e})"
     lines = [
@@ -143,7 +143,7 @@ def short_report(game: Path | None, found: Check | None, window_lines: list[str]
     (window_lines), the load order, and the last warnings and errors in the log at log_path. Nothing else
     is in it, and the profile folder is replaced as in the zip."""
     try:
-        version = merger_version()
+        version = tools_version()
     except SmoothUIError as e:
         version = f"unknown ({e})"
     lines = [

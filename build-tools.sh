@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds dist/SmoothUIMerger/ (SmoothUILauncher.exe and SmoothUIMerger.exe, see smoothui-merger.spec) from
+# Builds dist/SmoothUIMerger/ (SmoothUILauncher.exe and SmoothUIMerger.exe, see smoothui-tools.spec) from
 # WSL, with env_gui's Windows Python.
 #     ./build-tools.sh                   a build as released: release manifests only
 #     ./build-tools.sh --dev-manifests   a test build that also knows Smooth UI's dev builds
@@ -36,12 +36,12 @@ fi
 built="$root\\build\\dist\\SmoothUIMerger"
 target="$root\\dist\\SmoothUIMerger"
 
-env_gui/Scripts/pyinstaller.exe --clean --noconfirm --distpath "$root\\build\\dist" smoothui-merger.spec \
+env_gui/Scripts/pyinstaller.exe --clean --noconfirm --distpath "$root\\build\\dist" smoothui-tools.spec \
     -- "${spec_args[@]}"
 
 if (( make_zip )); then
     # The version in the build, whichever way it was set
-    version=$(<"build/dist/SmoothUIMerger/_internal/smoothui/merger/merger_version.txt")
+    version=$(<"build/dist/SmoothUIMerger/_internal/smoothui/merger/tools_version.txt")
     zip="dist/SmoothUITools-${version%$'\r'}.zip"
     env_wsl/bin/python dev-tools/make-tools-zip.py build/dist/SmoothUIMerger "$zip"
     exit 0

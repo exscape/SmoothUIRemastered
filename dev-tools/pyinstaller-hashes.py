@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyinstaller-hashes.py -- print the SHA-256 of a PyInstaller version's prebuilt 64-bit Windows bootloaders,
-# as an entry for PREBUILT_BOOTLOADERS in smoothui-merger.spec (which refuses to build with those). Needed
+# as an entry for PREBUILT_BOOTLOADERS in smoothui-tools.spec (which refuses to build with those). Needed
 # for each new PyInstaller version. They come from its official win_amd64 wheel on PyPI; its sdist holds
 # the same files.
 #

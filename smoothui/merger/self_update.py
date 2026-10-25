@@ -49,7 +49,7 @@ HELPER_LOG = "update.log"
 
 MERGER_EXE = "SmoothUIMerger.exe"
 REQUIRED = (MERGER_EXE, "SmoothUILauncher.exe", "_internal")
-VERSION_FILE = Path("_internal") / "smoothui" / "merger" / "merger_version.txt"
+VERSION_FILE = Path("_internal") / "smoothui" / "merger" / "tools_version.txt"
 
 # What the tools' folder holds besides the user's data\ (the names of every version so far): what an update
 # replaces even if the new version no longer ships it. Whatever else is in the folder is left alone.

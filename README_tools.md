@@ -147,7 +147,7 @@ On Windows, in `cmd.exe` or PowerShell:
    ```
 4. Build:
    ```
-   env_gui\Scripts\pyinstaller.exe --clean --noconfirm smoothui-merger.spec -- --prebuilt-bootloader
+   env_gui\Scripts\pyinstaller.exe --clean --noconfirm smoothui-tools.spec -- --prebuilt-bootloader
    ```
    `--prebuilt-bootloader` uses the bootloader (the start of each exe) that comes with PyInstaller. The releases use one compiled from PyInstaller's source instead, as antivirus programs flag the prebuilt one more often.
 

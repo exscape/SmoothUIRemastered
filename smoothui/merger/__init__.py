@@ -24,14 +24,14 @@ UPDATE_URL_ENV = "SMOOTHUI_UPDATE_URL"
 # need a browser login).
 UPDATE_TOKEN_ENV = "SMOOTHUI_UPDATE_TOKEN"
 
-# The merger's version is [versions] merger_version in config/config.toml. A frozen tool has no config:
-# smoothui-merger.spec writes the version into this file (in _internal\, at this module's path).
-VERSION_FILE = Path(__file__).with_name("merger_version.txt")
+# The merger's version is [versions] tools_version in config/config.toml. A frozen tool has no config:
+# smoothui-tools.spec writes the version into this file (in _internal\, at this module's path).
+VERSION_FILE = Path(__file__).with_name("tools_version.txt")
 VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 
 
 @cache
-def merger_version() -> str:
+def tools_version() -> str:
     """The merger's version, X.Y.Z"""
     if FROZEN:
         try:
@@ -46,11 +46,11 @@ def merger_version() -> str:
         path = REPO_ROOT / "config" / "config.toml"
         try:
             with open(path, "rb") as f:
-                version = tomllib.load(f).get("versions", {}).get("merger_version")
+                version = tomllib.load(f).get("versions", {}).get("tools_version")
         except (OSError, tomllib.TOMLDecodeError) as e:
             fail(f"can't read the merger's version from {path}: {e}")
         if not isinstance(version, str):
-            fail(f"no merger_version in [versions] in {path}")
+            fail(f"no tools_version in [versions] in {path}")
     if not VERSION.fullmatch(version):
         fail(f"the merger's version must be X.Y.Z, not '{version}'")
     return version
