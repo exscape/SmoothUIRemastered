@@ -44,6 +44,17 @@ WHATS_NEW_TITLE = "What's new in Smooth UI Tools v{version}"
 RELEASE_HEADING = "Smooth UI Tools v{version}"
 NO_NOTES = "No release notes."
 UPDATE_NOTE = "Updating takes a few seconds: the merger closes, and opens again in the new version."
+UPDATED = "Updated to Smooth UI Tools v{version}."
+# While updating: the status card (the download), and a message box if it fails (nothing has changed then)
+DOWNLOADING_UPDATE = "Downloading Smooth UI Tools v{version}..."
+UPDATE_FAILED_TITLE = "Update failed"
+UPDATE_FAILED = ("Smooth UI Tools v{version} couldn't be installed: {error}\n\nNothing has changed. Try again "
+                 "later, or download the new version from Nexus Mods.")
+# Message boxes of the helper that swaps the files, after the merger has closed
+UPDATE_NOT_INSTALLED = ("Smooth UI Tools couldn't be updated: {error}\n\nThe old version is still installed. Close "
+                        "SmoothUILauncher.exe, the merger and the game, then start the merger again.")
+UPDATE_START_FAILED = ("Smooth UI Tools were updated, but the new version didn't start: {error}\n\nStart "
+                       "SmoothUIMerger.exe in {folder} yourself.")
 # Notes, below the screens
 COMPAT_REMOVABLE = "{folder} is no longer needed: the merged patches replace it. You can remove it."
 UNKNOWN_FILES = "The merged patches' folder holds files the merger didn't write, so they stay: {names}"
@@ -214,15 +225,18 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
                 progress: tuple[int, int] | None = None, update: str | None = None,
                 update_search: str | None = None) -> Card:
     """What the status card shows, from the window's state. found: the last check (None until one ends);
-    stale: whether the launcher opened the window; busy: what runs in a thread ("scan", "build" or
-    "remove"); scan_error: why the last check failed; merged and merge_error: the result of the window's
-    last merge, or why it failed; progress: the merge's (done, total), once known; update: a newer Smooth UI
-    Tools version, if one was found; update_search: in stale mode, LOOKING or NOTHING_FOUND while or after
-    looking for one (None: not looked for, or the check failed).
+    stale: whether the launcher opened the window; busy: what runs in a thread ("scan", "build", "remove" or
+    "update"); scan_error: why the last check failed; merged and merge_error: the result of the window's
+    last merge, or why it failed; progress: the merge's or the update's download (done, total), once known;
+    update: a newer Smooth UI Tools version, if one was found; update_search: in stale mode, LOOKING or
+    NOTHING_FOUND while or after looking for one (None: not looked for, or the check failed).
 
     In stale mode, every card has a button that plays, except while merging or removing. There, an unknown
     Smooth UI build (which a newer version of the tools may know) says what the update check found, and
     leads with the update if there is one."""
+    if busy == "update":
+        fraction = progress[0] / progress[1] if progress and progress[1] else None
+        return Card(NEUTRAL, DOWNLOADING_UPDATE.format(version=update), busy=True, progress=fraction)
     card = _card(found, stale, busy, scan_error, merged, merge_error, progress)
     if stale and not busy and found is not None and found.scan.installed.status == Status.UNKNOWN:
         if update:

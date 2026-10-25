@@ -10,6 +10,9 @@ progress) over through queues, which a timer empties (window.MergerWindow.poll).
 
 With --stale, the launcher opened it before starting the game (see launcher.py, for the exit codes).
 
+An update (self_update.py) runs this exe from the unpacked new version as --finish-update, which does its work
+before anything else here; the new merger it starts has --update-done OLD_VERSION.
+
 Started by Mod Organizer 2 from inside the game folder (game.mo2_inside_game), it says that this is
 unsupported, and exits before it writes anything (in stale mode, the game starts).
 
@@ -41,7 +44,7 @@ from ..files import check_data_writable, make_dirs, rotate
 from ..launcher import ABORT, CLOSED, PLAY
 from ..paths import APP_DIR, DATA_DIR
 from ..windows import MB_ICONERROR, bring_to_front, find_window, msg_box, only_instance
-from . import UPDATE_URL_ENV, merger_version
+from . import UPDATE_URL_ENV, merger_version, self_update
 from .game import (
     GAME_PATH_ENV,
     MODS_SETTINGS_ENV,
@@ -67,7 +70,11 @@ QT_WINDOW_CLASS = "Qt"
 
 
 def main() -> int:
-    stale = "--stale" in sys.argv[1:]
+    args = sys.argv[1:]
+    if args[:1] == ["--finish-update"]:     # (before everything: the old merger may still hold the mutex)
+        return self_update.finish(args[1:])
+    stale = "--stale" in args
+    updated_from = args[args.index("--update-done") + 1] if "--update-done" in args[:-1] else None
     if not only_instance(MUTEX):
         if (hwnd := find_window(TITLE, QT_WINDOW_CLASS)) is not None:
             bring_to_front(hwnd)
@@ -81,17 +88,20 @@ def main() -> int:
     log.info(f"Smooth UI merger {version()}; arguments: {subprocess.list2cmdline(sys.argv[1:]) or '(none)'}")
     settings = _settings()
     game = game_path(settings)
+    if updated_from:
+        log.info(f"Updated from Smooth UI Tools v{updated_from} to v{version()}")
     log.info(f"Game folder: {game or 'not chosen yet'}")
     for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV):
         if os.environ.get(name):
             log.info(f"Test mode: {name}={os.environ[name]}")
+    self_update.start_cleanup(DATA_DIR)     # what an update left (it deletes data\\update\\)
     calls = queue.Queue()       # (function, args) to call on Qt's thread
     if game is not None:        # on the first run, once the welcome page knows the folders found
         start_scan(game, calls)
 
     from . import window  # imports Qt, which takes a while: after the scan has started
     return window.run(game, stale, settings is None, calls, log_records,
-                      check_updates=settings.check_updates if settings else True)
+                      check_updates=settings.check_updates if settings else True, updated_from=updated_from)
 
 
 class LogFormatter(logging.Formatter):

@@ -68,11 +68,16 @@ check_bootloader()
 spec_parser = argparse.ArgumentParser(prog="smoothui-merger.spec")
 spec_parser.add_argument("--dev-manifests", action="store_true",
                          help="also ship the dev builds' manifests (for test builds, never for a release)")
+spec_parser.add_argument("--version", help="X.Y.Z instead of merger_version in config.toml (for test builds)")
 SPEC_ARGS = spec_parser.parse_args(sys.argv[1:])
 
 
 def read_merger_version():
-    """[versions] merger_version in config/config.toml: X.Y.Z (see smoothui/merger/__init__.py)"""
+    """[versions] merger_version in config/config.toml: X.Y.Z (see smoothui/merger/__init__.py), or --version"""
+    if SPEC_ARGS.version is not None:
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", SPEC_ARGS.version):
+            raise SystemExit(f"ERROR: --version must be X.Y.Z, not {SPEC_ARGS.version!r}")
+        return SPEC_ARGS.version
     path = Path(SPECPATH) / "config" / "config.toml"
     with open(path, "rb") as f:
         version = tomllib.load(f).get("versions", {}).get("merger_version")

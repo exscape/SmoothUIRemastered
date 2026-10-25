@@ -84,7 +84,15 @@ from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
 from ..patcher.fixes import fix_consequence, fix_kind
 from ..paths import APP_DIR
 from ..windows import MB_ICONERROR, ms_since_process_start, msg_box, set_topmost
-from . import REPORT_URL, SMOOTHUI_URL, TOOLS_README_URL, UPDATE_URL_ENV, gui
+from . import (
+    REPORT_URL,
+    SMOOTHUI_URL,
+    TOOLS_README_URL,
+    UPDATE_URL_ENV,
+    gui,
+    merger_version,
+    self_update,
+)
 from .game import (
     GAME_EXE,
     GAME_PATH_ENV,
@@ -172,8 +180,11 @@ from .gui_texts import (
     UNKNOWN_FILES,
     UPDATE,
     UPDATE_AVAILABLE,
+    UPDATE_FAILED,
+    UPDATE_FAILED_TITLE,
     UPDATE_NOTE,
     UPDATE_NOW,
+    UPDATED,
     VERSIONS_HEADING,
     WARNING,
     WELCOME,
@@ -212,15 +223,18 @@ MIN_WIDTH, MIN_HEIGHT = WIDTH, 520
 # A row's status label is at least as wide as the widest status ("Another mod loads first"), so that a status
 # changing (as while merging) doesn't move the arrows after it
 STATUS_WIDTH = 140
+# What runs in a thread (MergerWindow.busy) that turns off the settings and the notices' buttons
+EXCLUSIVE = ("build", "remove", "update")
 BAR_DELAY = 300                         # ms before a progress bar without progress shows (most scans end first)
 VERSION_SPACING = 24                    # px above each version in the What's new dialog but the first (half above its notes' headings)
 
 
 def run(game: Path | None, stale: bool, first_run: bool, calls: queue.Queue, log_records: queue.Queue, *,
-        check_updates: bool = True) -> int:
-    """Show the window until it closes; returns the exit code"""
+        check_updates: bool = True, updated_from: str | None = None) -> int:
+    """Show the window until it closes; returns the exit code. updated_from: the version this one replaced"""
     app = make_app()
-    window = MergerWindow(game, stale, first_run, calls, log_records, check_updates=check_updates)
+    window = MergerWindow(game, stale, first_run, calls, log_records, check_updates=check_updates,
+                          updated_from=updated_from)
     sys.excepthook = window.callback_failed
     window.root.show()
     app.exec()
@@ -403,9 +417,11 @@ class Root(QWidget):
 
 class MergerWindow:
     def __init__(self, game: Path | None, stale: bool, first_run: bool, calls: queue.Queue, log_records: queue.Queue,
-                 *, check_updates: bool = True):
-        """game: None until the user chooses it (first_run: no settings yet); check_updates: the setting"""
+                 *, check_updates: bool = True, updated_from: str | None = None):
+        """game: None until the user chooses it (first_run: no settings yet); check_updates: the setting;
+        updated_from: the tools were just updated (from this version)"""
         self.game, self.stale, self.calls, self.log_records = game, stale, calls, log_records
+        self.updated_from = updated_from
         self.check_updates = check_updates
         self.update_checked = False     # the update check ran (once per window)
         self.update = None              # the newer tools version it found (updates.ToolsUpdate)
@@ -415,8 +431,8 @@ class MergerWindow:
         self.scan_error = None
         self.merged = None
         self.merge_error = None
-        self.progress = None        # the merge's (done, total), once known
-        self.busy = None            # what runs in a thread: "scan", "build", "remove"
+        self.progress = None        # the merge's or the update's download (done, total), once known
+        self.busy = None            # what runs in a thread: "scan", "build", "remove", "update"
         self.card: Card | None = None
         self.busy_since = 0.0       # when it started (time.perf_counter)
         self.card_buttons = None    # the widget holding the card's buttons, made again when they change
@@ -867,23 +883,25 @@ class MergerWindow:
         installed = self.found.scan.installed if self.found else None
         context = [smoothui_build(installed), str(self.game) if self.game else None]
         self.context.setText("  ·  ".join(text for text in context if text))
-        self.settings_button.setEnabled(self.busy not in ("build", "remove"))  # no other game folder meanwhile
+        self.settings_button.setEnabled(self.busy not in EXCLUSIVE)  # no other game folder meanwhile
         self.show_notices(installed)
         self.show_card()
         self.show_screens()
 
     def show_notices(self, installed):
         """The notices, each (text, tone, buttons ((label, action), see card_actions)), made again only when
-        they change. Their buttons are off while a merge or removal runs."""
+        they change. Their buttons are off while a merge, a removal or an update runs."""
         notices = []
         if names := [name for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV) if os.environ.get(name)]:
             notices.append((TEST_MODE.format(names=" and ".join(names)), INFO, ()))
+        if self.updated_from:
+            notices.append((UPDATED.format(version=merger_version()), OK, ()))
         if self.update and not self.stale:     # (in stale mode, the card offers it when it matters)
             notices.append((UPDATE_AVAILABLE.format(version=self.update.version), UPDATE,
                             ((WHATS_NEW, "whats_new"), (UPDATE_NOW, "update"))))
         if installed and installed.newer_release:
             notices.append((NEWER_RELEASE.format(version=installed.newer_release), INFO, ()))
-        enabled = self.busy not in ("build", "remove")
+        enabled = self.busy not in EXCLUSIVE
         if (notices, enabled) == self.notices_shown:
             return
         self.notices_shown = (notices, enabled)
@@ -1169,7 +1187,7 @@ class MergerWindow:
     # ---- The scan ----
 
     def set_busy(self, what):
-        """What runs in a thread now ("scan", "build", "remove"; None: nothing)"""
+        """What runs in a thread now ("scan", "build", "remove", "update"; None: nothing)"""
         if what and not self.busy:
             self.busy_since = time.perf_counter()
         self.busy = what
@@ -1250,8 +1268,45 @@ class MergerWindow:
             self.update_now()
 
     def update_now(self):
-        """Update now (the notice, What's new, stale mode's card)"""
-        log.info(f"Update to Smooth UI Tools v{self.update.version} chosen: installing it isn't implemented yet")
+        """Update now (the notice, What's new, stale mode's card): download and unpack the new version in a
+        thread, then start it as the helper (self_update.py) and exit"""
+        update = self.update
+        if update is None or self.busy:
+            return
+        log.info(f"Updating to Smooth UI Tools v{update.version}")
+        self.set_busy("update")
+        self.progress = None
+        self.refresh()
+
+        def progressed(done, total):
+            self.calls.put(("update_progress", (done, total)))
+
+        def prepared(root, error):
+            self.set_busy(None)
+            self.progress = None
+            if error is None:
+                try:
+                    self_update.start_helper(root, gui.APP_DIR, merger_version(), self.pids())
+                except SmoothUIError as e:
+                    error = e
+            if error is not None:
+                log.error(f"The update failed: {error_text(error)}")
+                self.refresh()
+                show_error(self.root, UPDATE_FAILED_TITLE,
+                           UPDATE_FAILED.format(version=update.version, error=error_text(error)))
+                return
+            self.exit(self_update.exit_code(self.stale))
+
+        in_thread(self.calls, self_update.prepare, prepared, update, gui.DATA_DIR, progressed)
+
+    def pids(self):
+        """The processes the helper waits for: this one, and the launcher that started it (stale mode)"""
+        return [os.getpid(), os.getppid()] if self.stale else [os.getpid()]
+
+    def update_progress(self, done, total):
+        if self.busy == "update":
+            self.progress = (done, total)
+            self.show_card()
 
     # ---- Merge, remove ----
 

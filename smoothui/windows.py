@@ -1,7 +1,7 @@
 """What both exes need from Windows itself: message boxes, when the process started, and (the merger) a
-window on top, one merger at a time, and whether a DLL is loaded. Light (ctypes only); elsewhere (tests
-under WSL), the boxes show nothing, the start time is unknown, each process is the only one, and no DLL is
-loaded."""
+window on top, one merger at a time, whether a DLL is loaded, and waiting for a process. Light (ctypes only);
+elsewhere (tests under WSL), the boxes show nothing, the start time is unknown, each process is the only one,
+no DLL is loaded, and every process has ended."""
 
 import ctypes
 
@@ -122,3 +122,24 @@ def module_loaded(name: str) -> bool:
     kernel32.GetModuleHandleW.restype = ctypes.c_void_p
     kernel32.GetModuleHandleW.argtypes = [ctypes.c_wchar_p]
     return bool(kernel32.GetModuleHandleW(name))
+
+
+def wait_for_process(pid: int, seconds: float) -> bool:
+    """Wait until the process with this ID has ended; True if it has (also if there is no such process),
+    False if it still runs after the time. True outside Windows."""
+    try:
+        kernel32 = ctypes.windll.kernel32
+    except AttributeError:
+        return True
+    synchronize, wait_object_0 = 0x100000, 0
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint, ctypes.c_bool, ctypes.c_uint]
+    kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel32.OpenProcess(synchronize, False, pid)
+    if not handle:
+        return True     # gone (or not ours to wait for)
+    try:
+        return kernel32.WaitForSingleObject(handle, round(seconds * 1000)) == wait_object_0
+    finally:
+        kernel32.CloseHandle(handle)
