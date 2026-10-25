@@ -27,6 +27,7 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
+from functools import cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -34,18 +35,15 @@ from ..common import SmoothUIError, fail, normalize_version
 from ..files import delete_file, make_dirs, read_file, write_file
 from ..manifests import is_dev_version, version_key
 from ..paths import MANIFEST_DIR
-from . import merger_version
+from . import RELEASES_URL, UPDATE_URL_ENV, merger_version
 
 log = logging.getLogger(__name__)
 
-# The release list of the repo the tools come from
-RELEASES_URL = "https://api.github.com/repos/exscape/SmoothUIRemastered/releases"
-# For tests only: another release list (a local test server, or a test repo's), e.g.
-# http://127.0.0.1:8765/releases. Asset links come from the list, so nothing else changes.
-UPDATE_URL_ENV = "SMOOTHUI_UPDATE_URL"
 # GitHub's maximum; a manifests release beyond the first page is fetched by its tag
 PER_PAGE = 100
 TIMEOUT = 10
+# When the game waits for the check (the launcher opened the merger)
+QUICK_TIMEOUT = 5
 # No new check within this long of the last one; its result is used instead
 RECENT = timedelta(minutes=10)
 # The last check's time, release list and result (see Found), in the data folder
@@ -237,8 +235,10 @@ class _HttpsRedirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-# Python's ssl reads Windows' own certificate store
-_opener = urllib.request.build_opener(_HttpsRedirects, urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+@cache
+def _opener():
+    # Python's ssl reads Windows' own certificate store (made on first use: it takes a while)
+    return urllib.request.build_opener(_HttpsRedirects, urllib.request.HTTPSHandler(context=ssl.create_default_context()))
 
 
 def _open(url, timeout, accept):
@@ -246,7 +246,7 @@ def _open(url, timeout, accept):
         fail(f"{url} isn't HTTPS")
     headers = {"User-Agent": f"SmoothUITools/{merger_version()}", "Accept": accept,
                "X-GitHub-Api-Version": "2022-11-28"}
-    return _opener.open(urllib.request.Request(url, headers=headers), timeout=timeout)
+    return _opener().open(urllib.request.Request(url, headers=headers), timeout=timeout)
 
 
 def _get_json(url, timeout):

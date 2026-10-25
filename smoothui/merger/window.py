@@ -23,6 +23,10 @@ front, the card offers Merge and play, Play without merging (worded by what that
 Don't start the game, and a clean merge exits at once (play). Closing the window means play; while a merge
 runs, only after a warning: the package, which may be half written, is then deleted, and the game starts
 without it.
+
+After the first scan, the update check (gui.find_updates) runs in a thread. A newer version of the tools
+shows as a notice (in stale mode, on the card, which then leads with it), with its release notes in the What's
+new dialog. New Smooth UI manifests make an unknown Smooth UI build scan again.
 """
 
 from __future__ import annotations
@@ -48,11 +52,13 @@ from PySide6.QtGui import (
     QKeySequence,
     QPalette,
     QShortcut,
+    QTextBlockFormat,
     QTextCharFormat,
     QTextCursor,
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -67,6 +73,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -77,7 +84,7 @@ from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
 from ..patcher.fixes import fix_consequence, fix_kind
 from ..paths import APP_DIR
 from ..windows import MB_ICONERROR, ms_since_process_start, msg_box, set_topmost
-from . import REPORT_URL, SMOOTHUI_URL, TOOLS_README_URL, gui
+from . import REPORT_URL, SMOOTHUI_URL, TOOLS_README_URL, UPDATE_URL_ENV, gui
 from .game import (
     GAME_EXE,
     GAME_PATH_ENV,
@@ -100,6 +107,7 @@ from .gui_texts import (
     BUG_REPORT_FAILED,
     BUG_REPORT_TITLE,
     CANCEL,
+    CHECK_UPDATES,
     CHOOSE_FOLDER,
     CHOOSE_FOLDER_TITLE,
     CLOSE,
@@ -120,15 +128,18 @@ from .gui_texts import (
     HELP,
     HIDE_LOG,
     INFO,
+    LATER,
     LAUNCHER,
     LAUNCHER_HEADING,
     LICENSES,
     LICENSES_HEADING,
+    LOOKING,
     LOOKING_FOR_GAME,
     MERGER_VERSION,
     NEWER_RELEASE,
     NO_LAUNCHER,
     NOTES_HEADING,
+    NOTHING_FOUND,
     OK,
     OPEN_DATA,
     OPEN_LICENSES,
@@ -159,20 +170,28 @@ from .gui_texts import (
     TEST_MODE,
     TITLE,
     UNKNOWN_FILES,
+    UPDATE,
+    UPDATE_AVAILABLE,
+    UPDATE_NOTE,
+    UPDATE_NOW,
     VERSIONS_HEADING,
     WARNING,
     WELCOME,
     WELCOME_HEADING,
+    WHATS_NEW,
+    WHATS_NEW_TITLE,
     WRITE_BUG_REPORT,
     ZIP_NOTE,
     Card,
     also_changed,
     capitalized,
     merging_status,
+    release_notes,
     row_status,
     status_card,
     unchanged_screens,
 )
+from .installed import Status
 from .package import remove_package
 from .scan import PACKAGE_FOLDER, is_package_folder, scan
 from .screens import screen_label, screen_name
@@ -194,12 +213,14 @@ MIN_WIDTH, MIN_HEIGHT = WIDTH, 520
 # changing (as while merging) doesn't move the arrows after it
 STATUS_WIDTH = 140
 BAR_DELAY = 300                         # ms before a progress bar without progress shows (most scans end first)
+VERSION_SPACING = 24                    # px above each version in the What's new dialog but the first (half above its notes' headings)
 
 
-def run(game: Path | None, stale: bool, first_run: bool, calls: queue.Queue, log_records: queue.Queue) -> int:
+def run(game: Path | None, stale: bool, first_run: bool, calls: queue.Queue, log_records: queue.Queue, *,
+        check_updates: bool = True) -> int:
     """Show the window until it closes; returns the exit code"""
     app = make_app()
-    window = MergerWindow(game, stale, first_run, calls, log_records)
+    window = MergerWindow(game, stale, first_run, calls, log_records, check_updates=check_updates)
     sys.excepthook = window.callback_failed
     window.root.show()
     app.exec()
@@ -265,7 +286,7 @@ def apply_theme():
 
 def style_sheet(c) -> str:
     """The window's style sheet (STYLE), and texts and the card's border colored by tone (set_tone)"""
-    tones = (OK, INFO, WARNING, ERROR, "neutral")
+    tones = (OK, INFO, WARNING, ERROR, UPDATE, "neutral")
     return STYLE.format(**c) + "\n".join([
         *(f'#card[tone="{tone}"] {{ border-color: {c[tone]}; }}' for tone in tones),
         *(f'QLabel[tone="{tone}"] {{ color: {c[tone]}; }}' for tone in tones),
@@ -277,6 +298,7 @@ def style_sheet(c) -> str:
 STYLE = """
 #card {{ background: {card}; border: 2px solid {neutral}; border-radius: 6px; }}
 #notice {{ background: {notice}; border-radius: 6px; }}
+#notice[tone="update"] {{ background: {notice_update}; }}
 #details {{ background: {card}; border-radius: 6px; }}
 QLabel[tone="muted"] {{ color: {muted_text}; }}
 QPushButton {{ background: transparent; color: {quiet_button_text}; border: 1px solid {quiet_button_border};
@@ -297,7 +319,8 @@ QScrollBar::handle:vertical {{ background: {scrollbar}; border-radius: 4px; min-
 QScrollBar::handle:vertical:hover {{ background: {scrollbar_hover}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}
-QPlainTextEdit {{ background: {log}; border: none; border-radius: 6px; padding: 4px; }}
+QPlainTextEdit, QTextBrowser {{ background: {log}; border: none; border-radius: 6px; padding: 4px; }}
+QCheckBox {{ spacing: 8px; }}
 """
 
 
@@ -379,9 +402,14 @@ class Root(QWidget):
 
 
 class MergerWindow:
-    def __init__(self, game: Path | None, stale: bool, first_run: bool, calls: queue.Queue, log_records: queue.Queue):
-        """game: None until the user chooses it (first_run: no settings yet)"""
+    def __init__(self, game: Path | None, stale: bool, first_run: bool, calls: queue.Queue, log_records: queue.Queue,
+                 *, check_updates: bool = True):
+        """game: None until the user chooses it (first_run: no settings yet); check_updates: the setting"""
         self.game, self.stale, self.calls, self.log_records = game, stale, calls, log_records
+        self.check_updates = check_updates
+        self.update_checked = False     # the update check ran (once per window)
+        self.update = None              # the newer tools version it found (updates.ToolsUpdate)
+        self.update_search = None       # stale mode: what the card says about it (see status_card)
         # What status_card shows (see there)
         self.found = None
         self.scan_error = None
@@ -404,7 +432,7 @@ class MergerWindow:
         self.candidates = None      # the game folders found (find_candidates), once the search ends
         self.searching = False
         self.welcome_page = self.settings_page = self.help_page = None   # made when first shown
-        self.welcome_chooser = self.settings_chooser = None
+        self.welcome_chooser = self.settings_chooser = self.update_box = None
 
         self.root = root = Root(self)
         root.setWindowTitle(TITLE)
@@ -586,10 +614,13 @@ class MergerWindow:
         return page
 
     def make_settings(self):
-        """The settings page: the game folder (saved with Save), the launcher"""
+        """The settings page: the update check and the game folder (saved with Save), the launcher"""
         page, layout = self.make_page()
         self.heading(layout, SETTINGS, 0, 17)
-        self.heading(layout, GAME_HEADING, 10)
+        layout.addSpacing(10)
+        self.update_box = QCheckBox(CHECK_UPDATES.replace("&", "&&"))
+        layout.addWidget(self.update_box)
+        self.heading(layout, GAME_HEADING)
         self.settings_chooser = GameChooser(self, lambda folder: None)
         layout.addWidget(self.settings_chooser.widget)
         self.heading(layout, LAUNCHER_HEADING)
@@ -735,27 +766,34 @@ class MergerWindow:
         if self.settings_page is None:
             self.settings_page = self.make_settings()
         self.settings_chooser.show(self.candidates or [], self.game, searching=self.candidates is None)
+        self.update_box.setChecked(self.check_updates)
         self.find_game_folders()
         self.show_page(self.settings_page)
 
     def save_settings_page(self):
-        """Save: the game folder chosen, if it changed (then it is scanned); back to the main page"""
-        folder = self.settings_chooser.selected()
-        if folder is not None and not same_folder(folder, self.game):
-            if not self.save_game(folder, self.settings_chooser):
+        """Save: the game folder chosen and the update check, if either changed (a new folder is scanned);
+        back to the main page"""
+        folder = self.settings_chooser.selected() or self.game
+        new_folder = folder is not None and not same_folder(folder, self.game)
+        if folder is not None and (new_folder or self.update_box.isChecked() != self.check_updates):
+            if not self.save_game(folder, self.settings_chooser, self.update_box.isChecked()):
                 return
-            self.change_game(folder)
+            if new_folder:
+                self.change_game(folder)
         self.show_page(self.main_page)
 
-    def save_game(self, folder, chooser) -> bool:
-        """Save the settings with the game folder; a failure is said in chooser"""
+    def save_game(self, folder, chooser, check_updates=None) -> bool:
+        """Save the settings with the game folder, and check_updates (None: as it is); a failure is said in
+        chooser"""
+        check_updates = self.check_updates if check_updates is None else check_updates
         try:
-            save_settings(Settings(folder), gui.DATA_DIR)
+            save_settings(Settings(folder, check_updates), gui.DATA_DIR)
         except SmoothUIError as e:
             log.error(f"The settings can't be saved: {e}")
             chooser.say(SETTINGS_NOT_SAVED.format(error=e), ERROR)
             return False
-        log.info(f"Settings saved: the game folder is {folder}")
+        log.info(f"Settings saved: the game folder is {folder}; update check {'on' if check_updates else 'off'}")
+        self.check_updates = check_updates
         return True
 
     def change_game(self, game):
@@ -835,24 +873,38 @@ class MergerWindow:
         self.show_screens()
 
     def show_notices(self, installed):
-        """The notices, made again only when they change"""
+        """The notices, each (text, tone, buttons ((label, action), see card_actions)), made again only when
+        they change. Their buttons are off while a merge or removal runs."""
         notices = []
-        if names := [name for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV) if os.environ.get(name)]:
-            notices.append(TEST_MODE.format(names=" and ".join(names)))
+        if names := [name for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV) if os.environ.get(name)]:
+            notices.append((TEST_MODE.format(names=" and ".join(names)), INFO, ()))
+        if self.update and not self.stale:     # (in stale mode, the card offers it when it matters)
+            notices.append((UPDATE_AVAILABLE.format(version=self.update.version), UPDATE,
+                            ((WHATS_NEW, "whats_new"), (UPDATE_NOW, "update"))))
         if installed and installed.newer_release:
-            notices.append(NEWER_RELEASE.format(version=installed.newer_release))
-        if notices == self.notices_shown:
+            notices.append((NEWER_RELEASE.format(version=installed.newer_release), INFO, ()))
+        enabled = self.busy not in ("build", "remove")
+        if (notices, enabled) == self.notices_shown:
             return
-        self.notices_shown = notices
+        self.notices_shown = (notices, enabled)
         while item := self.notices.takeAt(0):
             discard(item.widget())
-        for text in notices:
+        actions = self.card_actions()
+        for text, tone, buttons in notices:
             banner = QFrame(objectName="notice")
+            set_tone(banner, tone)
             row = QHBoxLayout(banner)
             row.setContentsMargins(10, 4, 10, 4)
             row.setSpacing(6)
-            row.addWidget(glyph(INFO, 14))
+            icon = glyph(tone, 14)
+            icon.setFixedWidth(16)      # the glyphs' widths differ: the texts start at one place
+            icon.setAlignment(Qt.AlignHCenter)
+            row.addWidget(icon, 0, Qt.AlignTop)
             row.addWidget(label(text, wrap=True), 1)
+            for name, action in buttons:
+                widget = button(name, actions[action])
+                widget.setEnabled(enabled)
+                row.addWidget(widget)
             wrapper = QWidget()     # the space above it
             outer = QVBoxLayout(wrapper)
             outer.setContentsMargins(0, 8, 0, 0)
@@ -864,7 +916,8 @@ class MergerWindow:
         something runs, so the list below doesn't move: the progress bar's space is always there, and a
         card without buttons keeps the last card's, disabled."""
         card = status_card(self.found, stale=self.stale, busy=self.busy, scan_error=self.scan_error,
-                           merged=self.merged, merge_error=self.merge_error, progress=self.progress)
+                           merged=self.merged, merge_error=self.merge_error, progress=self.progress,
+                           update=self.update.version if self.update else None, update_search=self.update_search)
         if card == self.card:
             self.enable_buttons(True)
             return
@@ -959,6 +1012,8 @@ class MergerWindow:
             "rescan": self.rescan,
             "smoothui_page": lambda: webbrowser.open(SMOOTHUI_URL),
             "bug_report": self.open_bug_report,
+            "update": self.update_now,
+            "whats_new": self.whats_new,
         }
 
     def show_screens(self):
@@ -1149,6 +1204,7 @@ class MergerWindow:
             for problem in self.found.scan.problems:
                 log.warning(problem.message)
         self.refresh()
+        self.look_for_updates()
 
     def rescan(self, keep_result=False):
         """Scan again; the last merge's result (and the rows' places) stays only with keep_result (right after
@@ -1157,6 +1213,45 @@ class MergerWindow:
             self.merged = self.merge_error = None
             self.keep_order = False
         start_scan(self.game, self.calls)
+
+    # ---- Updates ----
+
+    def look_for_updates(self):
+        """After a scan: the update check (once), unless the settings turn it off, and not while something
+        runs. In stale mode only for an unknown Smooth UI build: otherwise the game would wait for nothing."""
+        if self.update_checked or not self.check_updates or self.busy or (self.found is None and self.scan_error is None):
+            return
+        if self.stale and (self.found is None or self.found.scan.installed.status != Status.UNKNOWN):
+            return
+        self.update_checked = True
+        if self.stale:
+            self.update_search = LOOKING
+            self.refresh()
+        in_thread(self.calls, gui.find_updates, "updates_checked", self.stale)
+
+    def updates_checked(self, found, error):
+        """The update check's result (updates.Found; None if it failed, which shows nothing). New manifests
+        may make an unknown Smooth UI build known: then it scans again."""
+        self.update_search = None
+        if found is not None:
+            self.update = found.update
+            if self.stale and found.update is None:
+                self.update_search = NOTHING_FOUND
+            if found.downloaded and self.found is not None and self.found.scan.installed.status == Status.UNKNOWN:
+                log.info("Scanning again, with the new manifests")
+                if self.busy == "scan":
+                    self.scan_again = True
+                elif not self.busy:
+                    self.rescan()
+        self.refresh()
+
+    def whats_new(self):
+        if whats_new_dialog(self.root, self.update).exec() == QDialog.Accepted:
+            self.update_now()
+
+    def update_now(self):
+        """Update now (the notice, What's new, stale mode's card)"""
+        log.info(f"Update to Smooth UI Tools v{self.update.version} chosen: installing it isn't implemented yet")
 
     # ---- Merge, remove ----
 
@@ -1475,6 +1570,37 @@ def bug_report_dialog(parent, text, save_zip) -> QDialog:
     zip_row.addStretch()
     zip_row.addWidget(button(CLOSE, dialog.accept))
     layout.addLayout(zip_row)
+    return dialog
+
+
+def whats_new_dialog(parent, update) -> QDialog:
+    """The release notes of each version newer than this one (update: updates.ToolsUpdate); Update now
+    accepts it, Later rejects it"""
+    dialog = QDialog(parent)
+    dialog.setWindowTitle(WHATS_NEW_TITLE.format(version=update.version))
+    dialog.resize(600, 520)
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(20, 16, 20, 16)
+    layout.setSpacing(10)
+    notes = QTextBrowser(openExternalLinks=True)
+    notes.setMarkdown(release_notes(update.notes))
+    # Space above each heading but the first (Markdown has no way to say it): a version's, and half as much
+    # above the headings in its notes (e.g. New, Fixed)
+    block = notes.document().begin().next()
+    while block.isValid():
+        if level := block.blockFormat().headingLevel():
+            spaced = QTextBlockFormat()
+            spaced.setTopMargin(VERSION_SPACING if level == 1 else VERSION_SPACING // 2)
+            QTextCursor(block).mergeBlockFormat(spaced)
+        block = block.next()
+    layout.addWidget(notes, 1)
+    layout.addWidget(label(UPDATE_NOTE, wrap=True, tone="muted"))
+    row = QHBoxLayout()
+    row.setSpacing(8)
+    row.addStretch()
+    row.addWidget(button(LATER, dialog.reject))
+    row.addWidget(button(UPDATE_NOW, dialog.accept, primary=True))
+    layout.addLayout(row)
     return dialog
 
 

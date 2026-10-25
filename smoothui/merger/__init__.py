@@ -12,6 +12,11 @@ SMOOTHUI_URL = "https://www.nexusmods.com/witcher3/mods/13526"
 REPORT_URL = f"{SMOOTHUI_URL}?tab=bugs"
 # README_tools.md, rendered: how to set the tools up, per mod manager
 TOOLS_README_URL = "https://github.com/exscape/SmoothUIRemastered/blob/main/README_tools.md"
+# The release list of the repo the tools come from (see updates.py)
+RELEASES_URL = "https://api.github.com/repos/exscape/SmoothUIRemastered/releases"
+# For tests only: another release list (a local test server, or a test repo's), e.g.
+# http://127.0.0.1:8765/releases. Asset links come from the list, so nothing else changes.
+UPDATE_URL_ENV = "SMOOTHUI_UPDATE_URL"
 
 # The merger's version is [versions] merger_version in config/config.toml. A frozen tool has no config:
 # smoothui-merger.spec writes the version into this file (in _internal\, at this module's path).

@@ -13,6 +13,10 @@ With --stale, the launcher opened it before starting the game (see launcher.py, 
 Started by Mod Organizer 2 from inside the game folder (game.mo2_inside_game), it says that this is
 unsupported, and exits before it writes anything (in stale mode, the game starts).
 
+Once a scan has ended, it looks for a newer version of the tools, and for new Smooth UI manifests, in a
+thread (find_updates; see updates.py), unless the settings turn that off. In stale mode, only when the
+installed Smooth UI is unknown: a new manifest, or a newer version of the tools, may be what is missing.
+
 One merger at a time (two would write the same files): a second one brings the first one's window to the
 front and exits at once, without touching the data folder (rotating the logs would cut the first one's).
 Started by the launcher, it exits with ABORT: the game mustn't start while the user may merge in the
@@ -37,7 +41,7 @@ from ..files import check_data_writable, make_dirs, rotate
 from ..launcher import ABORT, CLOSED, PLAY
 from ..paths import APP_DIR, DATA_DIR
 from ..windows import MB_ICONERROR, bring_to_front, find_window, msg_box, only_instance
-from . import merger_version
+from . import UPDATE_URL_ENV, merger_version
 from .game import (
     GAME_PATH_ENV,
     MODS_SETTINGS_ENV,
@@ -78,7 +82,7 @@ def main() -> int:
     settings = _settings()
     game = game_path(settings)
     log.info(f"Game folder: {game or 'not chosen yet'}")
-    for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV):
+    for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV):
         if os.environ.get(name):
             log.info(f"Test mode: {name}={os.environ[name]}")
     calls = queue.Queue()       # (function, args) to call on Qt's thread
@@ -86,7 +90,8 @@ def main() -> int:
         start_scan(game, calls)
 
     from . import window  # imports Qt, which takes a while: after the scan has started
-    return window.run(game, stale, settings is None, calls, log_records)
+    return window.run(game, stale, settings is None, calls, log_records,
+                      check_updates=settings.check_updates if settings else True)
 
 
 class LogFormatter(logging.Formatter):
@@ -157,6 +162,15 @@ def start_scan(game: Path, calls: queue.Queue):
         return found, time.perf_counter() - start
     calls.put(("scanning", ()))
     in_thread(calls, work, "scanned")
+
+
+def find_updates(stale: bool):
+    """The update check (updates.check), in a thread. In stale mode the game waits: a shorter timeout, and
+    never the last check's result (the scan has just found what it may not have known)."""
+    from . import updates  # imported here: it takes a while, and the window shows first
+    if stale:
+        return updates.check(DATA_DIR, timeout=updates.QUICK_TIMEOUT, use_recent=False)
+    return updates.check(DATA_DIR)
 
 
 def error_text(error) -> str:

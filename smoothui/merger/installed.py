@@ -96,12 +96,12 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
     record_version = _record_version(record_text)
     if record_version in too_new:
         return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, which needs a newer "
-                         "merger: update the merger", folder=folder, version=record_version)
+                         "version of Smooth UI Tools: update them", folder=folder, version=record_version)
     if record_version is not None:
         manifest = manifests.get(record_version)
         if manifest is None:
-            return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, which this merger "
-                             "is too old to understand: update the merger", folder=folder, version=record_version)
+            return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, which is newer than "
+                             "this version of Smooth UI Tools: update them", folder=folder, version=record_version)
         sizes_only = _matches(files, manifest)
         if sizes_only is None:
             return Installed(Status.UNKNOWN, f"Smooth UI Remastered {record_version} is installed, but some of its "
@@ -121,7 +121,7 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
             break
     if not matches:
         return Installed(Status.UNKNOWN, "the installed Smooth UI Remastered is modified, mixed, or newer than this "
-                         "merger: update the merger, or reinstall Smooth UI", folder=folder)
+                         "version of Smooth UI Tools: update them, or reinstall Smooth UI", folder=folder)
     # Only possible for a build whose record was deleted: the releases' files all differ
     version = max(matches, key=version_key)
     return _known(folder, version, manifests[version], matches[version], manifests)

@@ -43,24 +43,30 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class Settings:
     game_path: Path
+    check_updates: bool = True      # whether the merger looks for updates when it starts (see updates.py)
 
 
 def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
-    """The merger's settings; None if the merger has never run"""
+    """The merger's settings; None if the merger has never run. A setting missing from the file (it was
+    saved by an older version) has its default."""
     path = Path(data_dir) / SETTINGS_FILE
     data = read_file(path)
     if data is None:
         return None
     try:
         settings = json.loads(data.decode("utf-8"))
-        return Settings(game_path=to_native(settings["game_path"]))
-    except (ValueError, KeyError, TypeError) as e:
+        check_updates = settings.get("check_updates", True)
+        if not isinstance(check_updates, bool):
+            raise TypeError(f"check_updates is {check_updates!r}, not true or false")
+        return Settings(to_native(settings["game_path"]), check_updates)
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
 
 
 def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
     make_dirs(data_dir)
-    text = json.dumps({"game_path": to_windows(settings.game_path)}, indent=1) + "\n"
+    text = json.dumps({"game_path": to_windows(settings.game_path), "check_updates": settings.check_updates},
+                      indent=1) + "\n"
     write_file(Path(data_dir) / SETTINGS_FILE, text.encode("utf-8"))
 
 

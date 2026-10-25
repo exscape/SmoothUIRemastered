@@ -17,10 +17,10 @@ from .state import Check, FileState, Severity, State
 if TYPE_CHECKING:
     from .builder import BuildResult
 
-# The card's tones (its color and glyph)
-NEUTRAL, OK, INFO, WARNING, ERROR = "neutral", "ok", "info", "warning", "error"
+# The card's tones (its color and glyph); UPDATE: the notice of a newer version
+NEUTRAL, OK, INFO, WARNING, ERROR, UPDATE = "neutral", "ok", "info", "warning", "error", "update"
 # Glyphs by tone, from Segoe UI Symbol (in Windows 10 and later)
-GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕"}
+GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕", UPDATE: "⬆"}
 
 # ---- The window ----
 
@@ -32,11 +32,18 @@ SHOW_LOG, HIDE_LOG = "Show log", "Hide log"
 # Notices, above the card
 TEST_MODE = "Test mode: {names} set (their values are in merger.log)"
 NEWER_RELEASE = "A newer Smooth UI Remastered is available ({version})"
+UPDATE_AVAILABLE = "Smooth UI Tools v{version} is available."
+WHATS_NEW, UPDATE_NOW, LATER = "What's new", "Update now", "Later"
 # A message box, by stale mode (the game starts once it closes)
 _MO2 = ("Smooth UI Tools can't run from inside the game folder when Mod Organizer 2 starts them: MO2 would move "
         "their own files (settings, logs, updates) into its overwrite folder.\n\nMove the folder {folder} out of the "
         "game folder, then point MO2's executables to the new place.")
 MO2_INSIDE_GAME = {False: _MO2, True: _MO2 + "\n\nThe game starts now, without the merger."}
+# The What's new dialog: the release notes of each newer version, newest first
+WHATS_NEW_TITLE = "What's new in Smooth UI Tools v{version}"
+RELEASE_HEADING = "Smooth UI Tools v{version}"
+NO_NOTES = "No release notes."
+UPDATE_NOTE = "Updating takes a few seconds: the merger closes, and opens again in the new version."
 # Notes, below the screens
 COMPAT_REMOVABLE = "{folder} is no longer needed: the merged patches replace it. You can remove it."
 UNKNOWN_FILES = "The merged patches' folder holds files the merger didn't write, so they stay: {names}"
@@ -88,6 +95,8 @@ SHORTCUT_NAME = "The Witcher 3 (Smooth UI)"
 SHORTCUT_DESCRIPTION = "Starts The Witcher 3 through SmoothUILauncher.exe, which checks your mods first"
 SHORTCUT_MADE = "Made on your desktop: {name}"
 NO_LAUNCHER = "SmoothUILauncher.exe isn't next to the merger: unpack all of Smooth UI Tools into one folder"
+# The update check
+CHECK_UPDATES = "Check for updates when the merger starts (contacts GitHub)"
 # The data folder
 DATA_HEADING = "Data folder"
 DATA = "The merger's settings, logs and records of the merged patches:\n{folder}"
@@ -126,7 +135,7 @@ OPEN_LOG_FOLDER = "Open log folder"
 @dataclass(frozen=True, slots=True)
 class Card:
     """What the status card shows. A button is (label, action); the first one is the default. Actions:
-    merge, merge_and_play, play, abort, remove, remove_and_play, rescan, bug_report, smoothui_page."""
+    merge, merge_and_play, play, abort, remove, remove_and_play, rescan, bug_report, smoothui_page, update."""
     tone: str
     headline: str
     sentences: tuple[str, ...] = ()
@@ -192,16 +201,41 @@ RISKS = {
 MORE_CAUSES = "And {count} more: see the list below."
 MAX_CAUSES = 2          # sentences about causes on a card, the last one perhaps MORE_CAUSES
 
+# In stale mode, an unknown Smooth UI build makes the merger look for an update at once (update_search)
+LOOKING, NOTHING_FOUND = "looking", "nothing found"
+UPDATE_TOOLS = ("Update Smooth UI Tools", "update")
+LOOKING_FOR_UPDATE = "Looking for a newer Smooth UI Tools..."
+UPDATE_FOUND = "Smooth UI Tools v{version} is available."
+NO_UPDATE = "No newer Smooth UI Tools is out yet."
+
 
 def status_card(found: Check | None, *, stale: bool, busy: str | None = None, scan_error: str | None = None,
                 merged: BuildResult | None = None, merge_error: str | None = None,
-                progress: tuple[int, int] | None = None) -> Card:
+                progress: tuple[int, int] | None = None, update: str | None = None,
+                update_search: str | None = None) -> Card:
     """What the status card shows, from the window's state. found: the last check (None until one ends);
     stale: whether the launcher opened the window; busy: what runs in a thread ("scan", "build" or
     "remove"); scan_error: why the last check failed; merged and merge_error: the result of the window's
-    last merge, or why it failed; progress: the merge's (done, total), once known.
+    last merge, or why it failed; progress: the merge's (done, total), once known; update: a newer Smooth UI
+    Tools version, if one was found; update_search: in stale mode, LOOKING or NOTHING_FOUND while or after
+    looking for one (None: not looked for, or the check failed).
 
-    In stale mode, every card has a button that plays, except while merging or removing."""
+    In stale mode, every card has a button that plays, except while merging or removing. There, an unknown
+    Smooth UI build (which a newer version of the tools may know) says what the update check found, and
+    leads with the update if there is one."""
+    card = _card(found, stale, busy, scan_error, merged, merge_error, progress)
+    if stale and not busy and found is not None and found.scan.installed.status == Status.UNKNOWN:
+        if update:
+            return replace(card, sentences=(*card.sentences, UPDATE_FOUND.format(version=update)),
+                           buttons=(UPDATE_TOOLS, *card.buttons))
+        if update_search == LOOKING:
+            return replace(card, sentences=(*card.sentences, LOOKING_FOR_UPDATE), busy=True)
+        if update_search == NOTHING_FOUND:
+            return replace(card, sentences=(*card.sentences, NO_UPDATE))
+    return card
+
+
+def _card(found, stale, busy, scan_error, merged, merge_error, progress) -> Card:
     if busy == "build":
         return _merging(stale, progress)
     if busy == "remove":
@@ -365,6 +399,13 @@ def also_changed(file: FileResult, winner: str | None) -> str | None:
     """Which other mods change the screen, whose copies the game doesn't use (None if no other)"""
     others = [mod.folder for mod in file.shippers if not is_own_folder(mod.folder) and mod.folder != winner]
     return ALSO_CHANGED.format(mods=_join(others), mod=winner) if others and winner else None
+
+
+def release_notes(notes) -> str:
+    """The What's new dialog's text (Markdown, as GitHub's release notes are): the notes ((version, text)) of
+    each newer release, newest first, each under a heading"""
+    return "\n\n".join(f"# {RELEASE_HEADING.format(version=version)}\n\n{text.strip() or NO_NOTES}"
+                       for version, text in notes)
 
 
 def unchanged_screens(count) -> str:
