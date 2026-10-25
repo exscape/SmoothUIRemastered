@@ -46,7 +46,7 @@ def to_native(path):
     return Path(path)
 
 def to_windows(path):
-    """Native Path (or str) -> Windows-style string, e.g. for passing to wcc_lite"""
+    """Native Path (or str) -> Windows-style string"""
     path = str(path)
     if IN_WSL and not WIN_DRIVE_RE.match(path):
         return _wslpath("-w", path)

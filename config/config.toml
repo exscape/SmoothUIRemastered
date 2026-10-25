@@ -1,17 +1,10 @@
 
-# wcc_lite prints a lot of things it shouldn't ("errors" that are actually fine); hide these messages.
-silence_known_noise = true
-
 [paths]
 
 # NOTE: Use single quotes, NOT double quotes, to specify paths below!
 
-# REQUIRED: path to wcc_lite.exe (from the REDkit)
-wcc_lite = 'D:\Games\The Witcher 3 Remastered\The Witcher 3 REDkit\bin\x64_RedKit\wcc_lite.exe'
-
 # REQUIRED: working/temporary directory for generated files
 # NOTE: files located here may be deleted by the script at any moment!
-# NOTE: wcc_lite is said to dislike paths with spaces, so ensure this does not contain any!
 working_dir = 'E:\Temp\Witcher3Modding\work'
 
 # Optional: game directory to use when installing mod builds and launching the game (--install, --launch)

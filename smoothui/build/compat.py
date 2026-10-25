@@ -34,7 +34,6 @@ from .profile import apply_overrides
 from .release import load_release_manifest, patch_as_release, profile_from_manifest
 from .reviewed_warnings import print_warning_summary
 from .shared import (
-    COMPARE_STORE_WITH_WCC_LITE,
     REPO_ROOT,
     build_version,
     compat_manifest_path,
@@ -273,8 +272,6 @@ def main():
         fail(f"game_path is not set to a valid directory in config/config.toml: {game_path} is not an existing directory")
     if not (parent := work_dir.parent.parent).is_dir():
         fail(f"working directory parent {parent} does not exist")
-    if COMPARE_STORE_WITH_WCC_LITE and not paths["wcc_lite"].is_file():
-        fail(f"wcc_lite setting in config/config.toml is not set to a valid wcc_lite.exe path: {paths['wcc_lite']} does not exist")
 
     log.info(f"Mod folder: {mod_name}")
 

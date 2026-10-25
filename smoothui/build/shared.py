@@ -3,14 +3,13 @@
 import hashlib
 import json
 import logging
-import re
 import shutil
 import subprocess
 import tomllib
 import zipfile
 from pathlib import Path
 
-from ..common import fail, normalize_version, to_native, to_windows
+from ..common import fail, normalize_version, to_native
 from ..log import HEADING, SUBHEADING
 from ..manifests import (  # noqa: F401 (re-exported for the build tools)
     BUILD_RECORD,
@@ -35,7 +34,7 @@ from ..manifests import (  # noqa: F401 (re-exported for the build tools)
 )
 from ..patcher.fixes import APPLIED
 from ..patcher.swf_patcher import format_fix
-from ..paths import FROZEN, MANIFEST_DIR, REPO_ROOT
+from ..paths import MANIFEST_DIR, REPO_ROOT
 from ..witcher3.mod_bundles import pack_entries
 
 log = logging.getLogger(__name__)
@@ -49,17 +48,6 @@ COMPAT_MANIFEST_DIR = MANIFEST_DIR / "compat"
 MOD_FILES = REPO_ROOT / "assets" / "mod_files"
 
 REQUIRED_CONFIG_KEYS = ("working_dir",)
-
-# While metadata_store.py is new, the command-line tools also have wcc_lite make metadata.store, and fail
-# unless both are identical. Never in the frozen tool: users don't have wcc_lite.
-COMPARE_STORE_WITH_WCC_LITE = not FROZEN
-
-# wcc_lite lines that appear on every run and are harmless
-NOISE = [re.compile(p) for p in (
-    r"\[Error\]\[Core\] CreateFile failed to open '.*\.(?:ini|settings)' for reading.*0x[23]",
-    r"\[Error\]\[Assert\] .*depotDirectory\.cpp:\d+.*Depot directory path should end with",
-    r"\[Error\]\[Assert\] .*soundFileLoader\.cpp:\d+.*Always loaded bank is not in the banks array",
-)]
 
 def run_command(cmd, cwd=None, filter_predicate=None, detach=False):
     """Run a command, streaming output; optionally filter lines before printing"""
@@ -86,17 +74,6 @@ def run_command(cmd, cwd=None, filter_predicate=None, detach=False):
     if proc.returncode != 0:
         fail(f"command failed with exit code {proc.returncode}: {cmd[0]}")
 
-def wcc_lite(*args):
-    """Run wcc_lite, optionally filtering known noise from the output"""
-    config = load_config()
-    paths = config_paths(config)
-
-    def filter_noise(line):
-        return config['silence_known_noise'] and any(p.search(line) for p in NOISE)
-
-    wcc_lite_path = paths['wcc_lite']
-    run_command([wcc_lite_path] + list(args), cwd=wcc_lite_path.parent, filter_predicate=filter_noise)
-
 def write_patched_files(patched, out_dir):
     """Write the patched files (patcher_core.patch_files' patched list) under out_dir at their paths, for
     a look at them while the work folder is kept"""
@@ -115,18 +92,8 @@ def pack_content(patched, content_dir):
     log.info(f"Packed {len(patched)} files into {bundle} ({len(bundle_data) / 2**20:.1f} MiB)")
 
     store_path = content_dir / "metadata.store"
-    if COMPARE_STORE_WITH_WCC_LITE:
-        log.info("Running wcc_lite metadatastore (to compare)", extra=HEADING)
-        wcc_lite("metadatastore", "-noui", f"-path={to_windows(content_dir)}")
-        if not store_path.is_file():
-            fail("wcc_lite did not produce metadata.store.")
 
     log.info("Writing metadata.store", extra=HEADING)
-    if COMPARE_STORE_WITH_WCC_LITE:
-        if store_path.read_bytes() != store:
-            store_path.with_name("metadata.store.ours").write_bytes(store)
-            fail(f"metadata.store differs from wcc_lite's; wcc_lite's is in {store_path}, ours in metadata.store.ours")
-        log.info("Identical to wcc_lite's")
     store_path.write_bytes(store)
     log.info(f"Wrote {store_path} ({len(store)} bytes)")
 
@@ -151,8 +118,7 @@ def load_config(path=None, section=None):
 def validate_config(config, path):
     """Validate a config file; fail if not valid"""
     paths = config.get("paths", {})
-    required = REQUIRED_CONFIG_KEYS + (("wcc_lite",) if COMPARE_STORE_WITH_WCC_LITE else ())
-    missing = [k for k in required if k not in paths]
+    missing = [k for k in REQUIRED_CONFIG_KEYS if k not in paths]
     if missing:
         fail(f"missing in [paths] of {path}: {', '.join(missing)}")
 
