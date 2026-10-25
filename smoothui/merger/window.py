@@ -1259,14 +1259,15 @@ class MergerWindow:
 
     def updates_checked(self, found, error):
         """The update check's result (updates.Found; None if it failed or was skipped, which shows nothing).
-        New manifests may make an unknown Smooth UI build known: then it scans again."""
+        New manifests (or corrected ones) may change what is known about the installed Smooth UI: then it scans
+        again."""
         self.update_search = None
         if found is not None:
             self.save_check_time()
             self.update = found.update
             if self.stale and found.update is None:
                 self.update_search = NOTHING_FOUND
-            if found.downloaded and self.found is not None and self.found.scan.installed.status == Status.UNKNOWN:
+            if found.downloaded and self.found is not None:
                 log.info("Scanning again, with the new manifests")
                 if self.busy == "scan":
                     self.scan_again = True
