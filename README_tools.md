@@ -5,8 +5,8 @@ You only need these tools if you use other UI mods that conflict with Smooth UI.
 
 ## Quick start
 
-1. Extract all the files and folders in the .zip to any *writable* folder (not directly inside Program Files).  
-   For most setups, `The Witcher 3\Smooth UI Tools` is a handy location. Mod Organizer 2 users should *not* place them inside the Witcher 3 directory as that is likely to cause issues.
+1. Extract `Smooth UI Tools` from the .zip to any *writable* folder (not directly inside Program Files).  
+   For most setups, `The Witcher 3\Smooth UI Tools` is a handy location. Mod Organizer 2 users must *not* place them inside the Witcher 3 directory, however: the merger refuses to run from there under MO2 (see the MO2 section below).
 2. Start the game with `SmoothUILauncher.exe` instead of `witcher3.exe`, for example from a desktop shortcut.  
    Yes, it's a launcher, but I've spent a lot of time ensuring that it's as fast as possible, and that it has none of the annoyances of the typical game launcher that everybody hates. It's invisible and unnoticeable (less than 1 second of extra launch time) unless there are issues that need your attention.
 3. The first time (and whenever you install, update, remove or reorder mods), the launcher opens the merger and tells you what needs fixing. Typically, this is a single button click that takes less than 5 seconds; the merger closes immediately when it's done, and the game launches.
@@ -22,7 +22,7 @@ The sections below also have optional tips for other mod managers, such as conve
 - [Mod Organizer 2](#setup-mod-organizer-2)
 - [Optional: launching via Steam or GOG Galaxy](#optional-launching-via-steam-or-gog-galaxy)
 
-Everything after the setup sections is optional reading: how the tools work, limitations, troubleshooting and uninstallation.
+Everything after the setup sections is optional reading: how the tools work, updates, limitations, troubleshooting and uninstallation.
 
 ## Setup: Without a mod manager
 
@@ -50,9 +50,10 @@ If you start the game with desktop or taskbar shortcuts instead of Vortex, point
 **Required:** [Evannee45's Witcher 3 plugin for MO2](https://www.nexusmods.com/witcher3/mods/9482). MO2 without it hasn't been tested.
 Due to MO2's design with the VFS, this setup is a bit more complex than for the other mod managers, but I assume MO2 users are somewhat used to the workflow.
 
-1. Make sure the plugin (above) is up-to-date: at least version 4.1 (released 2026-10-22). Older versions should work **if you have profile-specific game INI files enabled** for your current profile. (Check the Profiles window, *not* the Settings window.)
-2. Right-click the mod list, **Create empty mod**, and name it, for example, "Smooth UI Merged Patches". Enable it.
-3. In **Executables** (the gears icon), add `SmoothUILauncher.exe`. Tick **Create files in mod instead of overwrite** and select the mod from step 2.
+1. Keep Smooth UI Tools in a folder **outside** the Witcher 3 game folder. Inside it, MO2 would move the tools' own files (settings, logs, updates) into its overwrite folder, so the merger shows a message and exits instead of running there.
+2. Make sure the plugin (above) is up-to-date: at least version 4.1 (released 2026-10-22). Older versions should work **if you have profile-specific game INI files enabled** for your current profile. (Check the Profiles window, *not* the Settings window.)
+3. Right-click the mod list, **Create empty mod**, and name it, for example, "Smooth UI Merged Patches". Enable it.
+4. In **Executables** (the gears icon), add `SmoothUILauncher.exe`. Tick **Create files in mod instead of overwrite** and select the mod from step 3.
 
 Optionally, add `SmoothUIMerger.exe` the same way if you want to run it by hand (the launcher opens it for you when needed). **If added, it must use the same empty mod as the launcher.**
 
@@ -95,6 +96,15 @@ Typically, this is a single button click that takes less than 5 seconds; the mer
 **If you start the game with the launcher, you never need to start the merger yourself:** the launcher opens it whenever your merged patches need updating.
 
 The launcher is optional, but recommended: without it, nothing tells you when your merged patches are out of date, and you have to run the merger yourself after every change to your mods to ensure you get Smooth UI and other mods working together as intended.
+
+## Updates
+
+When the merger starts, it asks GitHub whether a newer version of Smooth UI Tools exists. If an update exists, the merger window says so: **What's new** shows the release notes, and **Update now** downloads and installs it.  
+Updating is automatic: the merger downloads the new version, checks it, closes, and opens again in the new version.  
+If the update fails, the old version stays as it was; you can then download the new version from Nexus Mods.
+
+**Privacy:** the check is a standard web request to GitHub, which can see your IP address. The **only** other thing sent is the current tools version (as `SmoothUITools/X.Y.Z`).
+**To turn it off:** untick "Check for updates when the merger starts" under **Settings** in the merger. The merger then never goes online at all.
 
 ## Good to know
 
