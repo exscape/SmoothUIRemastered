@@ -5,15 +5,10 @@ __pycache__/
 
 /build/
 /data/
-/docs/
-/config/profile_dev*.txt
-/dev-tools/debug/
+/dev/
 /dist/
 /env*/
 /manifests/compat/
 /manifests/*dev*.json
 /releases/
-/requirements_dev.txt
 /test-tools/
-/tests/
-/TODO.txt
