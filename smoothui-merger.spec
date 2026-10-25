@@ -5,6 +5,8 @@
 #     env_gui/Scripts/pyinstaller.exe --clean --noconfirm smoothui-merger.spec -- --dev-manifests
 # --dev-manifests: also ship the manifests of Smooth UI's dev builds, so a test build knows an installed dev
 # build. Never for a release.
+# --prebuilt-bootloader: allow PyInstaller's prebuilt bootloader (for your own builds: no C compiler needed).
+# Releases use one compiled here, as antivirus programs flag the prebuilt ones more often.
 # Output: dist/SmoothUIMerger/ with SmoothUILauncher.exe, SmoothUIMerger.exe, _internal/
 import argparse
 import hashlib
@@ -31,6 +33,15 @@ LAUNCHER_ICON = Path(SPECPATH) / "smoothui-launcher.ico"  # optional: the launch
 if not LAUNCHER_ICON.exists():
     LAUNCHER_ICON = ICON
 
+# PyInstaller passes the arguments after -- in sys.argv
+spec_parser = argparse.ArgumentParser(prog="smoothui-merger.spec")
+spec_parser.add_argument("--dev-manifests", action="store_true",
+                         help="also ship the dev builds' manifests (for test builds, never for a release)")
+spec_parser.add_argument("--version", help="X.Y.Z instead of merger_version in config.toml (for test builds)")
+spec_parser.add_argument("--prebuilt-bootloader", action="store_true",
+                         help="allow PyInstaller's prebuilt bootloader (for your own builds, never for a release)")
+SPEC_ARGS = spec_parser.parse_args(sys.argv[1:])
+
 # SHA-256 of the bootloaders that come prebuilt with each PyInstaller version (the same in its wheel and its
 # sdist). A release must use one compiled here; dev-tools/pyinstaller-hashes.py prints a new version's entry.
 PREBUILT_BOOTLOADERS = {
@@ -48,6 +59,9 @@ def check_bootloader():
     env_gui's, or when env_gui's PyInstaller was installed without compiling one"""
     if PLATFORM != "Windows-64bit-intel":
         raise SystemExit(f"ERROR: build on 64-bit Windows Python, not {PLATFORM}")
+    if SPEC_ARGS.prebuilt_bootloader:
+        print("Bootloader not checked (--prebuilt-bootloader): not for a release")
+        return
     prebuilt = PREBUILT_BOOTLOADERS.get(PYINSTALLER_VERSION)
     if prebuilt is None:
         raise SystemExit(f"ERROR: can't tell whether PyInstaller {PYINSTALLER_VERSION}'s bootloader was compiled "
@@ -63,13 +77,6 @@ def check_bootloader():
 
 
 check_bootloader()
-
-# PyInstaller passes the arguments after -- in sys.argv
-spec_parser = argparse.ArgumentParser(prog="smoothui-merger.spec")
-spec_parser.add_argument("--dev-manifests", action="store_true",
-                         help="also ship the dev builds' manifests (for test builds, never for a release)")
-spec_parser.add_argument("--version", help="X.Y.Z instead of merger_version in config.toml (for test builds)")
-SPEC_ARGS = spec_parser.parse_args(sys.argv[1:])
 
 
 def read_merger_version():

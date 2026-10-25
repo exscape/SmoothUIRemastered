@@ -122,3 +122,33 @@ If the update fails, the old version stays as it was; you can then download the 
 
 Aside from the merged patches, the tools only write to a folder named `data` under its install directory, so uninstalling them is simple: delete the directory you put them in.  
 You should also delete `mod0000_SmoothUI_MergedPatches` from your mods directory.
+
+## Building the tools yourself (optional)
+
+**You don't need this to use the tools:** the release zip is ready to use. This is only for those who want to build the exes from the source code themselves.
+
+The releases are built by GitHub from the tagged source code, and you can check that a zip came from there: `gh attestation verify SmoothUITools-X.Y.Z.zip -R exscape/SmoothUIRemastered`. Your own build will work the same, but won't be bit-identical to the release.
+
+On Windows, in `cmd.exe` or PowerShell:
+
+1. Install [Python 3.12](https://www.python.org/downloads/) (64-bit). More recent versions should work.
+2. Get the source code of a release, and open `cmd.exe` in its folder. Either:
+   - download "Source code (zip)" under the release on [GitHub](https://github.com/exscape/SmoothUIRemastered/releases), and extract it, or
+   - with [Git](https://git-scm.com/):
+     ```
+     git clone https://github.com/exscape/SmoothUIRemastered.git
+     cd SmoothUIRemastered
+     git checkout tools-vX.Y.Z
+     ```
+3. Install the packages, at the exact versions the release used, in a new environment:
+   ```
+   py -3.12 -m venv env_gui
+   env_gui\Scripts\python.exe -m pip install -r requirements_gui-lock.txt
+   ```
+4. Build:
+   ```
+   env_gui\Scripts\pyinstaller.exe --clean --noconfirm smoothui-merger.spec -- --prebuilt-bootloader
+   ```
+   `--prebuilt-bootloader` uses the bootloader (the start of each exe) that comes with PyInstaller. The releases use one compiled from PyInstaller's source instead, as antivirus programs flag the prebuilt one more often.
+
+   The tools are then in `dist\SmoothUIMerger\`, ready to use. To zip them as a release is zipped: `env_gui\Scripts\python.exe dev-tools\make-tools-zip.py dist\SmoothUIMerger SmoothUITools.zip`
