@@ -32,6 +32,8 @@ from functools import cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import truststore
+
 from ..common import SmoothUIError, fail, normalize_version
 from ..files import delete_file, make_dirs, read_file
 from ..manifests import is_dev_version, version_key
@@ -227,17 +229,25 @@ class _NotFound(Exception):
 
 
 class _HttpsRedirects(urllib.request.HTTPRedirectHandler):
-    """Follows redirects only to allowed URLs (GitHub's download links redirect to another host)"""
+    """Follows redirects only to allowed URLs (GitHub's download links redirect to another host), adding each
+    to the first request's list of URLs (see _open)"""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         if not allowed_url(newurl):
             raise urllib.error.URLError(f"redirected to {newurl}, which isn't HTTPS")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None:
+            new.urls = req.urls
+            new.urls.append(newurl)
+        return new
 
 
 @cache
 def _opener():
-    # Python's ssl reads Windows' own certificate store (made on first use: it takes a while)
-    return urllib.request.build_opener(_HttpsRedirects, urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+    # Windows itself checks the certificates (truststore), as for its own programs: it then downloads a root
+    # certificate it doesn't have yet. Python's own check would see only those already in Windows' store, and
+    # a fresh Windows has few (GitHub's API and its download host need two different ones).
+    context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    return urllib.request.build_opener(_HttpsRedirects, urllib.request.HTTPSHandler(context=context))
 
 
 def _open(url, timeout, accept):
@@ -245,7 +255,13 @@ def _open(url, timeout, accept):
         fail(f"{url} isn't HTTPS")
     headers = {"User-Agent": f"SmoothUITools/{merger_version()}", "Accept": accept,
                "X-GitHub-Api-Version": "2022-11-28"}
-    return _opener().open(urllib.request.Request(url, headers=headers), timeout=timeout)
+    request = urllib.request.Request(url, headers=headers)
+    request.urls = [url]    # then where it was redirected to
+    try:
+        return _opener().open(request, timeout=timeout)
+    except (OSError, http.client.HTTPException) as e:
+        e.failed_url = request.urls[-1]     # for _describe: after a redirect, the other host failed
+        raise
 
 
 def _get_json(url, timeout):
@@ -265,6 +281,7 @@ def _get_json(url, timeout):
 
 
 def _describe(e, url, timeout) -> str:
+    url = getattr(e, "failed_url", url)
     host = urlsplit(url).hostname
     if isinstance(e, urllib.error.HTTPError):
         if e.code in (403, 429) and e.headers.get("X-RateLimit-Remaining") == "0":

@@ -2,5 +2,7 @@ colorama
 rarfile
 py7zr
 lz4
+# The merger's update check: Windows itself checks the certificates (see merger/updates.py)
+truststore
 # Only to lint the code (settings in pyproject.toml)
 ruff
