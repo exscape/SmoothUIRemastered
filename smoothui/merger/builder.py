@@ -37,7 +37,11 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
     sources = [file.winner for file in result.files.values() if file.winner]
     if not sources:
         return ReleasePatch([], [], [], WarningSummary({}, 0, [], 0), RuleIssues([], []))
-    profile = {profile_key(key): settings for key, settings in profile_from_manifest(installed.manifest).items()}
+    try:
+        profile = {profile_key(key): settings for key, settings in profile_from_manifest(installed.manifest).items()}
+    except (KeyError, TypeError, ValueError) as e:     # a release that should have raised manifest_format
+        fail(f"this version of Smooth UI Tools can't read the manifest of Smooth UI Remastered {installed.version} "
+             f"({e!r}): update them")
     return patch_as_release(sources, {source.path: profile[source.path] for source in sources}, installed.manifest,
                             on_file=on_file, pool=pool)
 

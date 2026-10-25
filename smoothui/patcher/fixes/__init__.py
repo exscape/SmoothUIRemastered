@@ -10,12 +10,16 @@ whether to use a file the fix can't apply to (see merger/policy.py). A message s
 then CONSEQUENCE: one sentence without a full stop, starting lowercase unless with a name, e.g. "Game
 bug fix missing: in Gwent, the falling rain stops for a frame on every loop".
 
-Releases record the fixes they applied in their manifests, and compat builds for a release apply
-them again: don't remove or rename a fix that a manifest in manifests/ names.
+Releases record the fixes they applied in their manifests, and the merger and compat builds for a
+release apply them again, so a fix's NAME also goes in smoothui/requires.py (older mergers refuse a
+release that requires a fix they don't have). Never rename a fix. Removing one (e.g. once the game fixes
+the bug) is fine, but releases that used it can then no longer be merged or get compat builds: move its
+requirement to RETIRED there, so the merger tells users to update Smooth UI.
 """
 
 from __future__ import annotations
 
+from ...requires import FIX_NAMES
 from . import (
     gwent_3d_bug_fix,
     gwent_card_fx_filter_fix,
@@ -38,6 +42,8 @@ from .swf_edit import (
 FIXES = {fix.NAME: fix for fix in (gwent_3d_bug_fix, gwent_card_fx_filter_fix, gwent_coin_shadow_fix, gwent_fog_intro_fix,
                                    gwent_frost_flicker_fix, gwent_rain_loop_fix, gwent_speed_options,
                                    hub_tab_hover_fix)}
+if set(FIXES) != FIX_NAMES:
+    raise RuntimeError(f"requires.py's FIX_NAMES must list exactly the fixes: {', '.join(sorted(FIXES))}")
 
 # A fix's "result" in its report record
 APPLIED, NOT_NEEDED, CANT_APPLY = "applied", "not needed", "can't apply"

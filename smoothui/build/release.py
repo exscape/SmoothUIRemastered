@@ -6,6 +6,7 @@ build ONE compat patch, and a full compat package for all conflicts, respectivel
 """
 
 import logging
+from dataclasses import fields
 from functools import partial
 from typing import NamedTuple
 
@@ -19,6 +20,7 @@ from ..patcher.swf_patcher import (
     parse_speed,
     parse_sprite_pattern,
 )
+from ..requires import fix_requirement, setting_requirement
 from .reviewed_warnings import WarningReview, WarningSummary, review_of
 from .shared import build_version, load_manifest, print_file_result
 
@@ -49,6 +51,22 @@ def profile_from_manifest(manifest):
                                      _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"),
                                      _recorded_fixes(key, report))
     return profile
+
+def release_requires(settings) -> list[str]:
+    """What the merger must support to patch as a release did (its manifest's "requires"; see
+    requires.py), given the PatchSettings of its files"""
+    # A new setting must have its requirement here, or older mergers would ignore it
+    expected = {"target_fps", "rules", "include", "exclude", "fixes"}
+    if (found := {field.name for field in fields(PatchSettings)}) != expected:
+        fail(f"release_requires doesn't know the setting(s) {', '.join(sorted(found - expected))}: give them a "
+             "requirement (see requires.py)")
+    requires = set()
+    for file_settings in settings:
+        requires |= {setting_requirement(name) for name, used in
+                     (("speed", file_settings.rules), ("include", file_settings.include), ("exclude", file_settings.exclude))
+                     if used}
+        requires |= {fix_requirement(name) for name in file_settings.fixes}
+    return sorted(requires)
 
 def _recorded_fixes(key, report):
     """The names of the fixes a release applied to a file"""

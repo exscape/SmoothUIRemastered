@@ -25,6 +25,7 @@ from ..manifests import (
     release_manifest_paths,
     version_key,
 )
+from ..requires import KNOWN, RETIRED, manifest_requires
 from ..witcher3.mod_bundles import read_bundle_tocs
 from .load_order import Mod, is_mod_folder
 
@@ -39,7 +40,8 @@ class Status(Enum):
     NOT_INSTALLED = "not installed"
     DISABLED = "disabled"
     TWO_FOLDERS = "two folders"
-    TOO_OLD = "too old"             # from before the 60 and 120 fps builds (no fps in its manifest)
+    TOO_OLD = "too old"             # from before the 60 and 120 fps builds (no fps in its manifest), or
+                                    # requires something the merger no longer has (see requires.RETIRED)
     UNKNOWN = "unknown"             # modified, mixed, or newer than the merger
 
 
@@ -89,9 +91,9 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
 
     files: {profile key: (size, crc32)} of every file in its bundles; record_text: its BUILD_RECORD, or None;
     manifests: {version: manifest} of the release manifests the merger has (see
-    release_manifest_paths), dev versions included. Those of a newer format than the merger can read
-    (see MANIFEST_FORMAT) only tell that the merger needs an update."""
-    too_new = {version for version, manifest in manifests.items() if manifest_format(manifest) > MANIFEST_FORMAT}
+    release_manifest_paths), dev versions included. Those of releases built with newer code (see
+    needs_newer_merger) only tell that the merger needs an update."""
+    too_new = {version for version, manifest in manifests.items() if needs_newer_merger(manifest)}
     manifests = {version: manifest for version, manifest in manifests.items() if version not in too_new}
     record_version = _record_version(record_text)
     if record_version in too_new:
@@ -127,6 +129,20 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
     return _known(folder, version, manifests[version], matches[version], manifests)
 
 
+def needs_newer_merger(manifest) -> bool:
+    """Whether a release was built with code this merger lacks, so it can't patch as the release did: its
+    manifest is of a newer format (see MANIFEST_FORMAT), isn't laid out as the merger expects (a release
+    that should have raised its format), or requires something the merger doesn't know (see requires.py)"""
+    if manifest_format(manifest) > MANIFEST_FORMAT:
+        return True
+    files, requires = manifest.get("files"), manifest.get("requires", [])
+    if (not isinstance(files, dict) or not all(isinstance(record, dict) and isinstance(record.get("output_size"), int)
+                                               and isinstance(record.get("report", {}), dict) for record in files.values())
+            or not isinstance(requires, list) or not all(isinstance(name, str) for name in requires)):
+        return True
+    return bool(manifest_requires(manifest) - KNOWN - RETIRED)
+
+
 def _record_version(record_text):
     """The build version a BUILD_RECORD names, or None (no record, or one that can't be read: the build
     is then found by its files)"""
@@ -158,6 +174,10 @@ def _known(folder, version, manifest, sizes_only, manifests):
     if "fps" not in manifest:
         return Installed(Status.TOO_OLD, f"Smooth UI Remastered {version} is installed, which is too old for the merger "
                          "(from before the 60 and 120 fps builds): update Smooth UI", folder=folder, version=version)
+    if retired := manifest_requires(manifest) & RETIRED:
+        return Installed(Status.TOO_OLD, f"Smooth UI Remastered {version} is installed, which is too old for this version "
+                         f"of Smooth UI Tools (it uses {', '.join(sorted(retired))}, which they no longer have): update "
+                         "Smooth UI", folder=folder, version=version)
     releases = [v for v in manifests if version_key(v) is not None and not is_dev_version(v)]
     newest = max(releases, key=version_key, default=None)
     newer = newest.split("-")[0] if newest and version_key(newest) > version_key(version) else None

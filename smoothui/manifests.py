@@ -90,9 +90,11 @@ def load_manifest(version_or_path):
         return json.load(f)
 
 # The format of the release manifests this code writes and can read (their "manifest_format"; one without
-# it is format 1). Increased when a change means that older code can't use a manifest, e.g. a new kind of
-# setting: a merger that gets a manifest of a newer format (shipped with a newer Smooth UI, or downloaded)
-# must be updated before it can patch for that release.
+# it is format 1). A merger that gets a manifest of a newer format (shipped with a newer Smooth UI, or
+# downloaded) must be updated before it can patch for that release. New fixes and settings don't need
+# it: a manifest's "requires" lists them, and a merger refuses one it doesn't know the same way (see
+# requires.py). Increase it for changes "requires" can't tell: a patcher change that patches files
+# differently, new syntax in an existing setting, or a manifest laid out differently.
 MANIFEST_FORMAT = 1
 
 def manifest_format(manifest: dict) -> int:

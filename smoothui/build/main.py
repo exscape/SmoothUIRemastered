@@ -12,7 +12,7 @@ import re
 import shutil
 from functools import partial
 
-from ..common import fail
+from ..common import fail, profile_key
 from ..log import HEADING
 from ..patcher import dev_mode, patcher_core
 from ..witcher3.source_file import GAME_FILES, SourceFile
@@ -20,6 +20,7 @@ from .compat_status import print_compat_status
 from .game_files import game_file_report
 from .manifest_diff import print_changes_since_previous
 from .profile import load_profile
+from .release import release_requires
 from .reviewed_warnings import (
     WarningReview,
     accept_warnings,
@@ -263,8 +264,10 @@ def build(args, config, paths, version, fps):
         records = {entry["path"]: {**entry["hashes"], "fps": entry["fps"], "report": entry["report"]}
                    for entry in sorted(patched, key=lambda e: e["path"])}
         commit, uncommitted = patcher_commit()
+        recorded = {profile_key(path) for path in records}
         write_manifest(version, records, extra={
             "fps": fps,
+            "requires": release_requires(settings for key, settings in profile.items() if profile_key(key) in recorded),
             "patcher_commit": commit,
             "patcher_uncommitted_changes": uncommitted,
             "targeted_game_version": config['versions'].get('targeted_game_version'),
