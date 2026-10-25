@@ -10,6 +10,8 @@ from ..paths import FROZEN, REPO_ROOT
 # Smooth UI Remastered's page, and where users report a file the merger can't patch
 SMOOTHUI_URL = "https://www.nexusmods.com/witcher3/mods/13526"
 REPORT_URL = f"{SMOOTHUI_URL}?tab=bugs"
+# Its files: where a newer release is downloaded
+FILES_URL = f"{SMOOTHUI_URL}?tab=files"
 # README_tools.md, rendered: how to set the tools up, per mod manager
 TOOLS_README_URL = "https://github.com/exscape/SmoothUIRemastered/blob/main/README_tools.md"
 # The release list of the repo the tools come from (see updates.py)

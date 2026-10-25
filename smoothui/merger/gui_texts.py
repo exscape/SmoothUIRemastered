@@ -31,7 +31,8 @@ NOTES_HEADING = "Notes"
 SHOW_LOG, HIDE_LOG = "Show log", "Hide log"
 # Notices, above the card
 TEST_MODE = "Test mode: {names} set (their values are in merger.log)"
-NEWER_RELEASE = "A newer Smooth UI Remastered is available ({version})"
+NEWER_RELEASE = "A newer Smooth UI Remastered version is available ({version})"
+DOWNLOAD_PAGE = "Download page"
 UPDATE_AVAILABLE = "Smooth UI Tools v{version} is available."
 WHATS_NEW, UPDATE_NOW, LATER = "What's new", "Update now", "Later"
 # A message box, by stale mode (the game starts once it closes)
@@ -146,7 +147,8 @@ OPEN_LOG_FOLDER = "Open log folder"
 @dataclass(frozen=True, slots=True)
 class Card:
     """What the status card shows. A button is (label, action); the first one is the default. Actions:
-    merge, merge_and_play, play, abort, remove, remove_and_play, rescan, bug_report, smoothui_page, update."""
+    merge, merge_and_play, play, abort, remove, remove_and_play, rescan, bug_report, smoothui_page, update.
+    (The notices also use whats_new and files_page.)"""
     tone: str
     headline: str
     sentences: tuple[str, ...] = ()

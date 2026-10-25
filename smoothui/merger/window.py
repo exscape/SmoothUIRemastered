@@ -86,6 +86,7 @@ from ..patcher.fixes import fix_consequence, fix_kind
 from ..paths import APP_DIR
 from ..windows import MB_ICONERROR, ms_since_process_start, msg_box, set_topmost
 from . import (
+    FILES_URL,
     REPORT_URL,
     SMOOTHUI_URL,
     TOOLS_README_URL,
@@ -127,6 +128,7 @@ from .gui_texts import (
     DATA,
     DATA_HEADING,
     DELETE_FAILED,
+    DOWNLOAD_PAGE,
     ERROR,
     FAILED,
     GAME_HEADING,
@@ -905,7 +907,8 @@ class MergerWindow:
             notices.append((UPDATE_AVAILABLE.format(version=self.update.version), UPDATE,
                             ((WHATS_NEW, "whats_new"), (UPDATE_NOW, "update"))))
         if installed and installed.newer_release:
-            notices.append((NEWER_RELEASE.format(version=installed.newer_release), INFO, ()))
+            notices.append((NEWER_RELEASE.format(version=installed.newer_release), INFO,
+                            ((DOWNLOAD_PAGE, "files_page"),)))
         enabled = self.busy not in EXCLUSIVE
         if (notices, enabled) == self.notices_shown:
             return
@@ -1034,6 +1037,7 @@ class MergerWindow:
             "remove_and_play": lambda: self.remove(play=True),
             "rescan": self.rescan,
             "smoothui_page": lambda: webbrowser.open(SMOOTHUI_URL),
+            "files_page": lambda: webbrowser.open(FILES_URL),
             "bug_report": self.open_bug_report,
             "update": self.update_now,
             "whats_new": self.whats_new,
