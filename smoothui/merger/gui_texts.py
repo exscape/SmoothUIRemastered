@@ -32,6 +32,11 @@ SHOW_LOG, HIDE_LOG = "Show log", "Hide log"
 # Notices, above the card
 TEST_MODE = "Test mode: {names} set (their values are in merger.log)"
 NEWER_RELEASE = "A newer Smooth UI Remastered is available ({version})"
+# A message box, by stale mode (the game starts once it closes)
+_MO2 = ("Smooth UI Tools can't run from inside the game folder when Mod Organizer 2 starts them: MO2 would move "
+        "their own files (settings, logs, updates) into its overwrite folder.\n\nMove the folder {folder} out of the "
+        "game folder, then point MO2's executables to the new place.")
+MO2_INSIDE_GAME = {False: _MO2, True: _MO2 + "\n\nThe game starts now, without the merger."}
 # Notes, below the screens
 COMPAT_REMOVABLE = "{folder} is no longer needed: the merged patches replace it. You can remove it."
 UNKNOWN_FILES = "The merged patches' folder holds files the merger didn't write, so they stay: {names}"

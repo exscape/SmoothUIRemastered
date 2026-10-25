@@ -10,6 +10,9 @@ progress) over through queues, which a timer empties (window.MergerWindow.poll).
 
 With --stale, the launcher opened it before starting the game (see launcher.py, for the exit codes).
 
+Started by Mod Organizer 2 from inside the game folder (game.mo2_inside_game), it says that this is
+unsupported, and exits before it writes anything (in stale mode, the game starts).
+
 One merger at a time (two would write the same files): a second one brings the first one's window to the
 front and exits at once, without touching the data folder (rotating the logs would cut the first one's).
 Started by the launcher, it exits with ABORT: the game mustn't start while the user may merge in the
@@ -31,9 +34,9 @@ from pathlib import Path
 
 from ..common import SmoothUIError
 from ..files import check_data_writable, make_dirs, rotate
-from ..launcher import ABORT, CLOSED
-from ..paths import DATA_DIR
-from ..windows import bring_to_front, find_window, only_instance
+from ..launcher import ABORT, CLOSED, PLAY
+from ..paths import APP_DIR, DATA_DIR
+from ..windows import MB_ICONERROR, bring_to_front, find_window, msg_box, only_instance
 from . import merger_version
 from .game import (
     GAME_PATH_ENV,
@@ -41,9 +44,10 @@ from .game import (
     Settings,
     game_path,
     load_settings,
+    mo2_inside_game,
     mods_settings,
 )
-from .gui_texts import TITLE
+from .gui_texts import MO2_INSIDE_GAME, TITLE
 from .state import check
 
 log = logging.getLogger(__name__)
@@ -64,6 +68,9 @@ def main() -> int:
         if (hwnd := find_window(TITLE, QT_WINDOW_CLASS)) is not None:
             bring_to_front(hwnd)
         return ABORT if stale else CLOSED
+    if mo2_inside_game():
+        msg_box(MO2_INSIDE_GAME[stale].format(folder=APP_DIR), MB_ICONERROR)
+        return PLAY if stale else 1
     if not check_data_writable(DATA_DIR):
         return 1
     log_records = setup_logging()

@@ -1,6 +1,7 @@
 """What both exes need from Windows itself: message boxes, when the process started, and (the merger) a
-window on top, and one merger at a time. Light (ctypes only); elsewhere (tests under WSL), the boxes show
-nothing, the start time is unknown, and each process is the only one."""
+window on top, one merger at a time, and whether a DLL is loaded. Light (ctypes only); elsewhere (tests
+under WSL), the boxes show nothing, the start time is unknown, each process is the only one, and no DLL is
+loaded."""
 
 import ctypes
 
@@ -109,3 +110,15 @@ def set_topmost(hwnd: int, on: bool):
                                     ctypes.c_int, ctypes.c_uint]
     user32.SetWindowPos(ctypes.c_void_p(hwnd), hwnd_topmost if on else hwnd_notopmost, 0, 0, 0, 0,
                         swp_nosize | swp_nomove | swp_noactivate)
+
+
+def module_loaded(name: str) -> bool:
+    """Whether a DLL of this name is loaded into this process (e.g. a mod manager's, injected); False
+    outside Windows"""
+    try:
+        kernel32 = ctypes.windll.kernel32
+    except AttributeError:
+        return False
+    kernel32.GetModuleHandleW.restype = ctypes.c_void_p
+    kernel32.GetModuleHandleW.argtypes = [ctypes.c_wchar_p]
+    return bool(kernel32.GetModuleHandleW(name))

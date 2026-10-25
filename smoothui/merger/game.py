@@ -22,7 +22,8 @@ from typing import NamedTuple
 
 from ..common import fail, to_native, to_windows
 from ..files import make_dirs, read_file, write_file
-from ..paths import DATA_DIR
+from ..paths import APP_DIR, DATA_DIR
+from ..windows import module_loaded
 from ..witcher3.user_files import mods_settings_path
 
 GAME_PATH_ENV = "SMOOTHUI_GAME_PATH"
@@ -33,6 +34,8 @@ SETTINGS_FILE = "settings.json"
 MODS_SETTINGS_BACKUP = "mods.settings.bak"
 
 GAME_EXE = Path("bin", "x64_dx12", "witcher3.exe")
+# Mod Organizer 2's virtual file system, loaded into the programs it starts
+MO2_VFS_DLL = "usvfs_x64.dll"
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +77,13 @@ def is_game_folder(folder: Path) -> bool:
         return (Path(folder) / GAME_EXE).is_file()
     except OSError:
         return False
+
+
+def mo2_inside_game() -> bool:
+    """Whether Mod Organizer 2 started this process (its virtual file system is loaded) from a folder inside
+    a game folder: MO2 may then move the tools' own new files (settings, logs) to its overwrite folder or an
+    output mod. Unsupported."""
+    return module_loaded(MO2_VFS_DLL) and any(is_game_folder(folder) for folder in (APP_DIR, *APP_DIR.parents))
 
 
 def game_folder_of(chosen: Path) -> Path:
