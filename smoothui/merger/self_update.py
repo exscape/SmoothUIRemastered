@@ -201,7 +201,11 @@ def swap(new_root: Path, app_dir: Path, old_dir: Path, retry_for: float = RETRY_
     One file at a time, never a whole folder: Windows refuses to rename a folder while any program has
     anything in it open, even just to watch it (e.g. an editor showing a file in it), whereas a file can be
     moved unless that file itself is open, even while a program runs from it."""
-    names = sorted((set(SHIPPED_NAMES) | {p.name for p in new_root.iterdir()}) - set(KEPT_NAMES))
+    # In any case, as Windows compares names (e.g. a Data\ in the zip must not take the user's data\);
+    # spelled as the new version spells them
+    kept = {name.casefold() for name in KEPT_NAMES}
+    names = sorted({name.casefold(): name for name in (*SHIPPED_NAMES, *(p.name for p in new_root.iterdir()))
+                    if name.casefold() not in kept}.values())
     old_files = [file for name in names for file in _files(app_dir, name)]
     new_files = [file for name in names for file in _files(new_root, name)]
     if os.path.lexists(old_dir):
