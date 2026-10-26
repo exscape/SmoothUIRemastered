@@ -11,14 +11,16 @@ progress) over through queues, which a timer empties (window.MergerWindow.poll).
 With --stale, the launcher opened it before starting the game (see launcher.py, for the exit codes).
 
 An update (self_update.py) runs this exe from the unpacked new version as --finish-update, which does its work
-before anything else here; the new merger it starts has --update-done OLD_VERSION.
+before anything else here; the new merger it starts has --update-done OLD_VERSION (and --critical, for a
+critical update).
 
 Started by Mod Organizer 2 from inside the game folder (game.mo2_inside_game), it says that this is
 unsupported, and exits before it writes anything (in stale mode, the game starts).
 
 Once a scan has ended, it looks for a newer version of the tools, and for new Smooth UI manifests, in a
-thread (find_updates; see updates.py), unless the settings turn that off. In stale mode, only when the
-installed Smooth UI is unknown: a new manifest, or a newer version of the tools, may be what is missing.
+thread (find_updates; see updates.py), unless the settings turn that off. In stale mode too, where nothing
+waits for it, except for an unknown Smooth UI build: a new manifest, or a newer version of the tools, may be
+what is missing, so the card says it is looking.
 
 One merger at a time (two would write the same files): a second one brings the first one's window to the
 front and exits at once, without touching the data folder (rotating the logs would cut the first one's).
@@ -75,6 +77,7 @@ def main() -> int:
         return self_update.finish(args[1:])
     stale = "--stale" in args
     updated_from = args[args.index("--update-done") + 1] if "--update-done" in args[:-1] else None
+    critical = updated_from is not None and self_update.CRITICAL_ARG in args
     if not only_instance(MUTEX):
         if (hwnd := find_window(TITLE, QT_WINDOW_CLASS)) is not None:
             bring_to_front(hwnd)
@@ -89,7 +92,7 @@ def main() -> int:
     settings = _settings()
     game = game_path(settings)
     if updated_from:
-        log.info(f"Updated from Smooth UI Tools v{updated_from} to v{version()}")
+        log.info(f"Updated from Smooth UI Tools v{updated_from} to v{version()}" + (" (critical)" if critical else ""))
     log.info(f"Game folder: {game or 'not chosen yet'}")
     for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV, UPDATE_TOKEN_ENV):
         if os.environ.get(name):
@@ -101,7 +104,7 @@ def main() -> int:
         start_scan(game, calls)
 
     from . import window  # imports Qt, which takes a while: after the scan has started
-    return window.run(game, stale, settings, calls, log_records, updated_from=updated_from)
+    return window.run(game, stale, settings, calls, log_records, updated_from=updated_from, critical=critical)
 
 
 class LogFormatter(logging.Formatter):
@@ -174,12 +177,12 @@ def start_scan(game: Path, calls: queue.Queue):
     in_thread(calls, work, "scanned")
 
 
-def find_updates(stale: bool, last_check):
-    """The update check (updates.check), in a thread; last_check: when the last one was (settings). In stale
-    mode the game waits: a shorter timeout, and even right after another check (the scan has just found
-    something that check may not have known)."""
+def find_updates(waited_for: bool, last_check):
+    """The update check (updates.check), in a thread; last_check: when the last one was (settings). When the
+    game waits for it (stale mode, an unknown Smooth UI build): a shorter timeout, and even right after another
+    check (the scan has just found something that check may not have known)."""
     from . import updates  # imported here: it takes a while, and the window shows first
-    if stale:
+    if waited_for:
         return updates.check(DATA_DIR, timeout=updates.QUICK_TIMEOUT)
     return updates.check(DATA_DIR, last_check=last_check)
 

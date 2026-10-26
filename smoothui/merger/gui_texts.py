@@ -17,10 +17,10 @@ from .state import Check, FileState, Severity, State
 if TYPE_CHECKING:
     from .builder import BuildResult
 
-# The card's tones (its color and glyph); UPDATE: the notice of a newer version
-NEUTRAL, OK, INFO, WARNING, ERROR, UPDATE = "neutral", "ok", "info", "warning", "error", "update"
+# The card's tones (its color and glyph); UPDATE and CRITICAL: the notice of a newer version, of a critical one
+NEUTRAL, OK, INFO, WARNING, ERROR, UPDATE, CRITICAL = "neutral", "ok", "info", "warning", "error", "update", "critical"
 # Glyphs by tone, from Segoe UI Symbol (in Windows 10 and later)
-GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕", UPDATE: "⬆"}
+GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕", UPDATE: "⬆", CRITICAL: "⚠"}
 
 # ---- The window ----
 
@@ -34,6 +34,7 @@ TEST_MODE = "Test mode: {names} set (their values are in merger.log)"
 NEWER_RELEASE = "A newer Smooth UI Remastered version is available ({version})"
 DOWNLOAD_PAGE = "Download page"
 UPDATE_AVAILABLE = "Smooth UI Tools v{version} is available."
+CRITICAL_UPDATE = "Critical update: Smooth UI Tools v{version} fixes a serious bug. Please update."
 WHATS_NEW, UPDATE_NOW, LATER = "What's new", "Update now", "Later"
 # A message box, by stale mode (the game starts once it closes)
 _MO2 = ("Smooth UI Tools can't run from inside the game folder when Mod Organizer 2 starts them: MO2 would move "
@@ -170,6 +171,9 @@ HEADLINES = {
     Severity.MEDIUM: "Some screens aren't merged",
     Severity.LOW: "Merging again is recommended",
 }
+# After a critical update, instead of Severity.LOW's card (only the merger was updated)
+CRITICAL_INSTALLED_HEADLINE = "Merging again is strongly recommended"
+CRITICAL_INSTALLED = "A critical update of Smooth UI Tools was installed."
 # What playing without merging costs, where the headline doesn't say it
 COST = {
     Severity.HIGH: "Until you merge, those screens may look wrong or not work.",
@@ -219,19 +223,22 @@ LOOKING, NOTHING_FOUND = "looking", "nothing found"
 UPDATE_TOOLS = ("Update Smooth UI Tools", "update")
 LOOKING_FOR_UPDATE = "Looking for a newer Smooth UI Tools..."
 UPDATE_FOUND = "Smooth UI Tools v{version} is available."
+CRITICAL_UPDATE_FOUND = "Smooth UI Tools v{version} is available, a critical update."
 NO_UPDATE = "No newer Smooth UI Tools is out yet."
 
 
 def status_card(found: Check | None, *, stale: bool, busy: str | None = None, scan_error: str | None = None,
                 merged: BuildResult | None = None, merge_error: str | None = None,
-                progress: tuple[int, int] | None = None, update: str | None = None,
-                update_search: str | None = None) -> Card:
+                progress: tuple[int, int] | None = None, update: str | None = None, critical: bool = False,
+                update_search: str | None = None, critical_installed: bool = False) -> Card:
     """What the status card shows, from the window's state. found: the last check (None until one ends);
     stale: whether the launcher opened the window; busy: what runs in a thread ("scan", "build", "remove" or
     "update"); scan_error: why the last check failed; merged and merge_error: the result of the window's
     last merge, or why it failed; progress: the merge's or the update's download (done, total), once known;
-    update: a newer Smooth UI Tools version, if one was found; update_search: in stale mode, LOOKING or
-    NOTHING_FOUND while or after looking for one (None: not looked for, or the check failed).
+    update: a newer Smooth UI Tools version, if one was found (critical: a critical one); update_search: in
+    stale mode, LOOKING or NOTHING_FOUND while or after looking for one (None: not looked for, or the check
+    failed); critical_installed: a critical update was just installed, so a merge that is only recommended
+    (the merger was updated) is strongly recommended.
 
     In stale mode, every card has a button that plays, except while merging or removing. There, an unknown
     Smooth UI build (which a newer version of the tools may know) says what the update check found, and
@@ -240,9 +247,12 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
         fraction = progress[0] / progress[1] if progress and progress[1] else None
         return Card(NEUTRAL, DOWNLOADING_UPDATE.format(version=update), busy=True, progress=fraction)
     card = _card(found, stale, busy, scan_error, merged, merge_error, progress)
+    if critical_installed and not busy and card.headline == HEADLINES[Severity.LOW]:
+        card = replace(card, tone=WARNING, headline=CRITICAL_INSTALLED_HEADLINE, sentences=(CRITICAL_INSTALLED,))
     if stale and not busy and found is not None and found.scan.installed.status == Status.UNKNOWN:
         if update:
-            return replace(card, sentences=(*card.sentences, UPDATE_FOUND.format(version=update)),
+            found_text = CRITICAL_UPDATE_FOUND if critical else UPDATE_FOUND
+            return replace(card, sentences=(*card.sentences, found_text.format(version=update)),
                            buttons=(UPDATE_TOOLS, *card.buttons))
         if update_search == LOOKING:
             return replace(card, sentences=(*card.sentences, LOOKING_FOR_UPDATE), busy=True)

@@ -4,12 +4,12 @@ Every exe in the tools' folder shares _internal\\, so none of them can replace i
 helper: the new version's own merger, run from where it was unpacked.
 1. prepare (in the merger's thread): download the zip to data\\update\\, check it, unpack it, and check that
    what it holds is the new version.
-2. start_helper: SmoothUIMerger.exe --finish-update APP_DIR OLD_VERSION PID... (from the unpacked folder),
-   after which the merger exits.
+2. start_helper: SmoothUIMerger.exe --finish-update APP_DIR OLD_VERSION [--critical] PID... (from the
+   unpacked folder), after which the merger exits. --critical: a critical update (updates.CRITICAL).
 3. finish (the helper, first thing in gui.main, before anything is written): wait for the PIDs to exit, then
    swap the files one at a time (see swap): the old version's move to data\\update\\old\\ (renames, so a
    failure can be undone), the new version's are copied in (the helper runs from them), start the new
-   merger with --update-done OLD_VERSION, and exit. Any failure puts the old version back, and says so in a
+   merger with --update-done OLD_VERSION (and --critical), and exit. Any failure puts the old version back, and says so in a
    message box.
 4. cleanup (the new merger, soon after it starts): delete data\\update\\, retrying for a while because the
    helper may still be exiting. A start that finds data\\update\\ deletes it, whatever left it there.
@@ -48,6 +48,8 @@ OLD_DIR = "old"
 HELPER_LOG = "update.log"
 
 MERGER_EXE = "SmoothUIMerger.exe"
+# Passed on by the helper to the new merger: the update was a critical one (its card says so)
+CRITICAL_ARG = "--critical"
 REQUIRED = (MERGER_EXE, "SmoothUILauncher.exe", "_internal")
 VERSION_FILE = Path("_internal") / "smoothui" / "merger" / "tools_version.txt"
 
@@ -143,9 +145,10 @@ def tools_root(folder: Path) -> Path:
     fail(f"the download has no {MERGER_EXE}")
 
 
-def start_helper(root: Path, app_dir: Path, old_version: str, pids: list[int]):
+def start_helper(root: Path, app_dir: Path, old_version: str, pids: list[int], critical: bool = False):
     """Start the new version's merger as the helper (it outlives this process). The caller then exits."""
-    command = [str(root / MERGER_EXE), "--finish-update", str(app_dir), old_version, *map(str, pids)]
+    command = [str(root / MERGER_EXE), "--finish-update", str(app_dir), old_version,
+               *([CRITICAL_ARG] if critical else []), *map(str, pids)]
     log.info(f"Starting the update helper: {subprocess.list2cmdline(command)}")
     try:
         _start(command, root)
@@ -161,8 +164,10 @@ def exit_code(stale: bool) -> int:
 # ---- The helper ----
 
 def finish(args: list[str], new_root: Path = APP_DIR) -> int:
-    """The helper's main: args are APP_DIR OLD_VERSION PID...; new_root: where the helper itself runs from
-    (the unpacked new version). Returns its exit code."""
+    """The helper's main: args are APP_DIR OLD_VERSION [--critical] PID...; new_root: where the helper itself
+    runs from (the unpacked new version). Returns its exit code."""
+    critical = CRITICAL_ARG in args
+    args = [arg for arg in args if arg != CRITICAL_ARG]
     app_dir, old_version, pids = Path(args[0]), args[1], [int(pid) for pid in args[2:]]
     update_dir = app_dir / DATA_DIR.name / UPDATE_DIR
     _log_to(update_dir / HELPER_LOG)
@@ -178,7 +183,8 @@ def finish(args: list[str], new_root: Path = APP_DIR) -> int:
         return 1
     log.info("The new version is installed: starting it")
     try:
-        _start([str(app_dir / MERGER_EXE), "--update-done", old_version], app_dir)
+        _start([str(app_dir / MERGER_EXE), "--update-done", old_version, *([CRITICAL_ARG] if critical else [])],
+               app_dir)
     except OSError as e:
         log.error(f"Can't start the new version: {e}")
         msg_box(UPDATE_START_FAILED.format(folder=app_dir, error=e.strerror or e), MB_ICONERROR)

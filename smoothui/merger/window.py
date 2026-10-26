@@ -25,8 +25,10 @@ runs, only after a warning: the package, which may be half written, is then dele
 without it.
 
 After the first scan, the update check (gui.find_updates) runs in a thread. A newer version of the tools
-shows as a notice (in stale mode, on the card, which then leads with it), with its release notes in the What's
-new dialog. New Smooth UI manifests make an unknown Smooth UI build scan again.
+shows as a notice, with its release notes in the What's new dialog; a critical one (updates.CRITICAL) as a
+taller, red notice. In stale mode, only a critical one shows, and a clean Merge and play then stays open
+instead of playing; for an unknown Smooth UI build, the card offers any newer version instead (and leads with
+it). New Smooth UI manifests make an unknown Smooth UI build scan again.
 """
 
 from __future__ import annotations
@@ -125,6 +127,8 @@ from .gui_texts import (
     CONTINUE,
     COPY_REPORT,
     CREATE_SHORTCUT,
+    CRITICAL,
+    CRITICAL_UPDATE,
     DATA,
     DATA_HEADING,
     DELETE_FAILED,
@@ -230,14 +234,16 @@ STATUS_WIDTH = 140
 # What runs in a thread (MergerWindow.busy) that turns off the settings and the notices' buttons
 EXCLUSIVE = ("build", "remove", "update")
 BAR_DELAY = 300                         # ms before a progress bar without progress shows (most scans end first)
+CRITICAL_HEIGHT = 56                    # px: a critical update's notice is at least this tall
 VERSION_SPACING = 24                    # px above each version in the What's new dialog but the first (half above its notes' headings)
 
 
 def run(game: Path | None, stale: bool, settings: Settings | None, calls: queue.Queue, log_records: queue.Queue,
-        *, updated_from: str | None = None) -> int:
-    """Show the window until it closes; returns the exit code. updated_from: the version this one replaced"""
+        *, updated_from: str | None = None, critical: bool = False) -> int:
+    """Show the window until it closes; returns the exit code. updated_from: the version this one replaced
+    (critical: by a critical update)"""
     app = make_app()
-    window = MergerWindow(game, stale, settings, calls, log_records, updated_from=updated_from)
+    window = MergerWindow(game, stale, settings, calls, log_records, updated_from=updated_from, critical=critical)
     sys.excepthook = window.callback_failed
     window.root.show()
     app.exec()
@@ -316,6 +322,8 @@ STYLE = """
 #card {{ background: {card}; border: 2px solid {neutral}; border-radius: 6px; }}
 #notice {{ background: {notice}; border-radius: 6px; }}
 #notice[tone="update"] {{ background: {notice_update}; }}
+#notice[tone="critical"] {{ background: {notice_critical}; }}
+#notice[tone="critical"] QLabel {{ color: {notice_critical_text}; }}
 #details {{ background: {card}; border-radius: 6px; }}
 QLabel[tone="muted"] {{ color: {muted_text}; }}
 QPushButton {{ background: transparent; color: {quiet_button_text}; border: 1px solid {quiet_button_border};
@@ -325,6 +333,10 @@ QPushButton:disabled {{ color: {disabled_text}; }}
 QPushButton[primary="true"] {{ background: {accent}; color: {accent_text}; border: 1px solid {accent}; }}
 QPushButton[primary="true"]:hover {{ background: {accent_hover}; border-color: {accent_hover}; }}
 QPushButton[primary="true"]:disabled {{ color: {accent_disabled_text}; }}
+#notice[tone="critical"] QPushButton {{ color: {notice_critical_text}; border-color: {notice_critical_text}; }}
+#notice[tone="critical"] QPushButton:hover {{ background: {notice_critical_light}; }}
+#notice[tone="critical"] QPushButton[primary="true"] {{ background: {notice_critical_text}; color: {notice_critical}; }}
+#notice[tone="critical"] QPushButton:disabled {{ color: {notice_critical_light}; border-color: {notice_critical_light}; }}
 QProgressBar {{ background: {trough}; border: none; border-radius: 4px; max-height: 8px; min-height: 8px; }}
 QProgressBar::chunk {{ background: {accent}; border-radius: 4px; }}
 QRadioButton {{ spacing: 8px; }}
@@ -420,11 +432,12 @@ class Root(QWidget):
 
 class MergerWindow:
     def __init__(self, game: Path | None, stale: bool, settings: Settings | None, calls: queue.Queue,
-                 log_records: queue.Queue, *, updated_from: str | None = None):
+                 log_records: queue.Queue, *, updated_from: str | None = None, critical: bool = False):
         """game: None until the user chooses it; settings: as saved (None: the first run, none yet);
-        updated_from: the tools were just updated (from this version)"""
+        updated_from: the tools were just updated (from this version); critical: by a critical update"""
         self.game, self.stale, self.calls, self.log_records = game, stale, calls, log_records
         self.updated_from = updated_from
+        self.critical_installed = critical
         self.settings = settings
         self.update_checked = False     # the update check ran (once per window)
         self.update = None              # the newer tools version it found (updates.ToolsUpdate)
@@ -904,8 +917,12 @@ class MergerWindow:
             notices.append((TEST_MODE.format(names=" and ".join(names)), INFO, ()))
         if self.updated_from:
             notices.append((UPDATED.format(version=tools_version()), OK, ()))
-        if self.update and not self.stale:     # (in stale mode, the card offers it when it matters)
-            notices.append((UPDATE_AVAILABLE.format(version=self.update.version), UPDATE,
+        if self.update and not self.stale:
+            text, tone = (CRITICAL_UPDATE, CRITICAL) if self.update.critical else (UPDATE_AVAILABLE, UPDATE)
+            notices.append((text.format(version=self.update.version), tone,
+                            ((WHATS_NEW, "whats_new"), (UPDATE_NOW, "update"))))
+        elif self.critical_update() and not self.card_offers_update():  # (stale mode: only a critical one)
+            notices.append((CRITICAL_UPDATE.format(version=self.update.version), CRITICAL,
                             ((WHATS_NEW, "whats_new"), (UPDATE_NOW, "update"))))
         if installed and installed.newer_release:
             notices.append((NEWER_RELEASE.format(version=installed.newer_release), INFO,
@@ -923,13 +940,17 @@ class MergerWindow:
             row = QHBoxLayout(banner)
             row.setContentsMargins(10, 4, 10, 4)
             row.setSpacing(6)
-            icon = glyph(tone, 14)
-            icon.setFixedWidth(16)      # the glyphs' widths differ: the texts start at one place
+            critical = tone == CRITICAL     # taller, its text bold, Update now filled in (see STYLE)
+            if critical:
+                banner.setMinimumHeight(CRITICAL_HEIGHT)
+                row.setContentsMargins(12, 8, 12, 8)
+            icon = glyph(tone, 16 if critical else 14)
+            icon.setFixedWidth(18 if critical else 16)  # the glyphs' widths differ: the texts start at one place
             icon.setAlignment(Qt.AlignHCenter)
-            row.addWidget(icon, 0, Qt.AlignTop)
-            row.addWidget(label(text, wrap=True), 1)
+            row.addWidget(icon, 0, Qt.AlignVCenter if critical else Qt.AlignTop)
+            row.addWidget(label(text, bold=critical, wrap=True), 1)
             for name, action in buttons:
-                widget = button(name, actions[action])
+                widget = button(name, actions[action], primary=critical and action == "update")
                 widget.setEnabled(enabled)
                 row.addWidget(widget)
             wrapper = QWidget()     # the space above it
@@ -944,7 +965,9 @@ class MergerWindow:
         card without buttons keeps the last card's, disabled."""
         card = status_card(self.found, stale=self.stale, busy=self.busy, scan_error=self.scan_error,
                            merged=self.merged, merge_error=self.merge_error, progress=self.progress,
-                           update=self.update.version if self.update else None, update_search=self.update_search)
+                           update=self.update.version if self.update else None,
+                           critical=self.critical_update(), update_search=self.update_search,
+                           critical_installed=self.critical_installed)
         if card == self.card:
             self.enable_buttons(True)
             return
@@ -1246,27 +1269,35 @@ class MergerWindow:
 
     def look_for_updates(self):
         """After a scan: the update check (once), unless the settings turn it off, and not while something
-        runs. In stale mode only for an unknown Smooth UI build: otherwise the game would wait for nothing."""
+        runs. In stale mode nothing waits for it, except for an unknown Smooth UI build: the card then says
+        it is looking (a newer version of the tools may know the build)."""
         if self.update_checked or not self.check_updates or self.busy or (self.found is None and self.scan_error is None):
             return
-        if self.stale and (self.found is None or self.found.scan.installed.status != Status.UNKNOWN):
-            return
         self.update_checked = True
-        if self.stale:
+        waited_for = self.card_offers_update()
+        if waited_for:
             self.update_search = LOOKING
             self.refresh()
         last_check = self.settings.last_update_check if self.settings else None
-        in_thread(self.calls, gui.find_updates, "updates_checked", self.stale, last_check)
+        in_thread(self.calls, gui.find_updates, "updates_checked", waited_for, last_check)
+
+    def card_offers_update(self) -> bool:
+        """Stale mode, an unknown Smooth UI build: the card offers a newer version (see status_card), and
+        no notice does"""
+        return self.stale and self.found is not None and self.found.scan.installed.status == Status.UNKNOWN
+
+    def critical_update(self) -> bool:
+        return self.update is not None and self.update.critical
 
     def updates_checked(self, found, error):
         """The update check's result (updates.Found; None if it failed or was skipped, which shows nothing).
         New manifests (or corrected ones) may change what is known about the installed Smooth UI: then it scans
         again."""
-        self.update_search = None
+        looking, self.update_search = self.update_search == LOOKING, None
         if found is not None:
             self.save_check_time()
             self.update = found.update
-            if self.stale and found.update is None:
+            if looking and found.update is None:
                 self.update_search = NOTHING_FOUND
             if found.downloaded and self.found is not None:
                 log.info("Scanning again, with the new manifests")
@@ -1311,7 +1342,7 @@ class MergerWindow:
             self.progress = None
             if error is None:
                 try:
-                    self_update.start_helper(root, gui.APP_DIR, tools_version(), self.pids())
+                    self_update.start_helper(root, gui.APP_DIR, tools_version(), self.pids(), update.critical)
                 except SmoothUIError as e:
                     error = e
             if error is not None:
@@ -1336,8 +1367,10 @@ class MergerWindow:
     # ---- Merge, remove ----
 
     def merge(self, play=False, patch_anyway=None, revert=None):
-        """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once.
-        patch_anyway: a file to force too; revert: a forced file not to force (see build)"""
+        """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once,
+        unless a critical update is known by then (it fixes a bug that may have made this build wrong): the
+        window stays open, with its notice. patch_anyway: a file to force too; revert: a forced file not to
+        force (see build)"""
         self.set_busy("build")
         self.merged = self.merge_error = self.progress = None
         self.keep_order = True
@@ -1358,15 +1391,18 @@ class MergerWindow:
             else:
                 self.merged = result
                 if play and result.clean:
-                    self.exit(PLAY)
-                    return
+                    if not self.critical_update():
+                        self.exit(PLAY)
+                        return
+                    log.warning("Merged, but not playing yet: a critical update of Smooth UI Tools is available")
             self.rescan(keep_result=True)
         in_thread(self.calls, self.build, finished, play, patch_anyway, revert)
 
     def build(self, play=False, patch_anyway=None, revert=None):
         """Build the package, forcing what the last build forced (the same copies), and patch_anyway, but
         not revert. Its progress goes to the window as it goes (merged_file, progressed). Then new workers
-        for the next merge, unless the game starts now (play, and the build is clean)."""
+        for the next merge, unless the game starts now (play, the build is clean, and no critical update is
+        known; one found just after this keeps the old workers, which still work)."""
         # Imported here: the patcher takes a while to import, and only a build needs it
         from ..build.shared import print_file_result
         from .builder import build_package, merge_report
@@ -1395,7 +1431,7 @@ class MergerWindow:
             result = build_package(self.game, settings, force=force, pool=self.pool, data_dir=gui.DATA_DIR,
                                    on_file=on_file, progress=lambda *progress: self.calls.put(("progressed", progress)))
         finally:
-            if not (play and result is not None and result.clean):
+            if not (play and result is not None and result.clean and not self.critical_update()):
                 self.restart_pool()
         self.reports.append(merge_report(result, started))
         try:

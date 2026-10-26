@@ -7,6 +7,9 @@ its time in the settings). Two kinds of release count:
 - the tools: tag tools-vX.Y.Z, published (no draft, no pre-release), with one .zip asset;
 - the manifests: tag "manifests", one long-lived release holding the manifests of every Smooth UI release
   (<version>.json), so that a Smooth UI release reaches the merger without a tools release.
+A newer tools release whose notes have a line starting "Critical fix:" (or "Critical update:", "Critical bug
+fix:"; CRITICAL) makes the update critical: it fixes a bug that makes packages wrong, so the window says so
+louder (see the release checklist).
 Assets are downloaded from their download links (which don't count against the limit), and each must match
 the SHA-256 GitHub lists for it.
 
@@ -57,6 +60,9 @@ MANIFESTS_DIR = "manifests"
 
 TOOLS_TAG = re.compile(r"tools-v([0-9]+)\.([0-9]+)\.([0-9]+)")
 MANIFESTS_TAG = "manifests"
+# A line of a tools release's notes that makes updating to it critical, e.g. "**Critical fix:** ..." (only
+# signs before it: Markdown's bold, a heading's #, a list's -)
+CRITICAL = re.compile(r"^\W*critical\s+(update|fix|bug\s*fix):", re.IGNORECASE | re.MULTILINE)
 DIGEST = re.compile(r"sha256:([0-9a-f]{64})")
 LOCAL_HOSTS = ("127.0.0.1", "localhost")
 # The only host the test token (UPDATE_TOKEN_ENV) is sent to
@@ -77,6 +83,7 @@ class ToolsUpdate:
     version: str                    # X.Y.Z
     notes: list[tuple[str, str]]    # (version, release notes in Markdown) of each newer release, newest first
     asset: Asset                    # the zip
+    critical: bool = False          # a newer release's notes say it fixes a critical bug (CRITICAL)
 
 
 @dataclass(slots=True)
@@ -114,7 +121,8 @@ def check(data_dir: Path, *, timeout: float = TIMEOUT, last_check: float | None 
         log.info(f"Update check failed: the release list from {url} isn't as expected ({e!r})")
         return None
     if update:
-        log.info(f"Update check: Smooth UI Tools v{update.version} is available (this is v{current})")
+        log.info(f"Update check: Smooth UI Tools v{update.version} is available (this is v{current})"
+                 + ("; a critical update" if update.critical else ""))
     else:
         log.info(f"Update check: no newer Smooth UI Tools (this is v{current})")
     folder = Path(data_dir) / MANIFESTS_DIR
@@ -123,7 +131,8 @@ def check(data_dir: Path, *, timeout: float = TIMEOUT, last_check: float | None 
 
 
 def tools_update(releases: list, current: str) -> ToolsUpdate | None:
-    """The newest tools release newer than current (X.Y.Z), with the notes of every newer one"""
+    """The newest tools release newer than current (X.Y.Z), with the notes of every newer one; critical if
+    any of them says so (CRITICAL)"""
     newer = []
     for release in releases:
         match = TOOLS_TAG.fullmatch(release["tag_name"])
@@ -142,7 +151,8 @@ def tools_update(releases: list, current: str) -> ToolsUpdate | None:
         return None
     newer.sort(key=lambda item: item[0], reverse=True)
     version, _, asset = newer[0]
-    return ToolsUpdate(_version_text(version), [(_version_text(v), notes) for v, notes, _ in newer], asset)
+    critical = any(CRITICAL.search(notes) for _, notes, _ in newer)
+    return ToolsUpdate(_version_text(version), [(_version_text(v), notes) for v, notes, _ in newer], asset, critical)
 
 
 def manifest_assets(release: dict) -> list[Asset]:

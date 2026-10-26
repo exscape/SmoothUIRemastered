@@ -21,6 +21,9 @@
   "notice": ["#E3EEF8", "#1E2A36"],
   "update": ["#2B8A3E", "#6CC47F"],
   "notice_update": ["#DDF2E1", "#1D3324"],
+  "notice_critical": ["#C92A2A", "#A61E1E"],
+  "notice_critical_text": ["#FFFFFF", "#FFFFFF"],
+  "notice_critical_light": ["#DE7070", "#C45858"],
   "quiet_button_border": ["#A6A6A6", "#595959"],
   "quiet_button_hover": ["#D9D9D9", "#404040"],
   "quiet_button_text": ["#1A1A1A", "#DCE4EE"]
