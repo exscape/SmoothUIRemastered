@@ -1,7 +1,9 @@
+<!-- nexus:skip -->
 # Smooth UI Tools
 
 These tools are a companion to [Smooth UI Remastered](https://www.nexusmods.com/witcher3/mods/13526), which is required to use them. They make other UI mods work together with Smooth UI, by creating high framerate versions of those mods.  
 You only need these tools if you use other UI mods that conflict with Smooth UI.
+<!-- /nexus:skip -->
 
 ## Quick start
 
@@ -14,6 +16,7 @@ You only need these tools if you use other UI mods that conflict with Smooth UI.
 That's it. This works with any mod manager, though Mod Organizer 2 needs a few extra steps (see below).  
 The sections below also have optional tips for other mod managers, such as convenient ways to start the game through the launcher.
 
+<!-- nexus:skip -->
 **Setup for your mod manager:**
 
 - [Without a mod manager](#setup-without-a-mod-manager)
@@ -21,6 +24,7 @@ The sections below also have optional tips for other mod managers, such as conve
 - [Vortex](#setup-vortex)
 - [Mod Organizer 2](#setup-mod-organizer-2)
 - [Optional: launching via Steam or GOG Galaxy](#optional-launching-via-steam-or-gog-galaxy)
+<!-- /nexus:skip -->
 
 Everything after the setup sections is optional reading: how the tools work, updates, limitations, troubleshooting and uninstallation.
 
@@ -108,7 +112,7 @@ When the merger starts, it asks GitHub whether a newer version of Smooth UI Tool
 Updating is automatic: the merger downloads the new version, checks it, closes, and opens again in the new version.  
 If the update fails, the old version stays as it was; you can then download the new version from Nexus Mods.
 
-**Privacy:** the check is a standard web request to GitHub, which can see your IP address. The **only** other thing sent is the current tools version (as `SmoothUITools/X.Y.Z`).
+**Privacy:** the check is a standard web request to GitHub, which can see your IP address. The **only** other thing sent is the current tools version (as `SmoothUITools/X.Y.Z`). Nothing whatsoever is sent to me (the developer).
 **To turn it off:** untick "Check for updates when the merger starts" under **Settings** in the merger. The merger then never goes online at all.
 
 ## Good to know
@@ -120,9 +124,8 @@ If the update fails, the old version stays as it was; you can then download the 
 - **Script merger:** Script Merger may show conflicts involving `.redswf` files. **If `mod0000_SmoothUI_MergedPatches` is shown at the top of the conflict, you can ignore these warnings:** it doesn't know that we have resolved the issue already.
 - **Game updates** may need a new version of Smooth UI.
 - **mod.io mods are not supported** where they ship a UI file (`.redswf`) that Smooth UI changes: a mod.io mod always wins over regular mods, so neither Smooth UI nor the merger can fix that. mod.io mods that don't touch those files should be fine, but I haven't tested.
-- **Removing Smooth UI:** if you disable or uninstall Smooth UI but leave the merged patches, the launcher tells you, and offers to remove them.
-- **Mods that don't merge cleanly:** if the merger leaves out a mod's screen, or says some fixes couldn't be applied, please report it on the Bugs tab with the mod's name and version (the merger's "Write a bug report..." button collects the est). Most such cases are gaps in Smooth UI Toools that can be fixed.
-- **Logs:** if something goes wrong, use the "Write a bug report" button in the merger. You can also get a full .zip with all logs included, but Nexus bug reports can't have attachments. Upload it elsewhere and include a link, or send the report via GitHub.
+- **Mods that don't merge cleanly:** if the merger leaves out a mod's screen, or says some fixes couldn't be applied, please report it on the Bugs tab with the mod's name and version (the merger's "Write a bug report..." button collects the rest). Most such cases are gaps in Smooth UI Tools that can be fixed, but I need to know about them to fix them.
+- **Logs:** if something goes wrong, use the "Write a bug report" button in the merger. You can also get a full .zip with all logs included, but Nexus bug reports can't have attachments. Upload it elsewhere and include a link, or send the report by creating a GitHub issue.
 - Arguments given to the launcher are passed on to the game unchanged, which may be useful for e.g. Steam (see Steam above).
 
 ## Uninstallation
@@ -130,6 +133,7 @@ If the update fails, the old version stays as it was; you can then download the 
 Aside from the merged patches, the tools only write to a folder named `data` under their install directory, so uninstalling them is simple: delete the directory you put them in.  
 You should also delete `mod0000_SmoothUI_MergedPatches` from your mods directory.
 
+<!-- nexus:skip -->
 ## Building the tools yourself (optional)
 
 **You don't need this to use the tools:** the release zip is ready to use. This is only for those who want to build the exes from the source code themselves.
@@ -159,3 +163,4 @@ On Windows, in `cmd.exe` or PowerShell:
    `--prebuilt-bootloader` uses the bootloader (the start of each exe) that comes with PyInstaller. The releases use one compiled from PyInstaller's source instead, as antivirus programs flag the prebuilt one more often.
 
    The tools are then in `dist\SmoothUIMerger\`, ready to use. To zip them as a release is zipped: `env_gui\Scripts\python.exe dev-tools\make-tools-zip.py dist\SmoothUIMerger SmoothUITools.zip`
+<!-- /nexus:skip -->
