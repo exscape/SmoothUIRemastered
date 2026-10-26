@@ -281,15 +281,23 @@ def _card(found, stale, busy, scan_error, merged, merge_error, progress) -> Card
         return Card(NEUTRAL, "Checking your mods...", buttons=buttons, default=False, busy=True)
     if scan_error is not None:
         return Card(ERROR, "Can't read your mods", (_sentence(scan_error),), (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
+    # Smooth UI can't be used now (by the scan after the merge): merging again would fail, so it isn't offered.
+    # (Downloaded manifests or reviews that may change that make the window scan again, without the merge's result.)
+    cant_merge = found is not None and not found.scan.installed.usable
     if merge_error is not None:
-        if stale:
+        sentences = (_sentence(merge_error),)
+        if cant_merge:
+            installed = _sentence(found.scan.installed.message)
+            sentences += (installed,) if installed.rstrip(".").lower() not in merge_error.lower() else ()
+            buttons = (PLAY_ANYWAY, DONT_START) if stale else (RESCAN, (WRITE_BUG_REPORT, "bug_report"))
+        elif stale:
             play = PLAY_WITHOUT_MERGING[found.severity] if found and found.severity else "Play without merging"
             buttons = (("Merge again", "merge_and_play"), (play, "play"), DONT_START)
         else:
             buttons = (("Merge again", "merge"), (WRITE_BUG_REPORT, "bug_report"))
-        return Card(ERROR, "Merging failed", (_sentence(merge_error),), buttons)
+        return Card(ERROR, "Merging failed", sentences, buttons)
     if merged is not None:
-        return _merged(merged, stale)
+        return _merged(merged, stale, cant_merge)
     return _checked(found, stale)
 
 
@@ -303,8 +311,8 @@ def _merging(stale, progress):
     return Card(NEUTRAL, headline, ("The game starts when it's done.",) if stale else (), busy=True, progress=fraction)
 
 
-def _merged(result: BuildResult, stale):
-    """After a merge in the window"""
+def _merged(result: BuildResult, stale, cant_merge):
+    """After a merge in the window (cant_merge: see _card)"""
     if result.clean:
         included = [(file.mod, file.path) for file in result.files if file.status.included]
         headline = f"Merged: {_patched(included)}" if included else "Merged: your mods' copies are already smooth"
@@ -324,7 +332,7 @@ def _merged(result: BuildResult, stale):
     headline = ("Merged, but some screens couldn't be merged" if any(file.severity == "error" for file in result.files)
                 else "Merged, with problems")
     report = [REPORT_MODS] if causes else []
-    anyway = anyway_button(len(left_out(None, result)), stale)
+    anyway = () if cant_merge else anyway_button(len(left_out(None, result)), stale)
     buttons = ((PLAY_ANYWAY, *anyway, DONT_START) if stale
                else (RESCAN, *anyway, *([(WRITE_BUG_REPORT, "bug_report")] if causes else [])))
     return Card(WARNING, headline, _sentences(causes, [*report, *notes]), buttons)
