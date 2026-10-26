@@ -44,7 +44,7 @@ from pathlib import Path
 from ..common import SmoothUIError
 from ..files import check_data_writable, make_dirs, rotate
 from ..launcher import ABORT, CLOSED, PLAY
-from ..paths import APP_DIR, DATA_DIR
+from ..paths import APP_DIR, DATA_DIR, FROZEN
 from ..windows import MB_ICONERROR, bring_to_front, find_window, msg_box, only_instance
 from . import UPDATE_TOKEN_ENV, UPDATE_URL_ENV, self_update, tools_version
 from .game import (
@@ -180,7 +180,11 @@ def start_scan(game: Path, calls: queue.Queue):
 def find_updates(waited_for: bool, last_check):
     """The update check (updates.check), in a thread; last_check: when the last one was (settings). When the
     game waits for it (stale mode, an unknown Smooth UI build): a shorter timeout, and even right after another
-    check (the scan has just found something that check may not have known)."""
+    check (the scan has just found something that check may not have known). None when run from source: an
+    update would replace the repo's files with the tools' (and downloads aren't read from there anyway)."""
+    if not FROZEN:
+        log.info("Update check: skipped (run from source)")
+        return None
     from . import updates  # imported here: it takes a while, and the window shows first
     if waited_for:
         return updates.check(DATA_DIR, timeout=updates.QUICK_TIMEOUT)
