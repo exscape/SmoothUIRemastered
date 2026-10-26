@@ -100,7 +100,7 @@ def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
         version = f"unknown ({e})"
     lines = [
         f"Smooth UI bug report, saved {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Smooth UI Merger {version}" + ("" if FROZEN else " (run from source)"),
+        f"Smooth UI Tools v{version}" + ("" if FROZEN else " (run from source)"),
         f"Windows: {platform.platform()}",
         f"Game folder: {game or 'not chosen yet'}",
         f"mods.settings: {mods_settings or 'unknown'}",
@@ -148,7 +148,7 @@ def short_report(game: Path | None, found: Check | None, window_lines: list[str]
     except SmoothUIError as e:
         version = f"unknown ({e})"
     lines = [
-        f"Smooth UI Merger {version}" + ("" if FROZEN else " (run from source)"),
+        f"Smooth UI Tools v{version}" + ("" if FROZEN else " (run from source)"),
         f"Windows: {platform.platform()}",
         f"Game folder: {game or 'not chosen yet'}",
     ]

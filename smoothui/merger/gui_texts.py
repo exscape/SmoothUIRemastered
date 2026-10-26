@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 # The card's tones (its color and glyph); UPDATE and CRITICAL: the notice of a newer version, of a critical one
 NEUTRAL, OK, INFO, WARNING, ERROR, UPDATE, CRITICAL = "neutral", "ok", "info", "warning", "error", "update", "critical"
 # Glyphs by tone, from Segoe UI Symbol (in Windows 10 and later)
-GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕", UPDATE: "⬆", CRITICAL: "⚠"}
+GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕", UPDATE: "ⓘ", CRITICAL: "⚠"}
 
 # ---- The window ----
 
@@ -120,7 +120,7 @@ OPEN_DATA = "Open the data folder"
 HELP = "Help"
 BACK = "Back"
 VERSIONS_HEADING = "Versions"
-MERGER_VERSION = "Smooth UI Merger {version}"
+MERGER_VERSION = "Smooth UI Tools v{version}"
 SMOOTHUI_NOT_CHECKED = "Smooth UI Remastered: not checked yet"
 GUIDE_HEADING = "Setting up"
 GUIDE_LINK = "How to set up and use Smooth UI's tools ↗"
