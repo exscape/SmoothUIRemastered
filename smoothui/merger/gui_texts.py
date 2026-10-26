@@ -308,7 +308,7 @@ def _merged(result: BuildResult, stale):
     if result.clean:
         included = [(file.mod, file.path) for file in result.files if file.status.included]
         headline = f"Merged: {_patched(included)}" if included else "Merged: your mods' copies are already smooth"
-        return Card(OK, headline, (), (PLAY,) if stale else (RESCAN,))
+        return Card(OK, headline, (), (PLAY, DONT_START) if stale else (RESCAN,))
     causes = []
     for file in result.files:
         status = file.status.value
@@ -391,17 +391,20 @@ def _checked(found: Check, stale):
               if file.state == State.UNDETERMINED or (file.state == State.NOT_HELD and file.cause != "unchanged")
               or file.cause == "fixes"]
     patched = [(file.winner, file.path) for file in found.states if file.state == State.UP_TO_DATE]
-    buttons = (PLAY,) if stale else (RESCAN, ("Merge again", "merge"))
     if causes:
         headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
                     else "Some screens can't be merged")
-        return Card(WARNING, headline, _sentences(causes), (*buttons, *anyway_button(len(left_out(found)), stale)))
+        anyway = anyway_button(len(left_out(found)), stale)
+        buttons = (PLAY, *anyway, DONT_START) if stale else (RESCAN, ("Merge again", "merge"), *anyway)
+        return Card(WARNING, headline, _sentences(causes), buttons)
     if patched:
-        return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.",), buttons)
+        return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.",),
+                    (PLAY, DONT_START) if stale else (RESCAN, ("Merge again", "merge")))
     if any(file.state == State.NOT_HELD for file in found.states):
         return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens are already smooth.",),
-                    (PLAY,) if stale else (RESCAN,))
-    return Card(OK, "Nothing to merge", ("No other mod changes Smooth UI's screens.",), (PLAY,) if stale else (RESCAN,))
+                    (PLAY, DONT_START) if stale else (RESCAN,))
+    return Card(OK, "Nothing to merge", ("No other mod changes Smooth UI's screens.",),
+                (PLAY, DONT_START) if stale else (RESCAN,))
 
 
 def _unusable(installed, stale):
