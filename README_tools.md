@@ -51,7 +51,7 @@ If you start the game with desktop or taskbar shortcuts instead of Vortex, point
 
 ## Setup: Mod Organizer 2
 
-**Required:** [Evannee45's Witcher 3 plugin for MO2](https://www.nexusmods.com/witcher3/mods/9482). MO2 without it hasn't been tested.
+**Required:** [Evannee45's Witcher 3 plugin for MO2](https://www.nexusmods.com/witcher3/mods/9482). MO2 without it hasn't been tested.  
 Due to MO2's design with the VFS, this setup is a bit more complex than for the other mod managers, but I assume MO2 users are somewhat used to the workflow.
 
 1. Keep Smooth UI Tools in a folder **outside** the Witcher 3 game folder. Inside it, MO2 would move the tools' own files (settings, logs, updates) into its overwrite folder, so the merger shows a message and exits instead of running there.
@@ -112,7 +112,7 @@ When the merger starts, it asks GitHub whether a newer version of Smooth UI Tool
 Updating is automatic: the merger downloads the new version, checks it, closes, and opens again in the new version.  
 If the update fails, the old version stays as it was; you can then download the new version from Nexus Mods.
 
-**Privacy:** the check is a standard web request to GitHub, which can see your IP address. The **only** other thing sent is the current tools version (as `SmoothUITools/X.Y.Z`). Nothing whatsoever is sent to me (the developer).
+**Privacy:** the check is a standard web request to GitHub, which can see your IP address. The **only** other thing sent is the current tools version (as `SmoothUITools/X.Y.Z`). Nothing whatsoever is sent to me (the developer).  
 **To turn it off:** untick "Check for updates when the merger starts" under **Settings** in the merger. The merger then never goes online at all.
 
 ## Good to know
