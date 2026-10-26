@@ -267,6 +267,8 @@ def _open(url, timeout, accept):
         return _opener().open(request, timeout=timeout)
     except (OSError, http.client.HTTPException) as e:
         e.failed_url = request.urls[-1]     # for _describe: after a redirect, the other host failed
+        if isinstance(e, urllib.error.HTTPError):
+            e.close()       # its body isn't read (_describe needs only the code and headers)
         raise
 
 
