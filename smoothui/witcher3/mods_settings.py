@@ -24,7 +24,7 @@ import re
 from pathlib import Path
 from typing import NamedTuple
 
-from ..common import fail
+from ..common import SmoothUIError, fail
 from ..files import read_file, write_file
 
 PRIORITY = re.compile(r"[0-9]+")
@@ -180,7 +180,7 @@ def write_entry(path: Path, name: str, *, backup: Path | None = None) -> bool:
     creating the file if there is none. Returns whether the file changed. If it did, and there was a
     file, its old content is written to backup first (replacing any file there). Written as UTF-8 without
     a BOM, as files.py writes files. Fails (SmoothUIError) if the file can't be read for certain or
-    written."""
+    written (naming the backup, if one was written: the file may be broken then)."""
     data = read_file(path)
     if data is not None:
         parse_mods_settings(data)   # fails if it can't be read for certain
@@ -188,9 +188,15 @@ def write_entry(path: Path, name: str, *, backup: Path | None = None) -> bool:
     text = set_entry(old, name)
     if text == old:
         return False
-    if data is not None and backup is not None:
+    backed_up = data is not None and backup is not None
+    if backed_up:
         write_file(backup, data)
-    write_file(path, text.encode("utf-8"))
-    if parse_mods_settings(read_file(path) or b"").get(name.lower()) != ModSettings(True, 0):
-        fail(f"mods.settings doesn't read back as written: [{name}] should have Enabled=1 and Priority=0")
+    try:
+        write_file(path, text.encode("utf-8"))
+        if parse_mods_settings(read_file(path) or b"").get(name.lower()) != ModSettings(True, 0):
+            fail(f"mods.settings doesn't read back as written: [{name}] should have Enabled=1 and Priority=0")
+    except SmoothUIError as e:
+        if backed_up:
+            fail(f"{e}. A copy of mods.settings from before is in {backup}")
+        raise
     return True
