@@ -77,6 +77,11 @@ STOP_MERGE = {
 ALSO_CHANGED = "Also changed by {mods}; the game uses {mod}'s copy, which comes first in the load order."
 PATCH_ANYWAY = "Merge anyway"
 PATCH_ANYWAY_NOTE = "It may then look or behave wrong in places."
+# The card's button for every screen left out (anyway_button), and its question
+PATCH_ALL_ANYWAY = "Merge all anyway"
+PATCH_ANYWAY_TITLE = "Merge anyway?"
+PATCH_ANYWAY_QUESTION = ("Smooth UI can't fully merge these screens:\n\n{screens}\n\nMerge them anyway? They may then "
+                         "look or behave wrong in places. You can revert each one later, in its details in the list.")
 REVERT = "Revert to the mod's own copy"
 REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate."
 
@@ -149,7 +154,8 @@ OPEN_LOG_FOLDER = "Open log folder"
 @dataclass(frozen=True, slots=True)
 class Card:
     """What the status card shows. A button is (label, action); the first one is the default. Actions:
-    merge, merge_and_play, play, abort, remove, remove_and_play, rescan, bug_report, smoothui_page, update.
+    merge, merge_and_play, merge_anyway, merge_anyway_and_play, play, abort, remove, remove_and_play, rescan,
+    bug_report, smoothui_page, update.
     (The notices also use whats_new and files_page.)"""
     tone: str
     headline: str
@@ -318,8 +324,26 @@ def _merged(result: BuildResult, stale):
     headline = ("Merged, but some screens couldn't be merged" if any(file.severity == "error" for file in result.files)
                 else "Merged, with problems")
     report = [REPORT_MODS] if causes else []
-    buttons = (PLAY_ANYWAY, DONT_START) if stale else (RESCAN, *([(WRITE_BUG_REPORT, "bug_report")] if causes else []))
+    anyway = anyway_button(len(left_out(None, result)), stale)
+    buttons = ((PLAY_ANYWAY, *anyway, DONT_START) if stale
+               else (RESCAN, *anyway, *([(WRITE_BUG_REPORT, "bug_report")] if causes else [])))
     return Card(WARNING, headline, _sentences(causes, [*report, *notes]), buttons)
+
+
+def left_out(found: Check | None, merged: BuildResult | None = None) -> list[str]:
+    """The screens left out for problems with their rescale (never for a failure), which can be merged
+    anyway: by the window's last merge if there is one (merged), else by the last check (found)"""
+    if merged is not None:
+        return [file.path for file in merged.files if file.status.value == "left out"]
+    return [state.path for state in found.states if state.state == State.NOT_HELD and state.cause == "left out"] if found else []
+
+
+def anyway_button(count: int, stale: bool) -> tuple[tuple[str, str], ...]:
+    """The card's button that merges the left-out screens anyway (none if there are none)"""
+    if not count:
+        return ()
+    label = PATCH_ANYWAY if count == 1 else PATCH_ALL_ANYWAY
+    return ((f"{label} and play", "merge_anyway_and_play") if stale else (label, "merge_anyway"),)
 
 
 def _checked(found: Check, stale):
@@ -371,7 +395,7 @@ def _checked(found: Check, stale):
     if causes:
         headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
                     else "Some screens can't be merged")
-        return Card(WARNING, headline, _sentences(causes), buttons)
+        return Card(WARNING, headline, _sentences(causes), (*buttons, *anyway_button(len(left_out(found)), stale)))
     if patched:
         return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.",), buttons)
     if any(file.state == State.NOT_HELD for file in found.states):

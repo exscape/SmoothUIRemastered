@@ -161,6 +161,8 @@ from .gui_texts import (
     OPEN_LOG_FOLDER,
     PATCH_ANYWAY,
     PATCH_ANYWAY_NOTE,
+    PATCH_ANYWAY_QUESTION,
+    PATCH_ANYWAY_TITLE,
     REMOVE_FAILED,
     REMOVE_QUESTION,
     REMOVE_TITLE,
@@ -203,6 +205,7 @@ from .gui_texts import (
     Card,
     also_changed,
     capitalized,
+    left_out,
     merging_status,
     release_notes,
     row_status,
@@ -1055,6 +1058,8 @@ class MergerWindow:
         return {
             "merge": self.merge,
             "merge_and_play": lambda: self.merge(play=True),
+            "merge_anyway": self.merge_anyway,
+            "merge_anyway_and_play": lambda: self.merge_anyway(play=True),
             "play": lambda: self.exit(PLAY),
             "abort": lambda: self.exit(ABORT),
             "remove": self.remove,
@@ -1181,7 +1186,7 @@ class MergerWindow:
         widget = None
         if state.state == State.NOT_HELD and state.cause == "left out":
             text, note = PATCH_ANYWAY, PATCH_ANYWAY_NOTE
-            command = lambda: self.merge(self.stale, patch_anyway=path)
+            command = lambda: self.merge(self.stale, patch_anyway=[path])
         elif state.state == State.UP_TO_DATE and state.cause == "forced":
             text, note = REVERT, REVERT_NOTE.format(mod=state.winner)
             command = lambda: self.merge(self.stale, revert=path)
@@ -1366,10 +1371,18 @@ class MergerWindow:
 
     # ---- Merge, remove ----
 
-    def merge(self, play=False, patch_anyway=None, revert=None):
+    def merge_anyway(self, play=False):
+        """Merge every screen that was left out anyway (the card's button), once the user confirms"""
+        paths = left_out(self.found, self.merged)
+        screens = "\n".join(f"•  {screen_label(path)}" for path in paths)
+        if paths and ask_yes_no(self.root, PATCH_ANYWAY_TITLE, PATCH_ANYWAY_QUESTION.format(screens=screens),
+                                warning=True):
+            self.merge(play, patch_anyway=paths)
+
+    def merge(self, play=False, patch_anyway=(), revert=None):
         """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once,
         unless a critical update is known by then (it fixes a bug that may have made this build wrong): the
-        window stays open, with its notice. patch_anyway: a file to force too; revert: a forced file not to
+        window stays open, with its notice. patch_anyway: files to force too; revert: a forced file not to
         force (see build)"""
         self.set_busy("build")
         self.merged = self.merge_error = self.progress = None
@@ -1398,7 +1411,7 @@ class MergerWindow:
             self.rescan(keep_result=True)
         in_thread(self.calls, self.build, finished, play, patch_anyway, revert)
 
-    def build(self, play=False, patch_anyway=None, revert=None):
+    def build(self, play=False, patch_anyway=(), revert=None):
         """Build the package, forcing what the last build forced (the same copies), and patch_anyway, but
         not revert. Its progress goes to the window as it goes (merged_file, progressed). Then new workers
         for the next merge, unless the game starts now (play, the build is clean, and no critical update is
@@ -1421,8 +1434,8 @@ class MergerWindow:
         if force:
             log.info(f"Forced again, as at the last build (the same copies): {', '.join(force)}")
         if patch_anyway:
-            log.info(f"Patching {screen_label(patch_anyway)} anyway, as you chose")
-            force.append(patch_anyway)
+            log.info(f"Patching anyway, as you chose: {', '.join(screen_label(path) for path in patch_anyway)}")
+            force += [path for path in patch_anyway if path not in force]
         if revert in force:
             log.info(f"Reverting {screen_label(revert)} to the unpatched screen, as you chose")
             force.remove(revert)
