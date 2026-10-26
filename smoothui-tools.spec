@@ -257,6 +257,8 @@ if dev_manifests:
 (out_dir / "manifests").mkdir()
 for p in manifests:
     shutil.copyfile(p, out_dir / "manifests" / p.name)
+# The reviews of mods' code (see smoothui/mod_reviews.py)
+shutil.copyfile(Path(SPECPATH) / "manifests" / "reviewed_mod_warnings.txt", out_dir / "manifests" / "reviewed_mod_warnings.txt")
 
 
 # Licenses: ours next to the exes; in licenses\, Python's (which also covers what it includes: OpenSSL,

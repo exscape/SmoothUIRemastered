@@ -11,7 +11,9 @@ build-main --accept-warnings adds the current unreviewed ones.
 
 Compat builds don't use that file. They hide the warnings the Smooth UI release recorded for each
 file (only where the other mod has the same code), plus those marked "reviewed:" in the override
-file, so only warnings that the other mod's changes introduced are shown.
+file, so only warnings that the other mod's changes introduced are shown. The merger hides the same
+recorded warnings, plus the reviews of mods' own code in mod_reviews.py's file; there, a review's hash may
+be "any" (any version of that code).
 """
 
 import logging
@@ -22,6 +24,7 @@ from typing import NamedTuple
 
 from ..common import fail, profile_key
 from ..log import SUBHEADING
+from ..mod_reviews import ANY
 from .shared import REVIEWED_WARNINGS
 
 log = logging.getLogger(__name__)
@@ -65,8 +68,9 @@ class WarningReview:
         self.recorded = recorded or {}
 
     def is_reviewed(self, rel, warning: dict) -> bool:
-        review = review_of(warning)
-        return review in self.reviewed or review in self.recorded.get(profile_key(rel), ())
+        recorded = self.recorded.get(profile_key(rel), ())
+        return any(review in self.reviewed or review in recorded
+                   for review in (review_of(warning), f"{warning['key']} @{ANY}"))
 
     def summarize(self, entries, unchecked=0) -> WarningSummary:
         """Check the warnings in the reports of patch_files' patched (and kept) lists. unchecked: the

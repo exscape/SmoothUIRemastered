@@ -11,11 +11,13 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import mod_reviews
 from ..build.release import ReleasePatch, patch_as_release, profile_from_manifest
 from ..build.reviewed_warnings import WarningSummary
 from ..build.shared import print_file_result
 from ..common import fail, profile_key
 from ..files import make_dirs
+from ..mod_reviews import ModReviews
 from ..patcher.patcher_core import RuleIssues
 from ..paths import DATA_DIR
 from ..witcher3.mods_settings import read_mods_settings, write_entry
@@ -28,9 +30,11 @@ from .screens import screen_label
 log = logging.getLogger(__name__)
 
 
-def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> ReleasePatch:
+def patch_winners(result: Scan, *, reviews: ModReviews | None = None, pool=None,
+                  on_file=print_file_result) -> ReleasePatch:
     """Patch the winning copy of each file (see scan.FileResult.winner) with the installed Smooth UI
-    build's settings. pool and on_file are as for patch_as_release."""
+    build's settings, hiding the warnings reviewed for its mod (reviews; None: mod_reviews.load()'s). pool
+    and on_file are as for patch_as_release."""
     installed = result.installed
     if not installed.usable:
         fail(installed.message)
@@ -43,7 +47,7 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
         fail(f"this version of Smooth UI Tools can't read the manifest of Smooth UI Remastered {installed.version} "
              f"({e!r}): update them")
     return patch_as_release(sources, {source.path: profile[source.path] for source in sources}, installed.manifest,
-                            on_file=on_file, pool=pool)
+                            mod_reviews=reviews if reviews is not None else mod_reviews.load(), on_file=on_file, pool=pool)
 
 
 @dataclass(slots=True)
@@ -56,17 +60,19 @@ class Installation:
 
 
 def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_dir: Path | None = None,
-            data_dir: Path | None = DATA_DIR) -> Installation:
+            data_dir: Path | None = DATA_DIR, reviews: ModReviews | None = None) -> Installation:
     """Write the package into the game's Mods\\ folder and give it its mods.settings entry (the file at
     mods_settings; its old content goes to MODS_SETTINGS_BACKUP in data_dir first, if it changes). The
     file is only written if another mod (not mod0000_MergedFiles) loads before the package. With
     out_dir, write the package there instead, for a look at it, and leave mods.settings alone. A package
     that holds no files is removed instead, with a record in data_dir (see package.py), and mods.settings
     is left alone: an entry it has stays, as a later build would write it again. data_dir None: no
-    backup and no record."""
+    backup and no record. reviews: those the files were patched with, which the package records (None: the
+    file in use now; see mod_reviews.sha256)."""
     package_dir = Path(out_dir or result.mods_dir) / PACKAGE_FOLDER
     record = record_path(data_dir, result.mods_dir) if data_dir is not None and out_dir is None else None
-    written = write_package(package_dir, result.installed, files, record)
+    reviews_sha256 = reviews.sha256 if reviews is not None else mod_reviews.sha256()
+    written = write_package(package_dir, result.installed, files, record, reviews_sha256=reviews_sha256)
     if out_dir is not None or written.empty:
         return Installation(package_dir, written, None)
     backup = None
@@ -152,9 +158,11 @@ def build_package(game_path: Path, mods_settings: Path, *, force=(), out_dir: Pa
 
     if progress:
         progress(0, total)
-    patch = patch_winners(before, pool=pool, on_file=file_done)
+    # Read once: the update check may download new ones meanwhile, which the package mustn't claim it used
+    reviews = mod_reviews.load()
+    patch = patch_winners(before, reviews=reviews, pool=pool, on_file=file_done)
     files = decide(before, patch, force=force)
-    installation = install(before, files, mods_settings, out_dir=out_dir, data_dir=data_dir)
+    installation = install(before, files, mods_settings, out_dir=out_dir, data_dir=data_dir, reviews=reviews)
     check_problems = [] if out_dir is not None else check_package(files, scan(game_path, mods_settings, **scan_options))
     return BuildResult(before, files, installation, check_problems, compat_notes(before, files))
 

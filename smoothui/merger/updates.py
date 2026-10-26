@@ -6,7 +6,9 @@ address, so never more than one per check, and none within RECENT of the last on
 its time in the settings). Two kinds of release count:
 - the tools: tag tools-vX.Y.Z, published (no draft, no pre-release), with one .zip asset;
 - the manifests: tag "manifests", one long-lived release holding the manifests of every Smooth UI release
-  (<version>.json), so that a Smooth UI release reaches the merger without a tools release.
+  (<version>.json), so that a Smooth UI release reaches the merger without a tools release. It also holds
+  the reviews of mods' code (mod_reviews.MOD_REVIEWS), downloaded whenever it differs from the downloaded
+  copy: that copy is used instead of the shipped one.
 A newer tools release whose notes have a line starting "Critical fix:" (or "Critical update:", "Critical bug
 fix:"; CRITICAL) makes the update critical: it fixes a bug that makes packages wrong, so the window says so
 louder (see the release checklist).
@@ -41,6 +43,7 @@ import truststore
 from ..common import SmoothUIError, fail, normalize_version
 from ..files import delete_file, make_dirs, read_file
 from ..manifests import is_dev_version, version_key
+from ..mod_reviews import MOD_REVIEWS
 from ..paths import MANIFEST_DIR
 from . import RELEASES_URL, UPDATE_TOKEN_ENV, UPDATE_URL_ENV, tools_version
 
@@ -89,7 +92,8 @@ class ToolsUpdate:
 @dataclass(slots=True)
 class Found:
     update: ToolsUpdate | None      # the newest tools release newer than this one
-    downloaded: list[str]           # the versions of the manifests downloaded by this check
+    downloaded: list[str]           # the versions of the manifests downloaded by this check, and
+                                    # mod_reviews.MOD_REVIEWS if it was downloaded
 
 
 def releases_url() -> str:
@@ -114,6 +118,8 @@ def check(data_dir: Path, *, timeout: float = TIMEOUT, last_check: float | None 
             except _NotFound:
                 pass
         assets = manifest_assets(manifests) if manifests else []
+        reviews = [asset for asset in manifests["assets"] if asset["name"] == MOD_REVIEWS] if manifests else []
+        reviews = [checked for asset in reviews if (checked := _asset(asset)) is not None]
     except (SmoothUIError, _NotFound) as e:
         log.info(f"Update check failed: {e}")
         return None
@@ -126,8 +132,9 @@ def check(data_dir: Path, *, timeout: float = TIMEOUT, last_check: float | None 
     else:
         log.info(f"Update check: no newer Smooth UI Tools (this is v{current})")
     folder = Path(data_dir) / MANIFESTS_DIR
-    downloaded = download_manifests(manifests_to_download(assets, (MANIFEST_DIR, folder)), folder, timeout)
-    return Found(update, downloaded)
+    # The reviews: only the downloaded copy counts, as it is used instead of the shipped one
+    wanted = manifests_to_download(assets, (MANIFEST_DIR, folder)) + manifests_to_download(reviews, (folder,))
+    return Found(update, download_manifests(wanted, folder, timeout))
 
 
 def tools_update(releases: list, current: str) -> ToolsUpdate | None:
@@ -177,29 +184,36 @@ def manifests_to_download(assets: list[Asset], folders) -> list[Asset]:
 
 
 def download_manifests(assets: list[Asset], folder: Path, timeout: float = TIMEOUT) -> list[str]:
-    """Download manifests into folder; the versions downloaded. Each goes through a temporary name, and is
-    renamed only once its SHA-256 matches and it reads as a manifest. One that fails is deleted (and logged),
-    and downloaded again by the next check."""
+    """Download manifests (and the reviews of mods' code) into folder; the versions downloaded (and
+    MOD_REVIEWS). Each goes through a temporary name, and is renamed only once its SHA-256 matches and it
+    reads as a manifest (as text). One that fails is deleted (and logged), and downloaded again by the next
+    check."""
     downloaded = []
     for asset in assets:
         target = Path(folder) / asset.name
         part = target.with_name(f"{asset.name}.part")
+        what = "the reviews of mods' code" if asset.name == MOD_REVIEWS else f"the manifest {asset.name}"
         try:
             make_dirs(folder)
             download(asset, part, timeout)
             try:
-                manifest = json.loads(read_file(part).decode("utf-8"))
+                text = read_file(part).decode("utf-8")
+                is_manifest = asset.name == MOD_REVIEWS or isinstance(json.loads(text), dict)
             except ValueError as e:
                 fail(f"it can't be read: {e}")
-            if not isinstance(manifest, dict):
+            if not is_manifest:
                 fail("it isn't a manifest")
             os.replace(part, target)
         except (SmoothUIError, OSError) as e:
-            log.warning(f"Update check: the manifest {asset.name} can't be downloaded: {e}")
+            log.warning(f"Update check: {what} can't be downloaded: {e}")
             _delete_quietly(part)
             continue
-        downloaded.append(asset.name.removesuffix(".json"))
-        log.info(f"Update check: downloaded the manifest of Smooth UI {downloaded[-1]}")
+        if asset.name == MOD_REVIEWS:
+            downloaded.append(asset.name)
+            log.info(f"Update check: downloaded {what}")
+        else:
+            downloaded.append(asset.name.removesuffix(".json"))
+            log.info(f"Update check: downloaded the manifest of Smooth UI {downloaded[-1]}")
     return downloaded
 
 

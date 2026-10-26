@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from enum import Enum, IntEnum
 from pathlib import Path
 
+from .. import mod_reviews
 from ..common import SmoothUIError
 from ..files import read_file
 from ..paths import DATA_DIR
@@ -165,6 +166,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     else:
         rebuilt = rebuilt_text = None
     merger_only = rebuilt == "merger"
+    # New reviews of mods' code (downloaded since the build) may let a screen that was left out be merged
+    reviews_changed = (manifest or {}).get("mod_reviews_sha256") != mod_reviews.sha256()
     # Whether the package's own mods.settings entry is as a build writes it (see mods_settings.write_entry)
     # (Priority 0, or any entry that a build wouldn't change because the package loads first anyway)
     own_entry = any(is_package_folder(mod.folder) and mod.settings is not None
@@ -244,6 +247,9 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             elif not same_copy(record, winner):
                 cause, text = _changed(record, winner)
                 state(State.CHANGED, f"{text}: merge again", Severity.MEDIUM, cause=cause, previous=record.get("mod"))
+            elif record["status"] == "left out" and reviews_changed:
+                state(State.CHANGED, "the merger was updated since this screen was left out: merge again, as it may "
+                      "merge it now", Severity.MEDIUM, cause="merger")
             else:
                 text = NOT_HELD_TEXT.get(record["status"], record["status"])
                 if record["status"] != "unchanged":

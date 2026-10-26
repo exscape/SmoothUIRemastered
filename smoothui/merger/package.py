@@ -63,10 +63,12 @@ def record_path(data_dir: Path, mods_dir: Path) -> Path:
     return Path(data_dir) / RECORDS / f"{hashlib.sha256(key).hexdigest()[:16]}.json"
 
 
-def write_package(package_dir: Path, installed: Installed, files: list[PackageFile], record: Path | None = None) -> Written:
+def write_package(package_dir: Path, installed: Installed, files: list[PackageFile], record: Path | None = None, *,
+                  reviews_sha256: str | None) -> Written:
     """Write the package into package_dir (created if needed), replacing what it held: the files in files
     that are to be included (see policy.FileStatus.included), and a manifest recording files (see
-    package_manifest). installed: the Smooth UI build they were patched for. If none is to be included,
+    package_manifest). installed: the Smooth UI build they were patched for; reviews_sha256: the reviews of
+    mods' code they were patched with (see mod_reviews.py). If none is to be included,
     remove the package instead, and write the manifest to record (see above), if given; else delete
     record."""
     package_dir = Path(package_dir)
@@ -74,7 +76,7 @@ def write_package(package_dir: Path, installed: Installed, files: list[PackageFi
     previous = _read_manifest(package_dir / PACKAGE_MANIFEST)
     delete_file(package_dir / PACKAGE_MANIFEST)
     included = sorted((file for file in files if file.status.included), key=lambda file: file.path)
-    manifest = package_manifest(installed, files, previous)
+    manifest = package_manifest(installed, files, previous, reviews_sha256)
     if not included:
         removed, unknown = remove_package(package_dir)
         log.info("Nothing to merge: " + ("removed the merged patches" if removed else "their folder stays, as it holds other files"))
@@ -129,7 +131,8 @@ def same_copy(record: dict, source) -> bool:
             and record.get("source_size") == source.size and record.get("source_crc32") == source.toc_entry.crc)
 
 
-def package_manifest(installed: Installed, files: list[PackageFile], previous: dict | None = None) -> dict:
+def package_manifest(installed: Installed, files: list[PackageFile], previous: dict | None = None,
+                     reviews_sha256: str | None = None) -> dict:
     """What the package holds, and what it was built from: for each file it holds, the copy it was patched
     from (to tell whether that changed without reading it) and the output (to tell whether the package
     is intact); for each other file, why it isn't there, and the copy that was decided on. A forced file
@@ -178,6 +181,8 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
             # A release's manifest is rewritten when it is rebuilt; this tells which build it was
             "release_created_at": installed.manifest.get("created_at"),
         },
+        # The reviews of mods' code used (see mod_reviews.py): new ones may let a screen that was left out be merged
+        "mod_reviews_sha256": reviews_sha256,
         "files": held,
         "not_held": not_held,
     }

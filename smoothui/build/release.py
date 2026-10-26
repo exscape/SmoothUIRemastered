@@ -10,7 +10,8 @@ from dataclasses import fields
 from functools import partial
 from typing import NamedTuple
 
-from ..common import fail
+from ..common import fail, profile_key
+from ..mod_reviews import ModReviews
 from ..patcher import patcher_core
 from ..patcher.fixes import check_fix_name
 from ..patcher.patcher_core import PatchSettings, RuleIssues
@@ -96,22 +97,27 @@ class ReleasePatch(NamedTuple):
     rule_issues: RuleIssues
 
 
-def patch_as_release(inputs, profile, manifest, *, reviewed=(), shared_settings=(), on_file=print_file_result,
-                     pool=None) -> ReleasePatch:
+def patch_as_release(inputs, profile, manifest, *, reviewed=(), mod_reviews: ModReviews | None = None, shared_settings=(),
+                     on_file=print_file_result, pool=None) -> ReleasePatch:
     """Patch other mods' files (SourceFiles) with their settings in profile (usually profile_from_manifest's,
     for those files), and review the result against the release's manifest.
 
     The release's reports hold the warnings it had for each file; these were already there in the game's
     own version of the file, so they are hidden where the other mod's code is the same (see
-    reviewed_warnings.py), along with the reviews in reviewed (for every file). Settings that the release's
+    reviewed_warnings.py), along with the reviews in reviewed (for every file) and those mod_reviews has for
+    the mod each file comes from (see mod_reviews.py). Settings that the release's
     reports say matched something, but no longer do, are warnings in rule_issues (see
     patcher_core.find_rule_issues; shared_settings are a profile's "*" block). on_file is as for
     patch_files, and also gets is_reviewed (see shared.print_file_result).
 
     Whether failures, rule issues or warnings are acceptable is up to the caller."""
     recorded = {key: record["report"] for key, record in manifest["files"].items()}
-    review = WarningReview(reviewed, {key: {review_of(warning) for warning in report["warnings"]}
-                                      for key, report in recorded.items()})
+    per_file = {key: {review_of(warning) for warning in report["warnings"]} for key, report in recorded.items()}
+    for source in inputs if mod_reviews else ():
+        if found := mod_reviews.for_mod(source.origin):
+            key = profile_key(source.path)
+            per_file[key] = per_file.get(key, set()) | found
+    review = WarningReview(reviewed, per_file)
     try:
         patched, kept, failed = patcher_core.patch_files(
             inputs, profile, on_file=partial(on_file, is_reviewed=review.is_reviewed), pool=pool)

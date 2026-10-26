@@ -1,0 +1,26 @@
+# Patcher warnings in other mods' own code that have been checked and found harmless, for the merger.
+# The tools ship this file, and the update check downloads it from the "manifests" GitHub release
+# Syntax (see smoothui/mod_reviews.py):
+#
+# <regular expression matching the mod's folder names in full, ignoring case>:
+#     <kind> <Class.method> @<hash>    as the merger's log shows it; the review stops applying when that code changes
+#     <kind> <Class.method> @any       any version of that code: only for code that is harmless by design
+#
+# A note should say *why* each one is harmless. Warnings in the game's own code go in config/reviewed_warnings.txt.
+
+# --- Ink and Iron: one folder, all screens in their own folders, or single-screen downloads
+# Its ENTER_FRAME handlers re-apply the mod's look each frame: hide vanilla elements, restyle text,
+# redraw its frames and put elements in place (from the current state, never by a step per frame), so
+# the result is the same at any frame rate. Checked 2026-10-26, against version 0.9.1.
+modInkAndIron.*:
+    enter-frame-handler TopBarNew.inkTick @3cfaa6a4                  # panel_common: redraws when the tabs change
+    enter-frame-handler TopBarNewGlossary.inkOnFrame @434da2c3       # panel_glossary_main: restyles every 12th frame
+    enter-frame-handler MapMenu.inkOnFrame @fd85b1ea                 # panel_worldmap: frames each frame, restyle every 6th
+    enter-frame-handler BlacksmithItemPanel.inkTick @085dabce        # panel_blacksmith
+    enter-frame-handler ModuleBlacksmithGrid.inkSmithTick @3cb62315  # panel_blacksmith
+    enter-frame-handler TransmogMenu.iaiTick @3b25ef1e               # panel_transmog
+    enter-frame-handler ItemCraftingModule.inkRtFrame @897d778c      # panel_alchemy, panel_crafting: rows and craft panel
+    enter-frame-handler ItemCraftingModule.inkFrame @a12d95f5        # panel_alchemy, panel_crafting: item card
+    enter-frame-handler MenuCharacterDupe.inkPopFrame @3234ea0a      # panel_character_dupe: the apply/cancel popup
+    enter-frame-handler SlotSkillGrid.inkHoldTick @113b3fe1          # panel_character_dupe: an arc mirroring the game's hold progress
+    enter-frame-handler InventoryTabbedListModule.iaiClampTabs @268d2ba0  # panel_inventory: resets the tab icons' scale and color

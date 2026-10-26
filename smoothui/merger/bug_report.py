@@ -19,6 +19,7 @@ import time
 import zipfile
 from pathlib import Path
 
+from .. import mod_reviews
 from ..common import SmoothUIError
 from ..files import make_dirs, read_file, write_file
 from ..manifests import load_manifest, release_manifest_paths
@@ -119,6 +120,9 @@ def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
         except (OSError, ValueError) as e:
             created = f"unreadable ({e})"
         lines.append(f"  {release}, created at {created} ({path})")
+    reviews = mod_reviews.path()
+    lines.append(f"Reviews of mods' code: {reviews} (SHA-256 {mod_reviews.sha256()})" if reviews
+                 else "Reviews of mods' code: none")
     if found is not None:
         lines += ["", *_load_order(found)]
     if unread:
