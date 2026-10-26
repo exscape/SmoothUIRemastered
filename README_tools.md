@@ -35,7 +35,7 @@ Alternatively, run `SmoothUIMerger.exe` manually any time you install/update/rem
 These are lightweight enough that the "Without a mod manager" section essentially applies.  
 Both only allow for starting `witcher3.exe`, so you can't set the "Run the Game" button to use the launcher. The merger itself works with them: nothing special is needed, and the merged patches load first by default.
 
-Recommended usage is to launch the game via a shortcut (desktop/taskbar to `SmoothUILauncher.exe`, or if you use Steam or GOG Galaxy, edit their launch settings (see below).
+Recommended usage is to launch the game via a shortcut (desktop/taskbar) to `SmoothUILauncher.exe`, or if you use Steam or GOG Galaxy, edit their launch settings (see below).
 
 ## Setup: Vortex
 
@@ -67,12 +67,17 @@ To make the "Play" button in Steam or GOG Galaxy use the launcher:
 
 ### Steam
 
-- **The game as a non-Steam game** (added with "Add a Non-Steam Game"): set the shortcut's **Target** to `SmoothUILauncher.exe`. Tested: Steam shows the game as running, and the overlay works. Launch options with `%command%` don't work for a non-Steam game: the game starts without the launcher.
-- **A Steam copy of the game: not tested yet.** I believe that it should work with these launch options (right-click the game > Properties > General), with the path to your copy of the launcher:
+**A Steam copy of the game:** 
+1. Find SmoothUILauncher.exe, right-click it, and choose "Copy as path".
+2. Right-click the game in Steam > Properties > General. Paste the path under **Launch options**, and add ` %command%` afterwards. Example:
   ```
-  "C:\path\to\SmoothUILauncher.exe" %command%
+  "C:\Games\The Witcher 3\Smooth UI Tools\SmoothUILauncher.exe" %command%
   ```
-  If you try this, please report whether the launcher runs (`data\launcher.log` is written, and its first line shows what Steam passed), whether Steam shows the game as running, and whether the overlay and playtime work.
+If you try this, please report back to me whether Steam shows the game as running, and whether the Steam overlay and playtime work as they should. (I expect so, but haven't tested.)
+
+**The game as a non-Steam game** (added with "Add a Non-Steam Game"):
+1. Find SmoothUILauncher.exe, right-click it, and choose "Copy as path".
+2. Right-click the game in Steam > Properties. Paste the path under **Target**, and you're done.
 
 ### GOG Galaxy
 
@@ -108,19 +113,20 @@ If the update fails, the old version stays as it was; you can then download the 
 
 ## Good to know
 
-- **Your mods are never changed:** The tools only write to its own `mod0000_SmoothUI_MergedPatches` mod, and sets itself as prioritized in `mods.settings`. Everything else is left alone; deleting the patches reverts every change. (The `mods.settings` entry is harmless by itself, and mod managers may remove it automatically.)
+- **Your mods are never changed:** The tools only write to their own `mod0000_SmoothUI_MergedPatches` mod, which they give priority in `mods.settings`. Everything else is left alone; deleting the patches reverts every change. (The `mods.settings` entry is harmless by itself, and mod managers may remove it automatically.)
 - **What the merger fixes:** the game uses only one mod's copy of each UI file. When other mods change a file that Smooth UI also changes, the merger takes the copy the game would use anyway (from the mod that comes first in your load order) and adds Smooth UI's changes to it. So Smooth UI's own place in the load order doesn't matter.
 - **What the merger doesn't do** is combine two **other** mods that change the same file: as without Smooth UI, only the first one's changes show, unless you install a compatibility patch for those two mods and place it above the original mods in the load order. The merger then uses that patch's copy and makes it high framerate.
 - **Load order:** the merged patches must load before every other UI mod (Priority 0 in `mods.settings`, which the merger sets). If another mod that ships one of the patched files is put ahead of them, the launcher notices and offers to fix it.
 - **Game updates** may need a new version of Smooth UI.
 - **mod.io mods are not supported** where they ship a UI file (`.redswf`) that Smooth UI changes: a mod.io mod always wins over regular mods, so neither Smooth UI nor the merger can fix that. mod.io mods that don't touch those files should be fine, but I haven't tested.
 - **Removing Smooth UI:** if you disable or uninstall Smooth UI but leave the merged patches, the launcher tells you, and offers to remove them.
-- **Logs:** if something goes wrong, `data\launcher.log` and `data\merger.log` (next to the exes) say what happened. Please include them when you report a problem.
+- **Mods that don't merge cleanly:** if the merger leaves out a mod's screen, or says some fixes couldn't be applied, please report it on the Bugs tab with the mod's name and version (the merger's "Write a bug report..." button collects the est). Most such cases are gaps in Smooth UI Toools that can be fixed.
+- **Logs:** if something goes wrong, use the "Write a bug report" button in the merger. You can also get a full .zip with all logs included, but Nexus bug reports can't have attachments. Upload it elsewhere and include a link, or send the report via GitHub.
 - Arguments given to the launcher are passed on to the game unchanged, which may be useful for e.g. Steam (see Steam above).
 
 ## Uninstallation
 
-Aside from the merged patches, the tools only write to a folder named `data` under its install directory, so uninstalling them is simple: delete the directory you put them in.  
+Aside from the merged patches, the tools only write to a folder named `data` under their install directory, so uninstalling them is simple: delete the directory you put them in.  
 You should also delete `mod0000_SmoothUI_MergedPatches` from your mods directory.
 
 ## Building the tools yourself (optional)
@@ -131,7 +137,7 @@ The releases are built by GitHub from the tagged source code, and you can check 
 
 On Windows, in `cmd.exe` or PowerShell:
 
-1. Install [Python 3.12](https://www.python.org/downloads/) (64-bit). More recent versions should work.
+1. Install [Python](https://www.python.org/downloads/) (64-bit). The initial release of Smooth UI Tools uses 3.15.2, but the latest version likely works.
 2. Get the source code of a release, and open `cmd.exe` in its folder. Either:
    - download "Source code (zip)" under the release on [GitHub](https://github.com/exscape/SmoothUIRemastered/releases), and extract it, or
    - with [Git](https://git-scm.com/):
@@ -142,7 +148,7 @@ On Windows, in `cmd.exe` or PowerShell:
      ```
 3. Install the packages, at the exact versions the release used, in a new environment:
    ```
-   py -3.12 -m venv env_gui
+   py -m venv env_gui
    env_gui\Scripts\python.exe -m pip install -r requirements_gui-lock.txt
    ```
 4. Build:

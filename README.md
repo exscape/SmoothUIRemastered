@@ -2,9 +2,9 @@
 
 **If you only want to install the mod to play the game, [install it from the Nexus Mods page](https://www.nexusmods.com/witcher3/mods/13526) instead.**
 
-**If you're looking for Smooth UI Tools (for compatibility with other UI mods), see [README_tools](README_tools.md).**
+**If you're looking for Smooth UI Tools (for players wanting compatibility with other UI mods), see [README_tools](README_tools.md).**
 
-These are the tools that creates the mod itself. They can also create compatibility patches between this mod and other mods that modify the same .redswf files.  
+The rest of this file is about the developer tools that create the mod itself, and compatibility patches between Smooth UI and other mods, for mod authors to release.  
 If you are a mod author that wants to release a compatibility patch, read on!
 
 The script is tested under WSL (mainly) and in cmd.exe (Windows Terminal). Powershell also works (but venv activation is slightly different, use "activate.ps1").
@@ -74,7 +74,7 @@ This needs the manifests that build-compat.py wrote in your copy's `manifests/co
 **Does a new version of your mod need a new compat patch?**
 Only if it changed a .redswf file that Smooth UI Remastered patches. Just build the patch: build-compat.py compares it with the newest earlier patch for your mod (from its manifest in `manifests/compat/`), and warns if the new one is identical, meaning neither your files nor the patching changed. The earlier patch then works with the new version as it is.
 
-Run `python3 build-compat.py --help` for basic help. I'm considering making a simple (and optional) GUI to streamline things further, and a binary release (likely PyInstaller-based) to go with it.  
+Run `python3 build-compat.py --help` for basic help.
 Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwas?gameId=952), or create a GitHub issue if something is wrong or unclear.
 
 # Project structure:
@@ -83,11 +83,15 @@ Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwa
 | --- | --- |
 | `build-compat.py` | Builds a compatibility patch against another mod (zip/rar/7z) |
 | `build-main.py` | Builds the mod; mainly intended for my own use |
+| `merger-gui.py` | Smooth UI Tools GUI, see `README_tools.md` |
+| `launcher.py` | Smooth UI Tools launcher, see `README_tools.md` | 
+| `merge.py` | Development tool; implements some of Smooth UI Tools in a command-line form |
 | `version-tool.py` | Reads the manifests (`manifests/`): checks whether compat patches are up-to-date, and can also `--diff` two release manifests to show changes, or `--check-game-files` to see whether a game update changed files the mod patches. |
+| `assets/` | Various files: icons, strings, mod settings XML and so on. | 
 | `smoothui/common.py` | Various shared logic |
 | `smoothui/build/` | The build process: implements `build-main.py` (`main.py`), `build-compat.py` (`compat.py`) and `version-tool.py`, and reads profiles, override files and reviewed warnings (see `config/`) |
+| `smoothui/merger/` | Smooth UI Merger implementation (see `README_tools.md`) |
 | `smoothui/patcher/` | Binary patcher; creates new, higher framerate `.redswf` files from a given list of files |
 | `smoothui/patcher/swf_patcher/` | Rescales a single SWF: retimes its animations for the new frame rate, and adjusts the ActionScript code that depends on frame numbers |
 | `smoothui/patcher/fixes/` | Pre- or post-FPS patch edits. Fixes for base game bugs, and non-FPS-related Smooth UI features are added here. |
-
-Only build-main.py, build-compat.py and version-tool.py can be called as scripts.
+| `smoothui/witcher3/` | Support library for Witcher 3-specific files (.redswf, .bundle, metadata.store) |
