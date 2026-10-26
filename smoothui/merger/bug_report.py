@@ -27,7 +27,7 @@ from . import tools_version
 from .game import MODS_SETTINGS_BACKUP, SETTINGS_FILE
 from .package import PACKAGE_MANIFEST, RECORDS
 from .scan import PACKAGE_FOLDER
-from .state import Check
+from .state import Check, State
 
 FOLDER = "bug-reports"
 # The logs and merge reports in the data folder, of every generation kept (see files.rotate)
@@ -140,8 +140,9 @@ def _load_order(found: Check) -> list[str]:
 
 def short_report(game: Path | None, found: Check | None, window_lines: list[str], log_path: Path) -> str:
     """The short bug report as text for the user to read, edit and paste: the versions, what the window shows
-    (window_lines), the load order, and the last warnings and errors in the log at log_path. Nothing else
-    is in it, and the profile folder is replaced as in the zip."""
+    (window_lines), the load order, the last warnings and errors in the log at log_path, and the mods whose
+    screens couldn't be fully merged, for the user to add their versions. Nothing else is in it, and the
+    profile folder is replaced as in the zip."""
     try:
         version = tools_version()
     except SmoothUIError as e:
@@ -160,7 +161,23 @@ def short_report(game: Path | None, found: Check | None, window_lines: list[str]
     problems = _log_problems(log_path)
     if problems:
         lines += ["", "Warnings and errors in the log:", *(f"  {line}" for line in problems)]
+    if found is not None:
+        lines += _not_fully_merged(found)
     return redact("\n".join(lines).encode("utf-8"), os.environ.get("USERPROFILE")).decode("utf-8", "replace") + "\n"
+
+
+def _not_fully_merged(found: Check) -> list[str]:
+    """The mods whose copies the merged patches leave out, or hold anyway or without some fixes, each with
+    blanks for the user to fill in (their versions aren't on disk)"""
+    mods = {}
+    for file in found.states:
+        if file.winner and ((file.state == State.NOT_HELD and file.cause in ("left out", "failed", "mod failed"))
+                            or (file.state == State.UP_TO_DATE and (file.cause == "forced" or file.fixes))):
+            mods.setdefault(file.winner.lower(), file.winner)
+    if not mods:
+        return []
+    return ["", "Mods whose screens couldn't be fully merged (please fill in):",
+            *(f"  {mod}: version ___, Nexus link ___" for mod in sorted(mods.values(), key=str.lower))]
 
 
 def _log_problems(path: Path) -> list[str]:

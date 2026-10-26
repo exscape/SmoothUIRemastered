@@ -122,16 +122,18 @@ class PackageFile:
             details = []
         elif status == FileStatus.FAILED:
             summary = f"not merged: {mod}'s copy can't be merged, so none of {mod}'s screens are. {self._fallback_text()}"
-            details = [f"Why: {self.error}",
-                       (f"Most likely a bug or limitation of Smooth UI, not of {mod}: please report it at {REPORT_URL}, "
-                        "with this log.")]
+            details = [f"Why: {self.error}", self._report("a bug or limitation")]
         else:
             summary = f"left out: Smooth UI can't fully merge {mod}'s copy. {self._fallback_text()}"
             details = ["Why:", *self._issue_lines(), *self._fix_lines(),
-                       ("You can merge it anyway (it may then look or behave wrong in places), or check for a newer "
-                        f"merger. Most likely a limitation of Smooth UI, not of {mod}: please report it at "
-                        f"{REPORT_URL}, with this log.")]
+                       "You can merge it anyway (it may then look or behave wrong in places), or check for a newer merger."]
+        if self.issues and status != FileStatus.FAILED:
+            details.append(self._report("a limitation"))
         return "\n  ".join([f"{screen_label(self.path)}: {summary}", *details])
+
+    def _report(self, what):
+        return (f"Most likely {what} of Smooth UI Tools, not of {self.mod}: please report it at {REPORT_URL}, with "
+                f"{self.mod}'s version and this log.")
 
     def _issue_lines(self):
         return [f"- {issue.message}" for issue in self.issues if issue.keeps_out]

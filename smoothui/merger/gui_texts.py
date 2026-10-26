@@ -130,7 +130,8 @@ BUG = ("A bug report lists your versions, what this window shows, the mods that 
 REPORT_LINK = "Report a bug ↗"
 WRITE_BUG_REPORT = "Write a bug report..."
 BUG_DIALOG = ("This is everything the report says. Change it as you like (for example, to leave out a mod's name), "
-              "then copy it into your bug report.")
+              "then copy it into your bug report.\nPlease also mention what went wrong in your post. If the report ends "
+              "with mods to fill in, please add their versions.")
 CLOSE = "Close"
 COPY_REPORT = "Copy to clipboard"
 REPORT_COPIED = "Copied: paste it into your bug report."
@@ -200,6 +201,9 @@ MODS = {
     "fixes": ("{count} has screens merged without some fixes: {mods}.",
               "{count} have screens merged without some fixes: {mods}."),
 }
+# After a merge, below the sentences about mods' copies (left out, or merged without some fixes)
+REPORT_MODS = ("This is most likely a limitation of Smooth UI Tools, not of the mods. Please report it, with each "
+               "mod's version, so it can be fixed for everyone.")
 NUMBERS = ("No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten")
 # The other causes, one sentence each: one with {mod} once per mod, one without it once
 CAUSES = {
@@ -313,7 +317,9 @@ def _merged(result: BuildResult, stale):
         notes.append("See the notes below.")
     headline = ("Merged, but some screens couldn't be merged" if any(file.severity == "error" for file in result.files)
                 else "Merged, with problems")
-    return Card(WARNING, headline, _sentences(causes, notes), (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
+    report = [REPORT_MODS] if causes else []
+    buttons = (PLAY_ANYWAY, DONT_START) if stale else (RESCAN, *([(WRITE_BUG_REPORT, "bug_report")] if causes else []))
+    return Card(WARNING, headline, _sentences(causes, [*report, *notes]), buttons)
 
 
 def _checked(found: Check, stale):
