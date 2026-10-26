@@ -18,6 +18,10 @@ theme.json (each a light and a dark mode color, following Windows' setting) and 
 A style sheet (STYLE) draws buttons, the progress bar, radio buttons and scroll bars as rounded, flat shapes,
 as customtkinter did.
 
+Without --stale, a card that is fine to play from offers Play: it checks again, then starts the game (without
+the merger's Qt environment, see game.game_environment) and closes the window, so that nothing is merged
+while the game runs.
+
 With --stale, the launcher opened it before starting the game. The window is the same, but it comes to the
 front, the card offers Merge and play, Play without merging (worded by what that costs, state.Severity) and
 Don't start the game, and a clean merge exits at once (play). Closing the window means play; while a merge
@@ -104,6 +108,8 @@ from .game import (
     GameFolder,
     Settings,
     find_games,
+    game_command,
+    game_environment,
     game_folder_of,
     game_path,
     is_game_folder,
@@ -137,6 +143,7 @@ from .gui_texts import (
     FAILED,
     GAME_HEADING,
     GAME_NOT_FOUND,
+    GAME_NOT_STARTED,
     GLYPHS,
     GUIDE_HEADING,
     GUIDE_LINK,
@@ -464,6 +471,7 @@ class MergerWindow:
         self.closing = False        # closed while merging: no new workers (see restart_pool)
         self.polling = False
         self.scan_again = False     # the game folder changed during a scan: its result is for the old one
+        self.play_when_scanned = False      # Play (outside stale mode) is checking again (see play)
         self.downloaded_meanwhile = False   # the update check downloaded files while something ran (updates_checked)
         self.candidates = None      # the game folders found (find_candidates), once the search ends
         self.searching = False
@@ -1061,7 +1069,7 @@ class MergerWindow:
             "merge_and_play": lambda: self.merge(play=True),
             "merge_anyway": self.merge_anyway,
             "merge_anyway_and_play": lambda: self.merge_anyway(play=True),
-            "play": lambda: self.exit(PLAY),
+            "play": (lambda: self.exit(PLAY)) if self.stale else self.play,
             "abort": lambda: self.exit(ABORT),
             "remove": self.remove,
             "remove_and_play": lambda: self.remove(play=True),
@@ -1266,6 +1274,12 @@ class MergerWindow:
             for problem in self.found.scan.problems:
                 log.warning(problem.message)
         self.refresh()
+        if self.play_when_scanned:
+            self.play_when_scanned = False
+            if any(action == "play" for _, action in self.card.buttons):
+                self.start_game()
+                return
+            log.warning("Not starting the game: the check found something to see first")
         self.look_for_updates()
 
     def rescan(self, keep_result=False):
@@ -1275,6 +1289,28 @@ class MergerWindow:
             self.merged = self.merge_error = None
             self.keep_order = False
         start_scan(self.game, self.calls)
+
+    def play(self):
+        """Play, outside stale mode: check again first, as the launcher does right before it starts the game
+        (the mods may have changed since this card was made). If the new card offers Play too, the game
+        starts (see scanned); else that card shows."""
+        log.info("Play: checking your mods again")
+        self.play_when_scanned = True
+        self.rescan()
+
+    def start_game(self):
+        """Start the game, as the launcher does without arguments, and close: nothing may merge into the Mods
+        folder while the game runs. Without the merger's Qt environment (see game_environment)."""
+        command = game_command([], self.game)
+        log.info(f"Starting the game: {subprocess.list2cmdline(command.args)}")
+        env = game_environment(os.environ, getattr(sys, "_MEIPASS", None))
+        try:
+            subprocess.Popen(command.args, cwd=command.cwd, env=env)
+        except OSError as e:
+            log.error(f"The game can't be started: {e}")
+            msg_box(GAME_NOT_STARTED.format(error=e, command=subprocess.list2cmdline(command.args)), MB_ICONERROR)
+            return
+        self.exit(CLOSED)
 
     # ---- Updates ----
 

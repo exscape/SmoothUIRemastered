@@ -87,6 +87,7 @@ REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate.
 
 DELETE_FAILED = "The merged patches can't be deleted: {error}\n\nDelete the folder {folder} yourself before you play."
 FAILED = "Smooth UI Merger failed:\n\n{error}\n\nDetails are in data\\{log}."
+GAME_NOT_STARTED = "The game can't be started:\n\n{error}\n\nCommand: {command}"
 
 # ---- The welcome page (first run) and the settings page ----
 
@@ -250,6 +251,8 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
     failed); critical_installed: a critical update was just installed, so a merge that is only recommended
     (the merger was updated) is strongly recommended.
 
+    Outside stale mode, only the cards that are fine to play from have Play, first: up to date, or with
+    screens that use their mods' own copies (left out, or merged without some fixes).
     In stale mode, every card has a button that plays, except while merging or removing. There, an unknown
     Smooth UI build (which a newer version of the tools may know) says what the update check found, and
     leads with the update if there is one."""
@@ -316,7 +319,7 @@ def _merged(result: BuildResult, stale, cant_merge):
     if result.clean:
         included = [(file.mod, file.path) for file in result.files if file.status.included]
         headline = f"Merged: {_patched(included)}" if included else "Merged: your mods' copies are already smooth"
-        return Card(OK, headline, (), (PLAY, DONT_START) if stale else (RESCAN,))
+        return Card(OK, headline, (), (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     causes = []
     for file in result.files:
         status = file.status.value
@@ -333,8 +336,11 @@ def _merged(result: BuildResult, stale, cant_merge):
                 else "Merged, with problems")
     report = [REPORT_MODS] if causes else []
     anyway = () if cant_merge else anyway_button(len(left_out(None, result)), stale)
+    # Only screens left out or merged without some fixes: the game then uses those mods' own copies (a
+    # re-scan's card offers Play too), so the user can play from here; not with what the notes tell of
+    play = (PLAY,) if not notes and not cant_merge else ()
     buttons = ((PLAY_ANYWAY, *anyway, DONT_START) if stale
-               else (RESCAN, *anyway, *([(WRITE_BUG_REPORT, "bug_report")] if causes else [])))
+               else (*play, RESCAN, *anyway, *([(WRITE_BUG_REPORT, "bug_report")] if causes else [])))
     return Card(WARNING, headline, _sentences(causes, [*report, *notes]), buttons)
 
 
@@ -403,16 +409,16 @@ def _checked(found: Check, stale):
         headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
                     else "Some screens can't be merged")
         anyway = anyway_button(len(left_out(found)), stale)
-        buttons = (PLAY, *anyway, DONT_START) if stale else (RESCAN, ("Merge again", "merge"), *anyway)
+        buttons = (PLAY, *anyway, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge"), *anyway)
         return Card(WARNING, headline, _sentences(causes), buttons)
     if patched:
         return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.",),
-                    (PLAY, DONT_START) if stale else (RESCAN, ("Merge again", "merge")))
+                    (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
     if any(file.state == State.NOT_HELD for file in found.states):
         return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens are already smooth.",),
-                    (PLAY, DONT_START) if stale else (RESCAN,))
+                    (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     return Card(OK, "Nothing to merge", ("No other mod changes Smooth UI's screens.",),
-                (PLAY, DONT_START) if stale else (RESCAN,))
+                (PLAY, DONT_START) if stale else (PLAY, RESCAN))
 
 
 def _unusable(installed, stale):

@@ -307,3 +307,25 @@ def game_command(args: list[str], game: Path | None) -> GameCommand | None:
         return None
     exe = Path(game) / GAME_EXE
     return GameCommand([str(exe), *args], exe.parent, None)
+
+
+# What PyInstaller's runtime hook for Qt sets in the frozen merger's environment
+QT_VARIABLES = ("QT_PLUGIN_PATH", "QML2_IMPORT_PATH")
+
+
+def game_environment(environ: dict[str, str], bundle: str | None) -> dict[str, str]:
+    """The environment the merger starts the game with: its own (environ), without what PyInstaller's runtime
+    hook for Qt adds to it in the frozen merger (bundle: its _internal folder, sys._MEIPASS; None when run from
+    source): the Qt variables, and bundle at the front of PATH, where DLLs that the game or what it loads
+    (overlays, ReShade) looks for could be found. The launcher doesn't load Qt: the game it starts has none of it."""
+    env = dict(environ)
+    if bundle is None:
+        return env
+    for name in QT_VARIABLES:
+        env.pop(name, None)
+    bundle = os.path.normcase(os.path.normpath(bundle))
+    for name, value in env.items():
+        if name.upper() == "PATH":
+            env[name] = os.pathsep.join(folder for folder in value.split(os.pathsep)
+                                        if folder and os.path.normcase(os.path.normpath(folder)) != bundle)
+    return env
