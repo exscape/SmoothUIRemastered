@@ -31,4 +31,4 @@ created_mod_version = "v0.3.3dev"
 targeted_game_version = "5.01"
 
 # The tools' version (X.Y.Z), which its exes and the packages it builds carry (see smoothui-tools.spec)
-tools_version = "0.1.0"
+tools_version = "0.9.0"
