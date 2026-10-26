@@ -64,6 +64,17 @@ def only_instance(name: str) -> bool:
     return ctypes.get_last_error() != ERROR_ALREADY_EXISTS
 
 
+def release_mutexes():
+    """Stop holding the named mutexes this process holds (see only_instance), before it ends"""
+    try:
+        kernel32 = ctypes.WinDLL("kernel32")
+    except (AttributeError, OSError):
+        return
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    while _mutexes:
+        kernel32.CloseHandle(_mutexes.pop())
+
+
 def find_window(title: str, class_prefix: str) -> int | None:
     """The handle of a top-level window (shown or not) with this title, whose window class starts with
     class_prefix (so that, say, an Explorer window on a folder of the same name doesn't count)"""

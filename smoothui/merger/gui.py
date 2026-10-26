@@ -74,6 +74,9 @@ QT_WINDOW_CLASS = "Qt"
 def main() -> int:
     args = sys.argv[1:]
     if args[:1] == ["--finish-update"]:     # (before everything: the old merger may still hold the mutex)
+        # Held by the helper too, at once: a merger started during the update would delete data\update\ (where
+        # the old version's files are while they are swapped), so it exits instead (see self_update.finish)
+        only_instance(MUTEX)
         return self_update.finish(args[1:])
     stale = "--stale" in args
     updated_from = args[args.index("--update-done") + 1] if "--update-done" in args[:-1] else None

@@ -6,10 +6,11 @@ helper: the new version's own merger, run from where it was unpacked.
    what it holds is the new version.
 2. start_helper: SmoothUIMerger.exe --finish-update APP_DIR OLD_VERSION [--critical] PID... (from the
    unpacked folder), after which the merger exits. --critical: a critical update (updates.CRITICAL).
-3. finish (the helper, first thing in gui.main, before anything is written): wait for the PIDs to exit, then
+3. finish (the helper, first thing in gui.main, before anything is written; it holds the merger's mutex, so
+   that a merger started meanwhile exits instead of deleting data\\update\\): wait for the PIDs to exit, then
    swap the files one at a time (see swap): the old version's move to data\\update\\old\\ (renames, so a
-   failure can be undone), the new version's are copied in (the helper runs from them), start the new
-   merger with --update-done OLD_VERSION (and --critical), and exit. Any failure puts the old version back, and says so in a
+   failure can be undone), the new version's are copied in (the helper runs from them), release the mutex,
+   start the new merger with --update-done OLD_VERSION (and --critical), and exit. Any failure puts the old version back, and says so in a
    message box.
 4. cleanup (the new merger, soon after it starts): delete data\\update\\, retrying for a while because the
    helper may still be exiting. A start that finds data\\update\\ deletes it, whatever left it there.
@@ -33,7 +34,7 @@ from typing import TYPE_CHECKING
 from ..common import SmoothUIError, fail
 from ..launcher import UPDATING
 from ..paths import APP_DIR, DATA_DIR
-from ..windows import MB_ICONERROR, msg_box, wait_for_process
+from ..windows import MB_ICONERROR, msg_box, release_mutexes, wait_for_process
 from .gui_texts import UPDATE_NOT_INSTALLED, UPDATE_START_FAILED
 
 if TYPE_CHECKING:
@@ -182,6 +183,7 @@ def finish(args: list[str], new_root: Path = APP_DIR) -> int:
         msg_box(UPDATE_NOT_INSTALLED.format(error=e), MB_ICONERROR)
         return 1
     log.info("The new version is installed: starting it")
+    release_mutexes()   # (the merger's, held since the helper started: the new merger takes it)
     try:
         _start([str(app_dir / MERGER_EXE), "--update-done", old_version, *([CRITICAL_ARG] if critical else [])],
                app_dir)
