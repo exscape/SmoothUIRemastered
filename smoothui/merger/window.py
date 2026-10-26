@@ -464,6 +464,7 @@ class MergerWindow:
         self.closing = False        # closed while merging: no new workers (see restart_pool)
         self.polling = False
         self.scan_again = False     # the game folder changed during a scan: its result is for the old one
+        self.downloaded_meanwhile = False   # the update check downloaded files while something ran (updates_checked)
         self.candidates = None      # the game folders found (find_candidates), once the search ends
         self.searching = False
         self.welcome_page = self.settings_page = self.help_page = None   # made when first shown
@@ -1243,8 +1244,13 @@ class MergerWindow:
 
     def scanned(self, result, error):
         self.set_busy(None)
-        if self.scan_again:     # the game folder changed meanwhile (change_game)
-            self.scan_again = False
+        # The game folder changed meanwhile (change_game), or the update check downloaded files that this scan,
+        # or the merge before it, may not have used: then the merge's result may be out of date too
+        if self.scan_again or self.downloaded_meanwhile:
+            if self.downloaded_meanwhile:
+                self.merged = self.merge_error = None
+                self.keep_order = False
+            self.scan_again = self.downloaded_meanwhile = False
             start_scan(self.game, self.calls)
             self.set_busy("scan")
             return
@@ -1296,8 +1302,9 @@ class MergerWindow:
 
     def updates_checked(self, found, error):
         """The update check's result (updates.Found; None if it failed or was skipped, which shows nothing).
-        New manifests (or corrected ones) may change what is known about the installed Smooth UI: then it scans
-        again."""
+        New manifests (or corrected ones) may change what is known about the installed Smooth UI, and new reviews
+        of mods' code may let screens that were left out be merged: then it scans again, without the last
+        merge's result (at once, or once what runs now ends: a merge may not have used them)."""
         looking, self.update_search = self.update_search == LOOKING, None
         if found is not None:
             self.save_check_time()
@@ -1305,10 +1312,11 @@ class MergerWindow:
             if looking and found.update is None:
                 self.update_search = NOTHING_FOUND
             if found.downloaded and self.found is not None:
-                log.info("Scanning again, with the new manifests")
-                if self.busy == "scan":
-                    self.scan_again = True
-                elif not self.busy:
+                if self.busy:
+                    log.info("Files were downloaded: scanning again with them once this is done")
+                    self.downloaded_meanwhile = True
+                else:
+                    log.info("Scanning again, with the downloaded files")
                     self.rescan()
         self.refresh()
 
