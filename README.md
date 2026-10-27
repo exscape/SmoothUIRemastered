@@ -63,6 +63,9 @@ This will:
 Optionally, you can add `--install --launch` to copy the mod to the game folder and launch the game for testing. This needs `--only-fps 120` or `--only-fps 60` to pick the patch matching the build of Smooth UI Remastered you have installed; `--only-fps` builds only that patch.  
 Make sure that Smooth UI Remastered and the target mod, both of the correct version, are both already present in the mods folder! build-compat.py will only build the compatibility patch mod required to make the mods work together.
 
+**The HUD isn't part of compat patches:** Smooth UI releases don't ship the HUD's files, so build-compat.py ignores a mod's HUD files, and a HUD mod needs no compat patch.  
+Smooth UI Tools can patch the HUD, but this should be transparent to HUD mod developers. See: [README_tools](README_tools.md#the-hud).
+
 The conflicting files are patched with the same settings (and frame rate) as in the specified Smooth UI Remastered release (`--smooth-version`), which should work for most mods.
 If a mod changes identifiers in an incompatible way, or needs more control, `--overrides FILE` adds settings on top; see `config/compat_overrides_example.txt` for the format.
 

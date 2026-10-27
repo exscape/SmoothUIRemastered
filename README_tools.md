@@ -96,7 +96,8 @@ Smooth UI Tools contains two programs:
 ### SmoothUIMerger.exe
 
 Patches other mods' copies of the files Smooth UI changes, so that your other UI mods (for example: Sort Everything, Gwent mods, Separate Upgrades Tab, Community GUI fixes, and so on) keep working at Smooth UI's frame rate. It writes the result as one mod, `mod0000_SmoothUI_MergedPatches`, in your `Mods` folder.  
-This is similar to how Script Merger works, but for making other UI mods work with Smooth UI.
+This is similar to how Script Merger works, but for making other UI mods work with Smooth UI.  
+It also makes the game's HUD smooth, which Smooth UI can't do by itself (see "The HUD" below).
 
 ### SmoothUILauncher.exe
 
@@ -105,6 +106,15 @@ Starts the game in place of `witcher3.exe`. Before the game starts, it checks (i
 **If you start the game with the launcher, you never need to start the merger yourself:** the launcher opens it whenever your merged patches need updating.
 
 The launcher is optional, but recommended: without it, nothing tells you when your merged patches are out of date, and you have to run the merger yourself after every change to your mods to ensure you get Smooth UI and other mods working together as intended.
+
+## The HUD
+
+The merger also has the option to make the HUD smooth ("Merge the HUD too", on the first run's page and under Settings). This is most notable on the scrolling loot list when you pick up several items, but can be seen on the radial menu (choosing signs/weapons), the minimap's quest arrow, etc.  
+In general, the effect is small, but it's also cheap to patch using the merger, so I recommend using it unless it causes issues with your HUD mods. (If it does, please send a bug report!)
+
+Without the merger, i.e. using Smooth UI Remastered by itself, it would not be safe to do, so there's no Smooth UI HUD package to download.  
+This is because the HUD is made up of many parts that only work together, and in a case where a compatibility patch would be needed but is missing, the HUD would break, rather than just be at the standard framerate.  
+The merger can ensure that such breakage doesn't occur.
 
 ## Updates
 
