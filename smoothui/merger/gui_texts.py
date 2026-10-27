@@ -51,7 +51,7 @@ UPDATED = "Updated to Smooth UI Tools v{version}."
 DOWNLOADING_UPDATE = "Downloading Smooth UI Tools v{version}..."
 UPDATE_FAILED_TITLE = "Update failed"
 UPDATE_FAILED = ("Smooth UI Tools v{version} couldn't be installed: {error}\n\nNothing has changed. Try again "
-                 "later, or download the new version from Nexus Mods.")
+                 "later, or download the new version from {url}")
 # Message boxes of the helper that swaps the files, after the merger has closed
 UPDATE_NOT_INSTALLED = ("Smooth UI Tools couldn't be updated: {error}\n\nThe old version is still installed. Close "
                         "SmoothUILauncher.exe, the merger and the game, then start the merger again.")

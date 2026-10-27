@@ -35,6 +35,7 @@ from ..common import SmoothUIError, fail
 from ..launcher import UPDATING
 from ..paths import APP_DIR, DATA_DIR
 from ..windows import MB_ICONERROR, msg_box, release_mutexes, wait_for_process
+from . import TOOLS_URL
 from .gui_texts import UPDATE_NOT_INSTALLED, UPDATE_START_FAILED
 
 if TYPE_CHECKING:
@@ -233,7 +234,7 @@ def swap(new_root: Path, app_dir: Path, old_dir: Path, retry_for: float = RETRY_
         except UpdateFailed as e2:
             log.error(str(e2))
             raise UpdateFailed(f"{e}. And the old version couldn't be put back ({e2}): download Smooth UI Tools "
-                               f"again from Nexus Mods, or move what is in {old_dir} back to {app_dir}") from e
+                               f"again from {TOOLS_URL}, or move what is in {old_dir} back to {app_dir}") from e
         raise
     finally:
         _remove_empty_folders(app_dir, names)

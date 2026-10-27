@@ -96,6 +96,7 @@ from . import (
     REPORT_URL,
     SMOOTHUI_URL,
     TOOLS_README_URL,
+    TOOLS_URL,
     UPDATE_URL_ENV,
     gui,
     self_update,
@@ -1398,7 +1399,7 @@ class MergerWindow:
                 log.error(f"The update failed: {error_text(error)}")
                 self.refresh()
                 show_error(self.root, UPDATE_FAILED_TITLE,
-                           UPDATE_FAILED.format(version=update.version, error=error_text(error)))
+                           UPDATE_FAILED.format(version=update.version, error=error_text(error), url=TOOLS_URL))
                 return
             self.exit(self_update.exit_code(self.stale))
 

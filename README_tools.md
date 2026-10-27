@@ -2,7 +2,8 @@
 # Smooth UI Tools
 
 These tools are a companion to [Smooth UI Remastered](https://www.nexusmods.com/witcher3/mods/13526), which is required to use them. They make other UI mods work together with Smooth UI, by creating high framerate versions of those mods.  
-You only need these tools if you use other UI mods that conflict with Smooth UI.
+You only need these tools if you use other UI mods that conflict with Smooth UI.  
+Download them from [their Nexus Mods page](https://www.nexusmods.com/witcher3/mods/15202).
 <!-- /nexus:skip -->
 
 ## Quick start
@@ -109,12 +110,12 @@ The launcher is optional, but recommended: without it, nothing tells you when yo
 
 When the merger starts, it asks GitHub whether a newer version of Smooth UI Tools exists. If an update exists, the merger window says so: **What's new** shows the release notes, and **Update now** downloads and installs it.  
 Updating is automatic: the merger downloads the new version, checks it, closes, and opens again in the new version.  
-If the update fails, the old version stays as it was; you can then download the new version from Nexus Mods.
+If the update fails, the old version stays as it was; you can then download the new version from [Nexus Mods](https://www.nexusmods.com/witcher3/mods/15202).
 
 **Privacy:** the check is a standard web request to GitHub, which can see your IP address. The **only** other thing sent is the current tools version (as `SmoothUITools/X.Y.Z`). Nothing whatsoever is sent to me (the developer).  
 **To turn it off:** untick "Check for updates when the merger starts" under **Settings** in the merger. The merger then never goes online at all.
 
-## Good to know
+## More information
 
 - **Your mods are never changed:** The tools only write to their own `mod0000_SmoothUI_MergedPatches` mod, which they give priority in `mods.settings`. Everything else is left alone; deleting the patches reverts every change. (The `mods.settings` entry is harmless by itself, and mod managers may remove it automatically.)
 - **What the merger fixes:** the game uses only one mod's copy of each UI file. When other mods change a file that Smooth UI also changes, the merger takes the copy the game would use anyway (from the mod that comes first in your load order) and adds Smooth UI's changes to it. So Smooth UI's own place in the load order doesn't matter.
@@ -123,7 +124,7 @@ If the update fails, the old version stays as it was; you can then download the 
 - **Script merger:** Script Merger may show conflicts involving `.redswf` files. **If `mod0000_SmoothUI_MergedPatches` is shown at the top of the conflict, you can ignore these warnings:** it doesn't know that we have resolved the issue already.
 - **Game updates** may need a new version of Smooth UI.
 - **mod.io mods are not supported** where they ship a UI file (`.redswf`) that Smooth UI changes: a mod.io mod always wins over regular mods, so neither Smooth UI nor the merger can fix that. mod.io mods that don't touch those files should be fine, but I haven't tested.
-- **Mods that don't merge cleanly:** if the merger leaves out a mod's screen, or says some fixes couldn't be applied, please report it on the Bugs tab with the mod's name and version (the merger's "Write a bug report..." button collects the rest). Most such cases are gaps in Smooth UI Tools that can be fixed, but I need to know about them to fix them.
+- **Mods that don't merge cleanly:** if the merger leaves out a mod's screen, or says some fixes couldn't be applied, please report it on the [Bugs tab](https://www.nexusmods.com/witcher3/mods/15202?tab=bugs) with the mod's name and version (the merger's "Write a bug report..." button collects the rest). Most such cases are gaps in Smooth UI Tools that can be fixed, but I need to know about them to fix them.
 - **Logs:** if something goes wrong, use the "Write a bug report" button in the merger. You can also get a full .zip with all logs included, but Nexus bug reports can't have attachments. Upload it elsewhere and include a link, or send the report by creating a GitHub issue.
 - Arguments given to the launcher are passed on to the game unchanged, which may be useful for e.g. Steam (see Steam above).
 

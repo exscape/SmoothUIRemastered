@@ -2,7 +2,7 @@
 
 **If you only want to install the mod to play the game, [install it from the Nexus Mods page](https://www.nexusmods.com/witcher3/mods/13526) instead.**
 
-**If you're looking for Smooth UI Tools (for players wanting compatibility with other UI mods), see [README_tools](README_tools.md).**
+**If you're looking for Smooth UI Tools (for players wanting compatibility with other UI mods), see [README_tools](README_tools.md), or [their Nexus Mods page](https://www.nexusmods.com/witcher3/mods/15202).**
 
 The rest of this file is about the developer tools that create the mod itself, and compatibility patches between Smooth UI and other mods, for mod authors to release.  
 If you are a mod author that wants to release a compatibility patch, read on!
