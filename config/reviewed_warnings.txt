@@ -19,3 +19,11 @@ unresolved-goto ModuleTransmogVis.handleUpdateEquipped @736904c0
 
 # _actionIcon is SlotAvatarIconRef (selector clip, not stretched), or null where that class isn't in the file
 unresolved-goto SlotDragAvatar.setActionIcon @96b36850
+
+# --- hud.redswf: every HUD module runs this file's copy of the shared classes (they load into its
+# ApplicationDomain), so these are checked against the modules
+# mcHoldAnimation / mcClickRect["mcHoldAnim"] (frame = percentage): no HUD module has such a clip
+unresolved-goto InputFeedbackButton.UpdateHoldAnimation @2d80b606
+unresolved-goto InputFeedbackButton.UpdateHoldAnimationWithPercentage @d9b7d999
+# totalFrames of a Button: no clip linked to Button (or a subclass) is stretched in any HUD module
+unresolved-frame-property Button.configUI @06be0bbc

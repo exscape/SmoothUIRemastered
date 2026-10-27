@@ -50,21 +50,22 @@ def profile_from_manifest(manifest):
         profile[key] = PatchSettings(record["fps"],
                                      tuple(SpeedRule(rule["pattern"], parse_speed(rule["speed"])) for rule in report["rules"]),
                                      _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"),
-                                     _recorded_fixes(key, report))
+                                     _recorded_fixes(key, report), report.get("source_fps"))
     return profile
 
 def release_requires(settings) -> list[str]:
     """What the merger must support to patch as a release did (its manifest's "requires"; see
     requires.py), given the PatchSettings of its files"""
     # A new setting must have its requirement here, or older mergers would ignore it
-    expected = {"target_fps", "rules", "include", "exclude", "fixes"}
+    expected = {"target_fps", "rules", "include", "exclude", "fixes", "source_fps"}
     if (found := {field.name for field in fields(PatchSettings)}) != expected:
         fail(f"release_requires doesn't know the setting(s) {', '.join(sorted(found - expected))}: give them a "
              "requirement (see requires.py)")
     requires = set()
     for file_settings in settings:
         requires |= {setting_requirement(name) for name, used in
-                     (("speed", file_settings.rules), ("include", file_settings.include), ("exclude", file_settings.exclude))
+                     (("speed", file_settings.rules), ("include", file_settings.include), ("exclude", file_settings.exclude),
+                      ("source-fps", file_settings.source_fps is not None))
                      if used}
         requires |= {fix_requirement(name) for name in file_settings.fixes}
     return sorted(requires)

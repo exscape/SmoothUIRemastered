@@ -19,8 +19,10 @@ FIX_NAMES = frozenset({
     "gwent-speed-options",
     "hub-tab-hover-fix",
 })
-# The profile's settings (see config/profile_default.txt), less "fix:" (each fix is its own requirement)
-SETTING_NAMES = frozenset({"speed", "include", "exclude"})
+# The profile's settings (see config/profile_default.txt), less "fix:" (each fix is its own requirement).
+# Not yet "group" (a release with a group of files; build/main.py requires it): it comes once the merger
+# builds groups, so this merger refuses such releases.
+SETTING_NAMES = frozenset({"speed", "include", "exclude", "source-fps"})
 # Requirements this merger no longer has, e.g. "fix:<name>" of a removed fix
 RETIRED = frozenset()
 

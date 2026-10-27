@@ -23,6 +23,7 @@ from ..manifests import (
     load_manifest,
     manifest_format,
     release_manifest_paths,
+    shipped_files,
     version_key,
 )
 from ..requires import KNOWN, RETIRED, manifest_requires
@@ -157,9 +158,9 @@ def _record_version(record_text):
 
 
 def _matches(files, manifest):
-    """None unless files are exactly the manifest's output files; else whether only their sizes could be
-    compared (a manifest from before output_crc32 was recorded)"""
-    records = {profile_key(key): record for key, record in manifest["files"].items()}
+    """None unless files are exactly the manifest's output files (those it ships); else whether only their
+    sizes could be compared (a manifest from before output_crc32 was recorded)"""
+    records = {profile_key(key): record for key, record in shipped_files(manifest).items()}
     if set(records) != set(files):
         return None
     sizes_only = not all("output_crc32" in record for record in records.values())

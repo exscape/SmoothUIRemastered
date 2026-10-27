@@ -15,6 +15,7 @@ from functools import partial
 from ..common import fail, profile_key
 from ..log import HEADING
 from ..patcher import dev_mode, patcher_core
+from ..requires import setting_requirement
 from ..witcher3.source_file import GAME_FILES, SourceFile
 from .compat_status import print_compat_status
 from .game_files import game_file_report
@@ -197,7 +198,7 @@ def build(args, config, paths, version, fps):
     """Patch, check, pack and zip one build (and for a release, write its manifest). Returns a function
     that prints the build's warnings and rule issues."""
     log.info(f"Building {version}: every file patched to {fps} fps", extra=HEADING)
-    profile, shared_settings = load_profile(args.profile, fps)
+    profile, shared_settings, group_of = load_profile(args.profile, fps)
     work_dir = paths['working_dir'] / f"main_{fps}fps"
     patched_dir = work_dir / "1_patched"
     output_dir = work_dir / "2_mod"     # laid out as the zip: mods/<the mod>/, bin/
@@ -243,8 +244,11 @@ def build(args, config, paths, version, fps):
 
     if args.dry_run:
         return print_issues
-    if not patched:
-        fail("no patched files were produced, aborting.")
+    # Groups that aren't shipped are recorded in the manifest, but only the merger builds them
+    shipped = [entry for entry in patched
+               if (group := group_of.get(profile_key(entry["path"]))) is None or group.shipped]
+    if not shipped:
+        fail("no patched files to ship were produced, aborting.")
 
     log.info(f"Removing the old output folder ({version})", extra=HEADING)
     shutil.rmtree(output_dir, ignore_errors=True)
@@ -252,7 +256,7 @@ def build(args, config, paths, version, fps):
         fail(f"could not remove the old output folder {output_dir}")
     output_content_path.mkdir(parents=True)
 
-    pack_content(patched, output_content_path)
+    pack_content(shipped, output_content_path)
     add_mod_files(output_dir, OUTPUT_MOD_NAME)
     write_build_record(output_mod_dir, version, fps)
 
@@ -263,11 +267,20 @@ def build(args, config, paths, version, fps):
         # Hashes and sizes of the source and output files (for v0.2, source_size == output_size for all files)
         records = {entry["path"]: {**entry["hashes"], "fps": entry["fps"], "report": entry["report"]}
                    for entry in sorted(patched, key=lambda e: e["path"])}
+        for path, record in records.items():
+            if group := group_of.get(profile_key(path)):
+                record["group"] = group.name
+                if not group.shipped:
+                    record["shipped"] = False
         commit, uncommitted = patcher_commit()
         recorded = {profile_key(path) for path in records}
+        requires = release_requires(settings for key, settings in profile.items() if profile_key(key) in recorded)
+        # "setting:group" isn't in requires.KNOWN until the merger handles groups, so it refuses such releases
+        if any("group" in record for record in records.values()):
+            requires.append(setting_requirement("group"))
         write_manifest(version, records, extra={
             "fps": fps,
-            "requires": release_requires(settings for key, settings in profile.items() if profile_key(key) in recorded),
+            "requires": requires,
             "patcher_commit": commit,
             "patcher_uncommitted_changes": uncommitted,
             "targeted_game_version": config['versions'].get('targeted_game_version'),

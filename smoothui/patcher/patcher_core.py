@@ -52,6 +52,8 @@ class PatchSettings:
     include: tuple = ()     # class name regexes and SpriteRefs
     exclude: tuple = ()
     fixes: tuple = ()       # names of fixes for bugs in the game's file (see fixes/)
+    source_fps: float | None = None     # the frame rate it plays at in game, where that isn't its header's
+                                        # ("source fps"; e.g. HUD modules play at the root HUD movie's rate)
 
 def patch_files(inputs, profile, *, on_file=None, pool=None):
     """Patch the given files (SourceFiles) in memory, each with its settings in profile ({profile key:
@@ -267,6 +269,10 @@ def patch_fps(data, pos, settings, body_hook=None):
         fixed, fix_records = apply_fixes(body, settings.fixes, BEFORE_RESCALE)
         if fixed is not None:
             body[:] = fixed
+        if settings.source_fps is not None:
+            # Rescale from the rate it really plays at, keeping its speed in game
+            if patch_fps_in_body(body, settings.source_fps) is None:
+                raise MalformedSwfError("can't read the frame rate in its header")
         result = rescale_body(body, settings.target_fps, rules=settings.rules, include=settings.include,
                               exclude=settings.exclude)
         if result.new_fps is not None:
@@ -276,7 +282,10 @@ def patch_fps(data, pos, settings, body_hook=None):
             body[:] = fixed_after
         fix_records = sorted(fix_records + records_after, key=lambda record: settings.fixes.index(record["name"]))
         changed = result.new_fps is not None or fixed is not None or fixed_after is not None
-        return changed, {**result.report, "fixes": fix_records}
+        report = {**result.report, "fixes": fix_records}
+        if settings.source_fps is not None:
+            report["source_fps"] = settings.source_fps     # old_fps is then this, not the header's
+        return changed, report
 
     return swf_patch(data, pos, patch, body_hook)
 

@@ -89,6 +89,11 @@ def load_manifest(version_or_path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
+def shipped_files(manifest) -> dict:
+    """The records of the files a release ships, by path as recorded. Its manifest also records the files of
+    groups it doesn't ship ("shipped": false), which only the merger builds (see build/profile.py's Group)."""
+    return {path: record for path, record in manifest["files"].items() if record.get("shipped", True)}
+
 # The format of the release manifests this code writes and can read (their "manifest_format"; one without
 # it is format 1). A merger that gets a manifest of a newer format (shipped with a newer Smooth UI, or
 # downloaded) must be updated before it can patch for that release. New fixes and settings don't need

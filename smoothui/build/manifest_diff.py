@@ -73,7 +73,7 @@ def diff_manifests(old: dict, new: dict) -> list[str]:
     if removed:
         lines += ["", f"Files removed ({len(removed)}):", *(f"  {path}" for path in removed)]
     if added:
-        lines += ["", f"Files added ({len(added)}):", *(f"  {path} ({new_files[path]['fps']:g} fps)" for path in added)]
+        lines += ["", f"Files added ({len(added)}):", *(_added_line(path, new_files[path]) for path in added)]
 
     unchanged = []
     for path in sorted(old_files.keys() & new_files.keys()):
@@ -137,6 +137,12 @@ def file_changes(old: dict, new: dict, compare_reports: bool) -> list[str]:
                      "(compare the patcher commits)")
     same = [aspect for aspect, changes in sections.items() if not changes]
     return lines + (["Same in both: " + ", ".join(same)] if same else [])
+
+
+def _added_line(path: str, record: dict) -> str:
+    """A file added, with its frame rate, and whether only the merger builds it"""
+    shipped = "" if record.get("shipped", True) else ", not shipped: merger only"
+    return f"  {path} ({record['fps']:g} fps{shipped})"
 
 
 def _section(aspect: str, changes: list[str]) -> list[str]:

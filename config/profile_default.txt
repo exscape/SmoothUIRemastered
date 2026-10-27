@@ -24,6 +24,18 @@
 #       fix: gwent-3d-bug-fix           Fix a bug in the game's own file (one of the fixes in
 #                                       smoothui/patcher/fixes/; not allowed under *). The file is written
 #                                       even if it needs no rescaling
+#   gameplay/gui_new/swf/example/module_c.redswf
+#       source fps: 24                  The frame rate the file really plays at, where that isn't its
+#                                       header's (a movie loaded into another plays at the other's rate);
+#                                       it is rescaled from this rate. Not allowed under *
+#
+# Groups: files that only work together, so they are patched all or none:
+#   group: example
+#       shipped: no                     Not in the release: only the merger builds them, from the game's files
+#       source fps: 24                  Settings directly under the group apply to all of its files
+#       gameplay/gui_new/swf/example/module_e.redswf
+#       gameplay/gui_new/swf/example/module_f.redswf
+#           exclude: ^SomeClass$        A file's own settings are indented deeper
 #
 # A setting that matches no sprite (under *: if it matches in no file), a fix that changes nothing, or a
 # setting that can't be followed fails --strict.
@@ -97,6 +109,42 @@ gameplay/gui_new/swf/repair/panel_blacksmith.redswf
 gameplay/gui_new/swf/repair/panel_transmog.redswf # Default 22 fps(!)
 gameplay/gui_new/swf/worldmap/panel_worldmap.redswf
 gameplay/gui_new/swf/repair/panel_enchanting.redswf
+
+# The HUD. Every module is loaded into the root HUD movie (hud.redswf, 24 fps) and plays at its frame
+# rate, whatever its own header says (30 for most), so all of them are rescaled from 24 fps, and only work
+# together: one module left at 24 fps under a 120 fps hud.redswf plays 5x as fast.
+# Left out: modules with no animation (console, subtitles, timelapse, watermark) and questfeed (never loaded).
+# The merger builds them (from the game's files, or the copies of mods that change them); releases never ship
+# them, as a HUD with some of them patched and some not plays the others 5x too fast or slow.
+group: hud
+    shipped: no
+    source fps: 24      # the root HUD movie's (hud.redswf's header says 24 too)
+    gameplay/gui_new/swf/hud/hud.redswf
+    gameplay/gui_new/swf/hud/hud_anchors.redswf
+    gameplay/gui_new/swf/hud/hud_areainfo.redswf
+    gameplay/gui_new/swf/hud/hud_boathealth.redswf
+    gameplay/gui_new/swf/hud/hud_bossfocus.redswf
+    gameplay/gui_new/swf/hud/hud_buffs.redswf
+    gameplay/gui_new/swf/hud/hud_companion.redswf
+    gameplay/gui_new/swf/hud/hud_controlsfeedback.redswf
+    gameplay/gui_new/swf/hud/hud_crosshair.redswf
+    gameplay/gui_new/swf/hud/hud_damageditems.redswf
+    gameplay/gui_new/swf/hud/hud_dialog.redswf
+    gameplay/gui_new/swf/hud/hud_enemyfocus.redswf
+    gameplay/gui_new/swf/hud/hud_horsepanicbar.redswf
+    gameplay/gui_new/swf/hud/hud_horsestaminabar.redswf
+    gameplay/gui_new/swf/hud/hud_interactions.redswf
+    gameplay/gui_new/swf/hud/hud_iteminfo.redswf
+    gameplay/gui_new/swf/hud/hud_journalupdate.redswf
+    gameplay/gui_new/swf/hud/hud_lootfeed.redswf
+    gameplay/gui_new/swf/hud/hud_message.redswf
+    gameplay/gui_new/swf/hud/hud_minimap2.redswf
+    gameplay/gui_new/swf/hud/hud_oneliners.redswf
+    gameplay/gui_new/swf/hud/hud_oxygenbar.redswf
+    gameplay/gui_new/swf/hud/hud_quests.redswf
+    gameplay/gui_new/swf/hud/hud_radialmenu.redswf
+    gameplay/gui_new/swf/hud/hud_timeleft.redswf
+    gameplay/gui_new/swf/hud/hud_wolfstatbars.redswf
 
 # Verified as NOT required, even though they may appear relevant to patch
 # gameplay/gui_new/swf/meditation/panel_meditation.redswf
