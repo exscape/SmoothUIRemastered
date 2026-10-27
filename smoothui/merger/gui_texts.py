@@ -7,11 +7,14 @@ No Qt, and nothing that patches (the merger's window imports this at once): test
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
+from ..witcher3.source_file import GAME_FILES
 from .installed import Status
 from .scan import FileResult, is_own_folder
+from .screens import file_name, group_name, screen_label, screen_name
 from .state import Check, FileState, Severity, State
 
 if TYPE_CHECKING:
@@ -84,6 +87,9 @@ PATCH_ANYWAY_QUESTION = ("Smooth UI can't fully merge these screens:\n\n{screens
                          "look or behave wrong in places. You can revert each one later, in its details in the list.")
 REVERT = "Revert to the mod's own copy"
 REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate."
+# The same, for a file in a group (e.g. the HUD): reverting one leaves the whole group out
+REVERT_GROUP = "Leave it out again"
+REVERT_GROUP_NOTE = "The {group} is then left out whole: the game shows it unpatched, at its original frame rate."
 
 DELETE_FAILED = "The merged patches can't be deleted: {error}\n\nDelete the folder {folder} yourself before you play."
 FAILED = "Smooth UI Merger failed:\n\n{error}\n\nDetails are in data\\{log}."
@@ -208,6 +214,13 @@ MODS = {
     "fixes": ("{count} has screens merged without some fixes: {mods}.",
               "{count} have screens merged without some fixes: {mods}."),
 }
+# The same kinds, for the game's own copies (only the HUD is merged from them)
+GAME_COPIES = {
+    "changed": "The game was updated.",
+    "not merged": "The HUD isn't merged yet.",
+    "left out": "The HUD can't be fully merged.",
+    "fixes": "The HUD is merged without some fixes.",
+}
 # After a merge, below the sentences about mods' copies (left out, or merged without some fixes)
 REPORT_MODS = ("This is most likely a limitation of Smooth UI Tools, not of the mods. Please report it, with each "
                "mod's version, so it can be fixed for everyone.")
@@ -221,6 +234,7 @@ CAUSES = {
     "overridden": "{mod} has priority 0 too, and its name sorts first.",
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
     "group": "A mod adds a HUD screen that Smooth UI doesn't know how to patch.",
+    "group left out": "The HUD only works if all of it is merged, so it is left out.",
 }
 # What a Smooth UI that can't be used costs, beyond the mods' screens (by installed.Status)
 RISKS = {
@@ -318,13 +332,13 @@ def _merging(stale, progress):
 def _merged(result: BuildResult, stale, cant_merge):
     """After a merge in the window (cant_merge: see _card)"""
     if result.clean:
-        included = [(file.mod, file.path) for file in result.files if file.status.included]
+        included = [(file.mod, file.path, file.group) for file in result.files if file.status.included]
         headline = f"Merged: {_patched(included)}" if included else "Merged: your mods' copies are already smooth"
         return Card(OK, headline, (), (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     causes = []
     for file in result.files:
         status = file.status.value
-        if status in ("left out", "failed", "mod failed"):
+        if status in ("left out", "failed", "mod failed", "group left out"):
             causes.append(("failed" if status == "mod failed" else status, file.mod))
         elif file.fixes_not_applied:
             causes.append(("fixes", file.mod))
@@ -405,7 +419,7 @@ def _checked(found: Check, stale):
     causes = [(_cause(file), file.winner) for file in found.states
               if file.state == State.UNDETERMINED or (file.state == State.NOT_HELD and file.cause != "unchanged")
               or file.cause == "fixes"]
-    patched = [(file.winner, file.path) for file in found.states if file.state == State.UP_TO_DATE]
+    patched = [(file.winner, file.path, file.group) for file in found.states if file.state == State.UP_TO_DATE]
     if causes:
         headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
                     else "Some screens can't be merged")
@@ -460,6 +474,52 @@ def row_status(file: FileState) -> tuple[str, str]:
             State.NO_LONGER_NEEDED: (WARNING, "Mod removed"), State.DAMAGED: (ERROR, "Damaged"),
             State.OVERRIDDEN: (WARNING, "Another mod loads first"),
             State.UNDETERMINED: (WARNING, "Load order unclear")}[state]
+
+
+def row_rank(file: FileState) -> int:
+    """For sorting rows: errors first, then warnings, then the rest"""
+    return {ERROR: 0, WARNING: 1, INFO: 2, OK: 3}[row_status(file)[0]]
+
+
+def screen_rows(states: list[FileState]) -> list[tuple[FileState, tuple[FileState, ...]]]:
+    """The list's rows, as (what the row shows, the files it stands for): a file alone, or a group's files
+    (e.g. the HUD's) as one row, as they are merged whole or not at all. A group's row is its worst file's
+    state, but with the group's first path (so that it keeps its place, and its details stay open), the
+    mods whose copies it uses (none for the game's own copies), and a message for all of them."""
+    rows, groups = [], {}
+    for state in states:
+        if state.group:
+            groups.setdefault(state.group, []).append(state)
+        else:
+            rows.append((state, (state,)))
+    for members in groups.values():
+        worst = min(members, key=row_rank)
+        mods = sorted({file.winner for file in members if file.winner and file.winner != GAME_FILES}, key=str.lower)
+        row = replace(worst, path=min(file.path for file in members), message=_group_message(members),
+                      winner=", ".join(mods) or None, previous=None)
+        rows.append((row, tuple(members)))
+    return rows
+
+
+def _group_message(members: list[FileState]) -> str:
+    """One message for a group's files: the one most of them have, and each other one by file"""
+    common = Counter(file.message for file in members).most_common(1)[0][0]
+    others = sorted((file for file in members if file.message != common), key=lambda file: (row_rank(file), file.path))
+    if not others:
+        return common
+    rest = len(members) - len(others)
+    return "\n".join([*(f"•  {file_name(file.path)}: {file.message}" for file in others),
+                      f"•  {'The other file' if rest == 1 else f'The other {rest} files'}: {common}"])
+
+
+def row_name(file: FileState) -> str:
+    """A row's name in the list, e.g. Inventory, or HUD for a group's row"""
+    return group_name(file.group) if file.group else screen_name(file.path)
+
+
+def row_label(file: FileState, members) -> str:
+    """A row's name and its files, atop its details, e.g. Inventory (panel_inventory), or HUD (26 files)"""
+    return f"{group_name(file.group)} ({_count(len(members), 'file')})" if file.group else screen_label(file.path)
 
 
 def merging_status(patched: str | None) -> tuple[str, str]:
@@ -517,14 +577,16 @@ def _sentences(causes, notes=()) -> tuple[str, ...]:
     """One sentence per cause (see CAUSES), and per kind of cause about mods' copies (see MOD_CAUSES), from
     causes ((key, mod), the most important first), then notes. Only MAX_CAUSES of them: the last one that
     fits then says how many more there are."""
-    groups, kinds = {}, {}
+    sentences, kinds = {}, {}   # sentences: a dict, as an ordered set
     for key, mod in causes:
-        if key in MOD_CAUSES:
+        if key in MOD_CAUSES and mod == GAME_FILES:
+            sentences[GAME_COPIES[MOD_CAUSES[key]]] = None
+        elif key in MOD_CAUSES:
             if mod:
                 kinds.setdefault(MOD_CAUSES[key], {}).setdefault(mod.lower(), mod)
         else:
-            groups.setdefault((key, mod if "{mod}" in CAUSES[key] else None), None)
-    sentences = [CAUSES[key].format(mod=mod) for key, mod in groups]
+            sentences[CAUSES[key].format(mod=mod)] = None
+    sentences = list(sentences)
     for kind, mods in kinds.items():
         names = sorted(mods.values(), key=str.lower)
         count = f"{NUMBERS[len(names)] if len(names) < len(NUMBERS) else len(names)} {'mod' if len(names) == 1 else 'mods'}"
@@ -535,8 +597,14 @@ def _sentences(causes, notes=()) -> tuple[str, ...]:
 
 
 def _patched(files) -> str:
-    """E.g. "10 screens from 5 mods", for files ((mod, path))"""
-    return f"{_count(len(files), 'screen')} from {_count(len({mod.lower() for mod, _ in files}), 'mod')}"
+    """E.g. "10 screens from 5 mods", for files ((mod, path, group)); a group counts as one screen, named
+    first (e.g. "the HUD and 2 screens from 1 mod"), and the game's own copies as no mod"""
+    groups = sorted({group_name(group) for _, _, group in files if group})
+    screens = [mod for mod, _, group in files if not group]
+    mods = {mod.lower() for mod in screens if mod != GAME_FILES}
+    text = (f"{_count(len(screens), 'screen')} from {_count(len(mods), 'mod')}" if mods
+            else _count(len(screens), "screen") if screens else "")
+    return " and ".join([*(f"the {name}" for name in groups), *([text] if text else [])])
 
 
 def _join(names) -> str:

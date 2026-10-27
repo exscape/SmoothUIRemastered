@@ -275,7 +275,6 @@ def build(args, config, paths, version, fps):
         commit, uncommitted = patcher_commit()
         recorded = {profile_key(path) for path in records}
         requires = release_requires(settings for key, settings in profile.items() if profile_key(key) in recorded)
-        # "setting:group" isn't in requires.KNOWN until the merger handles groups, so it refuses such releases
         if any("group" in record for record in records.values()):
             requires.append(setting_requirement("group"))
         write_manifest(version, records, extra={

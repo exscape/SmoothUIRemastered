@@ -177,6 +177,8 @@ from .gui_texts import (
     REPORT_COPIED,
     REPORT_LINK,
     REVERT,
+    REVERT_GROUP,
+    REVERT_GROUP_NOTE,
     REVERT_NOTE,
     SAVE,
     SAVE_ZIP,
@@ -216,14 +218,18 @@ from .gui_texts import (
     left_out,
     merging_status,
     release_notes,
+    row_label,
+    row_name,
+    row_rank,
     row_status,
+    screen_rows,
     status_card,
     unchanged_screens,
 )
 from .installed import Status
 from .package import remove_package
 from .scan import PACKAGE_FOLDER, is_package_folder, scan
-from .screens import screen_label, screen_name
+from .screens import group_name, screen_label
 from .shortcut import create_shortcut, desktop_folder
 from .state import FileState, State, carried_force
 
@@ -553,7 +559,10 @@ class MergerWindow:
         self.expanded = set()       # the screens whose details show
         self.auto_opened = set()    # the screens whose details opened by themselves (once, so closing sticks)
         self.list_content = None    # what the list shows (show_screens)
-        self.rows = {}              # by path: (FileState, its cells, the grid row for its details)
+        self.rows = {}              # by path: (FileState, its cells, the grid row for its details, the files it
+                                    # stands for: see screen_rows)
+        self.row_of = {}            # by a file's path: the path of its row
+        self.merging = {}           # while merging, by row: the files not patched yet (None once one failed)
         self.rows_merging = False   # whether rows show a merge's progress, not their FileState
         self.keep_order = False     # since a merge (until Re-scan): rows stay where they were (see show_screens)
         self.row_order = {}         # by path: the row's position in the list, as last shown
@@ -726,9 +735,9 @@ class MergerWindow:
         lines = []
         if self.card is not None:
             lines += [self.card.headline, *self.card.sentences]
-        for state, _, _ in self.rows.values():
+        for state, _, _, _ in self.rows.values():
             tone, status = row_status(state)
-            line = f"{screen_name(state.path)}: {status}" + (f" ({state.winner})" if state.winner else "")
+            line = f"{row_name(state)}: {status}" + (f" ({state.winner})" if state.winner else "")
             lines.append(f"{line}: {capitalized(state.message)}" if tone == ERROR else line)
         return lines + [text for text, _ in self.notes()] if self.found else lines
 
@@ -1089,14 +1098,15 @@ class MergerWindow:
         if self.rows_merging and self.busy:     # the scan after a merge: the rows show the merge's until it ends
             return
         states = self.found.states if self.found else []
-        order = _row_order
+        order = lambda row: _row_order(row[0])
         if self.keep_order:     # a row that wasn't shown goes after the others
-            order = lambda state: (self.row_order.get(state.path, len(self.row_order)), _row_order(state))
-        shown = sorted((state for state in states if state.state != State.NOTHING_TO_DO), key=order)
-        self.row_order = {state.path: index for index, state in enumerate(shown)}
-        others = len(states) - len(shown)
+            order = lambda row: (self.row_order.get(row[0].path, len(self.row_order)), _row_order(row[0]))
+        shown = sorted(screen_rows([state for state in states if state.state != State.NOTHING_TO_DO]), key=order)
+        self.row_order = {state.path: index for index, (state, _) in enumerate(shown)}
+        others = len(states) - sum(len(members) for _, members in shown)
         notes = self.notes() if self.found else []
-        content = ([(state, self.found.scan.files[state.path].shippers) for state in shown], others, notes)
+        content = ([(row, [(state, self.found.scan.files[state.path].shippers) for state in members])
+                    for row, members in shown], others, notes)
         merging, self.rows_merging = self.rows_merging, False
         if content == self.list_content and not merging:
             return
@@ -1111,17 +1121,17 @@ class MergerWindow:
         grid.setColumnStretch(5, 1)
         grid.setColumnMinimumWidth(0, 24)
         grid.setColumnMinimumWidth(3, STATUS_WIDTH + 16)
-        self.rows, self.details = {}, {}
+        self.rows, self.details, self.row_of = {}, {}, {}
         self.list_row = 0
         if shown:
             self.list_heading(SCREENS_HEADING)
-            if any("merged" in row_status(state)[1].lower() for state in shown):
+            if any("merged" in row_status(state)[1].lower() for state, _ in shown):
                 note = label(SCREENS_NOTE, tone="muted", wrap=True)
                 note.setContentsMargins(0, 0, 0, 4)
                 self.list_grid.addWidget(note, self.list_row, 0, 1, 6)
                 self.list_row += 1
-        for state in shown:
-            self.screen_row(state)
+        for state, members in shown:
+            self.screen_row(state, members)
         if others and shown:
             self.list_line(unchanged_screens(others))
         if notes:
@@ -1143,19 +1153,20 @@ class MergerWindow:
         self.list_grid.addWidget(line, self.list_row, 1, 1, 5)
         self.list_row += 1
 
-    def screen_row(self, state: FileState):
-        """A screen's row: its glyph, name, mod and status; a click shows its details, in the grid row below
-        it, kept for them"""
+    def screen_row(self, state: FileState, members):
+        """A screen's row (or a group's: see screen_rows): its glyph, name, mod and status; a click shows its
+        details, in the grid row below it, kept for them"""
         tone, status = row_status(state)
         toggle = lambda: self.toggle_row(state.path)
-        cells = [glyph(tone, on_click=toggle), label(screen_name(state.path), on_click=toggle),
+        cells = [glyph(tone, on_click=toggle), label(row_name(state), on_click=toggle),
                  label(state.winner or state.previous or "", tone="muted", on_click=toggle), label(status, on_click=toggle),
                  label("▸", 16, tone="muted", on_click=toggle, family=SYMBOL_FONT)]
         cells[0].setFixedWidth(24)
         for column, cell in enumerate(cells):
             cell.setContentsMargins(0, 1, 0 if column in (0, 4) else 16, 1)
             self.list_grid.addWidget(cell, self.list_row, column)
-        self.rows[state.path] = (state, cells, self.list_row + 1)
+        self.rows[state.path] = (state, cells, self.list_row + 1, members)
+        self.row_of.update((file.path, state.path) for file in members)
         self.list_row += 2
         if (tone == ERROR or state.fixes) and state.path not in self.auto_opened:
             self.auto_opened.add(state.path)    # the status alone doesn't say what went wrong
@@ -1180,26 +1191,33 @@ class MergerWindow:
 
     def show_details(self, path):
         """Below a screen's row: its file name, the full message, the other mods that change it, and Patch
-        anyway (a screen left out for its rescale's problems, never for a failure) or its revert"""
-        state, cells, row = self.rows[path]
+        anyway (a screen left out for its rescale's problems, never for a failure) or its revert. For a
+        group's row, both take every file of it left out so (or forced): the group is merged whole or not at
+        all, so forcing or reverting only some of them would leave the others' choice to no effect."""
+        state, cells, row, members = self.rows[path]
         cells[4].setText("▾")
         frame = QFrame(objectName="details")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 6, 12, 10)
         layout.setSpacing(6)
-        layout.addWidget(label(screen_label(path), tone="muted", wrap=True))
+        layout.addWidget(label(row_label(state, members), tone="muted", wrap=True))
         layout.addWidget(label(capitalized(state.message) + (":" if state.fixes else ""), wrap=True))
         for name in state.fixes:
             layout.addWidget(label(f"•  {fix_text(name)}", wrap=True))
-        if also := also_changed(self.found.scan.files[path], state.winner):
+        if not state.group and (also := also_changed(self.found.scan.files[path], state.winner)):
             layout.addWidget(label(also, wrap=True))
         widget = None
-        if state.state == State.NOT_HELD and state.cause == "left out":
+        left = [file.path for file in members if file.state == State.NOT_HELD and file.cause == "left out"]
+        forced = [file.path for file in members if file.state == State.UP_TO_DATE and file.cause == "forced"]
+        # A group with a file that can't be merged at all stays left out, forced or not
+        failed = any(file.state == State.NOT_HELD and file.cause in ("failed", "mod failed") for file in members)
+        if left and not failed:
             text, note = PATCH_ANYWAY, PATCH_ANYWAY_NOTE
-            command = lambda: self.merge(self.stale, patch_anyway=[path])
-        elif state.state == State.UP_TO_DATE and state.cause == "forced":
-            text, note = REVERT, REVERT_NOTE.format(mod=state.winner)
-            command = lambda: self.merge(self.stale, revert=path)
+            command = lambda: self.merge(self.stale, patch_anyway=left)
+        elif forced:
+            text, note = ((REVERT_GROUP, REVERT_GROUP_NOTE.format(group=group_name(state.group))) if state.group
+                          else (REVERT, REVERT_NOTE.format(mod=state.winner)))
+            command = lambda: self.merge(self.stale, revert=forced)
         else:
             text = None
         if text:
@@ -1424,17 +1442,20 @@ class MergerWindow:
                                 warning=True):
             self.merge(play, patch_anyway=paths)
 
-    def merge(self, play=False, patch_anyway=(), revert=None):
+    def merge(self, play=False, patch_anyway=(), revert=()):
         """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once,
         unless a critical update is known by then (it fixes a bug that may have made this build wrong): the
-        window stays open, with its notice. patch_anyway: files to force too; revert: a forced file not to
+        window stays open, with its notice. patch_anyway: files to force too; revert: forced files not to
         force (see build)"""
         self.set_busy("build")
         self.merged = self.merge_error = self.progress = None
         self.keep_order = True
         self.refresh()
-        for path in self.rows:      # each says "Done" when its file is (see merged_file)
-            if self.found.scan.files[path].winner:
+        self.merging = {}
+        for path, (_, _, _, members) in self.rows.items():  # each says "Done" when its files are (see merged_file)
+            waiting = {file.path for file in members if self.found.scan.files[file.path].winner}
+            if waiting:
+                self.merging[path] = waiting
                 self.show_row_status(path, *merging_status(None))
                 self.rows_merging = True
         from ..log import HEADING
@@ -1456,7 +1477,7 @@ class MergerWindow:
             self.rescan(keep_result=True)
         in_thread(self.calls, self.build, finished, play, patch_anyway, revert)
 
-    def build(self, play=False, patch_anyway=(), revert=None):
+    def build(self, play=False, patch_anyway=(), revert=()):
         """Build the package, forcing what the last build forced (the same copies), and patch_anyway, but
         not revert. Its progress goes to the window as it goes (merged_file, progressed). Then new workers
         for the next merge, unless the game starts now (play, the build is clean, and no critical update is
@@ -1481,9 +1502,9 @@ class MergerWindow:
         if patch_anyway:
             log.info(f"Patching anyway, as you chose: {', '.join(screen_label(path) for path in patch_anyway)}")
             force += [path for path in patch_anyway if path not in force]
-        if revert in force:
-            log.info(f"Reverting {screen_label(revert)} to the unpatched screen, as you chose")
-            force.remove(revert)
+        if reverted := [path for path in revert if path in force]:
+            log.info(f"Reverting to the unpatched screens, as you chose: {', '.join(map(screen_label, reverted))}")
+            force = [path for path in force if path not in reverted]
         result = None
         try:
             result = build_package(self.game, settings, force=force, pool=self.pool, data_dir=gui.DATA_DIR,
@@ -1508,9 +1529,16 @@ class MergerWindow:
             self.show_card()
 
     def merged_file(self, path, status):
-        """A file is patched (build_package's on_file): its row says so until the scan after the merge"""
-        if self.busy == "build" and path in self.rows:
-            self.show_row_status(path, *merging_status(status))
+        """A file is patched (build_package's on_file): its row says so until the scan after the merge (a
+        group's row once all its files are, or at once if one fails)"""
+        row = self.row_of.get(path)
+        if self.busy != "build" or self.merging.get(row) is None:
+            return
+        self.merging[row].discard(path)
+        if status == "failed":
+            self.merging[row] = None
+        if status == "failed" or not self.merging[row]:
+            self.show_row_status(row, *merging_status(status))
 
     def restart_pool(self):
         """Replace the pool, in the build's thread (starting workers takes a moment): its workers keep the
@@ -1704,8 +1732,7 @@ def fix_text(name):
 def _row_order(state: FileState):
     """By status (errors, then warnings, then the rest), then by mod (a screen no other mod changes now, e.g.
     its mod was removed, first), then by screen"""
-    rank = {ERROR: 0, WARNING: 1, INFO: 2, OK: 3}[row_status(state)[0]]
-    return rank, (state.winner or "").lower(), screen_name(state.path).lower()
+    return row_rank(state), (state.winner or "").lower(), row_name(state).lower()
 
 
 def ask_folder(parent, title, initial) -> str:

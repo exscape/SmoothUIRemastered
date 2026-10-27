@@ -92,6 +92,7 @@ class FileState:
     previous: str | None = None     # CHANGED (but for "smoothui", "merger") and NO_LONGER_NEEDED: the mod whose
                                     # copy the last merge used
     fixes: tuple[str, ...] = ()     # UP_TO_DATE: the fixes the merged copy lacks (a fix that can't apply)
+    group: str | None = None        # the group it is in, if any (see build/profile.py's Group)
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +194,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         def state(kind, message, severity=None, needs_build=None, cause=None, previous=None, fixes=(), key=key,
                   origin=origin):
             needs_build = kind.needs_build if needs_build is None else needs_build
-            states.append(FileState(key, kind, message, origin, severity, needs_build, cause, previous, fixes))
+            states.append(FileState(key, kind, message, origin, severity, needs_build, cause, previous, fixes,
+                                    groups.get(key)))
 
         if file.undetermined:
             state(State.UNDETERMINED, "the load order doesn't decide which mod's copy the game uses (see the problems)")
@@ -283,7 +285,7 @@ def _whole_groups(result: Scan, states: list[FileState], groups: dict[str, str],
     held_groups = {groups[key] for key in held if key in groups}
     result_states = []
     for file in states:
-        group = groups.get(file.path)
+        group = file.group
         if group in held_groups and result.unknown_group_files.get(group):
             mod, key = result.unknown_group_files[group][0]
             file = replace(file, state=State.CHANGED, severity=Severity.HIGH, needs_build=True, cause="group",

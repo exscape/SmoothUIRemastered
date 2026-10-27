@@ -20,9 +20,8 @@ FIX_NAMES = frozenset({
     "hub-tab-hover-fix",
 })
 # The profile's settings (see config/profile_default.txt), less "fix:" (each fix is its own requirement).
-# Not yet "group" (a release with a group of files; build/main.py requires it): it comes once the merger
-# builds groups, so this merger refuses such releases.
-SETTING_NAMES = frozenset({"speed", "include", "exclude", "source-fps"})
+# "group": a release with a group of files it doesn't ship, which the merger builds (see build/main.py)
+SETTING_NAMES = frozenset({"speed", "include", "exclude", "source-fps", "group"})
 # Requirements this merger no longer has, e.g. "fix:<name>" of a removed fix
 RETIRED = frozenset()
 
