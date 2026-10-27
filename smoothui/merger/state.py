@@ -12,7 +12,7 @@ folder instead (see package.py), which counts while there is no package.
 
 A group of files (e.g. the HUD; see policy.py) only works whole: while the package holds a group, anything
 that would leave the game with a mix of patched and unpatched copies of its files is as bad as a wrong copy
-(Severity.HIGH), and so is a mod adding a file to the group that Smooth UI doesn't know. A group the user
+(Severity.HIGH). A group the user
 turned off (scan.Scan.groups_off) is fine while the package doesn't hold it; one turned on or off since the
 last build needs a build (Severity.MEDIUM: either way, the game shows the whole group one way).
 """
@@ -26,7 +26,7 @@ from enum import Enum, IntEnum
 from pathlib import Path
 
 from .. import mod_reviews
-from ..common import SmoothUIError, profile_key
+from ..common import SmoothUIError
 from ..files import read_file
 from ..paths import DATA_DIR
 from ..witcher3.mod_bundles import list_bundles, read_bundle_tocs
@@ -43,7 +43,7 @@ from .scan import (
     is_package_folder,
     scan,
 )
-from .screens import file_name, group_name, screen_name
+from .screens import group_name, screen_name
 
 
 class State(Enum):
@@ -87,9 +87,8 @@ class FileState:
     needs_build: bool = False   # whether building the package again would change it (see State.needs_build)
     cause: str | None = None    # why, in a word, for the window to group files by: for CHANGED, "smoothui" or
                                 # "merger" (updated since the build), "updated" (the mod's copy changed),
-                                # "load order" (another mod's copy wins now), "group" (a mod adds a file to
-                                # its group that Smooth UI doesn't know) or "setting" (its group was turned
-                                # off since the build); for NOT_BUILT, "setting" if its group was turned on
+                                # "load order" (another mod's copy wins now) or "setting" (its group was
+                                # turned off since the build); for NOT_BUILT, "setting" if its group was turned on
                                 # since the build; for NOT_HELD, the status the manifest records (see
                                 # NOT_HELD_TEXT), or "turned off" (its group is); for UP_TO_DATE, "forced" if
                                 # the user chose to patch it anyway
@@ -187,7 +186,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                     for mod in result.order)
     held = (manifest or {}).get("files", {})
     not_held = (manifest or {}).get("not_held", {})
-    groups = {profile_key(key): record["group"] for key, record in installed.manifest["files"].items() if "group" in record}
+    groups = result.group_of
     was_off = set((manifest or {}).get("groups_off", ()))
 
     states = []
@@ -294,26 +293,21 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                   "merge: merge again", Severity.MEDIUM, cause="setting")
         else:
             state(State.NOT_BUILT, f"{_copy_of(origin)} is new since the last merge: merge again", Severity.MEDIUM)
-    return _whole_groups(result, states, groups, held)
+    return _whole_groups(result, states)
 
 
-def _whole_groups(result: Scan, states: list[FileState], groups: dict[str, str], held) -> list[FileState]:
-    """states, for a package holding a group (see the module's doc): a mod adding a file to the group changes
-    every one of them, and while the game loads some of the group's files from the package, the others
-    (each not patched) leave it mixed, which is as bad as a wrong copy. (If the game loads none of them from
-    the package, e.g. its mods.settings entry is disabled, the whole group is unpatched: not mixed.)"""
-    held_groups = {groups[key] for key in held if key in groups}
+def _whole_groups(result: Scan, states: list[FileState]) -> list[FileState]:
+    """states, for a package holding a group (see the module's doc): while the game loads some of the group's
+    files from the package, the others (each not patched, e.g. a file a mod added to the group since) leave
+    it mixed, which is as bad as a wrong copy. (If the game loads none of them from the package, e.g. its
+    mods.settings entry is disabled, the whole group is unpatched: not mixed.)"""
+    groups = result.group_of
     loaded_groups = {groups[key] for key, file in result.files.items()
                      if key in groups and file.loaded and is_package_folder(file.loaded.folder)}
     result_states = []
     for file in states:
         group = file.group
-        if group in held_groups and result.unknown_group_files.get(group):
-            mod, key = result.unknown_group_files[group][0]
-            file = replace(file, state=State.CHANGED, severity=Severity.HIGH, needs_build=True, cause="group",
-                           message=f"{mod} adds {file_name(key)} to the {group_name(group)}, which Smooth UI doesn't "
-                           f"know how to patch: merge again (the {group_name(group)} is then left out, as it only works whole)")
-        elif group in loaded_groups and file.severity == Severity.MEDIUM and file.cause != "setting":
+        if group in loaded_groups and file.severity == Severity.MEDIUM and file.cause != "setting":
             file = replace(file, severity=Severity.HIGH,
                            message=f"{file.message} (until then, the {group_name(group)} is part patched, part not: "
                            "its animations play at the wrong speeds)")

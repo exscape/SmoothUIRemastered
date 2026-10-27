@@ -21,7 +21,7 @@ from .compat_status import print_compat_status
 from .game_files import game_file_report
 from .manifest_diff import print_changes_since_previous
 from .profile import load_profile
-from .release import release_requires
+from .release import group_record, release_requires
 from .reviewed_warnings import (
     WarningReview,
     accept_warnings,
@@ -275,11 +275,15 @@ def build(args, config, paths, version, fps):
         commit, uncommitted = patcher_commit()
         recorded = {profile_key(path) for path in records}
         requires = release_requires(settings for key, settings in profile.items() if profile_key(key) in recorded)
-        if any("group" in record for record in records.values()):
+        # The settings of the groups' files, for those that mods add to a group's folder (see profile.Group)
+        groups = {group.name: group_record(group.file_settings) for group in group_of.values()
+                  if any(record.get("group") == group.name for record in records.values())}
+        if groups:
             requires.append(setting_requirement("group"))
         write_manifest(version, records, extra={
             "fps": fps,
             "requires": requires,
+            "groups": groups,
             "patcher_commit": commit,
             "patcher_uncommitted_changes": uncommitted,
             "targeted_game_version": config['versions'].get('targeted_game_version'),

@@ -8,9 +8,10 @@
 - Other problems with a rescale (a setting that wasn't followed or no longer matches, an unreviewed
   warning) leave out that file only, unless the user forces it (force).
 - A group's files (files that only work together, e.g. the HUD) are all in the package, or none are: if one
-  isn't (for any of the reasons above, or because there is no copy of it to patch), or a mod adds a file to
-  the group's folder that the group doesn't list, the whole group is left out. Releases don't ship such
-  groups, so the game then shows its own (or the mods') unpatched copies of all of them: never a mix.
+  isn't (for any of the reasons above, or because there is no copy of it to patch), the whole group is left
+  out. Releases don't ship such groups, so the game then shows its own (or the mods') unpatched copies of
+  all of them: never a mix. A file a mod adds to a group's folder is one of the group's (see
+  scan.Scan.group_of).
 
 A file left out isn't in the package, so the game loads the copy it would load without the package: the
 mod's own copy at its original frame rate, or the copy of a mod (Smooth UI's own, a compat patch) that
@@ -26,7 +27,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 
 from ..build.release import ReleasePatch
-from ..common import fail, profile_key
+from ..common import fail
 from ..patcher.fixes import CANT_APPLY, fix_consequence, fix_kind
 from ..witcher3.source_file import GAME_FILES, SourceFile
 from . import REPORT_URL
@@ -212,10 +213,8 @@ def _whole_groups(scan: Scan, files: list[PackageFile]) -> list[PackageFile]:
     """files, with every file of a group that can't be merged whole left out (GROUP_LEFT_OUT), and each group
     file's group set"""
     groups = defaultdict(set)   # group: its files (profile keys)
-    for key, record in scan.installed.manifest["files"].items():
-        if "group" in record:
-            groups[record["group"]].add(profile_key(key))
-    group_of = {key: group for group, keys in groups.items() for key in keys}
+    for key, group in scan.group_of.items():
+        groups[group].add(key)
     by_path = {file.path: file for file in files}
     def merged(file):   # in the package, or needs no patch
         return file is not None and (file.status.included or file.status == FileStatus.UNCHANGED)
@@ -224,13 +223,11 @@ def _whole_groups(scan: Scan, files: list[PackageFile]) -> list[PackageFile]:
         found = [f"{file_name(key)} " + ("can't be merged (see its own message)" if key in by_path
                                          else "has no copy to merge (see the problems listed)")
                  for key in sorted(keys) if not merged(by_path.get(key))]
-        found += [f"{mod} adds {file_name(key)}, which Smooth UI doesn't know how to patch"
-                  for mod, key in scan.unknown_group_files.get(group, [])]
         if found:
             causes[group] = "; ".join(found)
     result = []
     for file in files:
-        group = group_of.get(file.path)
+        group = scan.group_of.get(file.path)
         if group in causes and merged(file):
             file = replace(file, status=FileStatus.GROUP_LEFT_OUT, error=causes[group])
         result.append(replace(file, group=group) if group else file)

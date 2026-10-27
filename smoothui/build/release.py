@@ -18,6 +18,7 @@ from ..patcher.patcher_core import PatchSettings, RuleIssues
 from ..patcher.swf_patcher import (
     SpeedRule,
     SpriteRef,
+    format_speed,
     parse_speed,
     parse_sprite_pattern,
 )
@@ -52,6 +53,36 @@ def profile_from_manifest(manifest):
                                      _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"),
                                      _recorded_fixes(key, report), report.get("source_fps"))
     return profile
+
+def group_record(settings: PatchSettings) -> dict:
+    """How a release's manifest records a group's file_settings (see profile.py's Group), in its "groups": as
+    its reports record a file's settings"""
+    return {"rules": [{"pattern": rule.pattern.pattern, "speed": format_speed(rule.speed)} for rule in settings.rules],
+            "include": [{"pattern": str(token)} for token in settings.include],
+            "exclude": [{"pattern": str(token)} for token in settings.exclude],
+            "source_fps": settings.source_fps}
+
+def with_unlisted_files(manifest, group_of) -> dict:
+    """manifest, with a record for each file of a group that it doesn't list (group_of: {profile key: group};
+    a file a mod adds to the group's folder), as if the release had patched it with the group's settings
+    (see group_record). Each of them matched nothing, so none is an issue where it matches nothing (see
+    patcher_core.find_rule_issues), and its warnings are those of the group's files, so the same code is as
+    reviewed as there (see patch_as_release)."""
+    files = dict(manifest["files"])
+    listed = {profile_key(key) for key in files}
+    for key, group in group_of.items():
+        if key in listed:
+            continue
+        if group not in manifest.get("groups", {}):
+            fail(f"the manifest of Smooth UI Remastered {manifest['created_mod_version']} has no settings for the "
+                 f"group {group}: it must be built again")
+        settings = manifest["groups"][group]
+        warnings = [warning for record in manifest["files"].values() if record.get("group") == group
+                    for warning in record["report"]["warnings"]]
+        files[key] = {"fps": manifest["fps"], "group": group, "report": {
+            **{kind: [{**setting, "matched": []} for setting in settings[kind]] for kind in ("rules", "include", "exclude")},
+            "fixes": [], "sprites": [], "warnings": warnings, "source_fps": settings["source_fps"]}}
+    return {**manifest, "files": files}
 
 def release_requires(settings) -> list[str]:
     """What the merger must support to patch as a release did (its manifest's "requires"; see

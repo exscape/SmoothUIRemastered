@@ -65,6 +65,9 @@ class Group:
     settings: Entry = field(default_factory=Entry)
     shipped: bool = True        # "shipped: no": the release records the files but doesn't pack them, so
                                 # only the merger builds them (from the game's files)
+    # Set by load_profile: what a file of the group gets without settings of its own. The release records it,
+    # and the merger patches the files that mods add to the group's folder with it (e.g. a mod's own module)
+    file_settings: PatchSettings | None = None
 
 
 def _add_setting(entry: Entry, text: str, where: str, is_override: bool):
@@ -201,17 +204,21 @@ def load_profile(path, fps: int) -> tuple[dict[str, PatchSettings], list[str], d
     patcher_core.find_rule_issues, {profile key: its Group} for the files in one)"""
     path = Path(path) if path else DEFAULT_PROFILE
     files, star, groups = parse_profile(path)
+
+    def settings(entry, shared):    # a file's settings (entry), with its group's (shared) and those under "*"
+        return PatchSettings(fps, _unique(entry.rules + shared.rules + star.rules),
+                             _unique(entry.include + shared.include + star.include),
+                             _unique(entry.exclude + shared.exclude + star.exclude),
+                             _unique(entry.fixes), entry.source_fps if entry.source_fps is not None else shared.source_fps)
+
     profile, group_of = {}, {}
     for key, entry in files.items():
         group = groups.get(entry.group)
-        shared = group.settings if group else Entry()
         if group:
             group_of[key] = group
-        profile[key] = PatchSettings(fps, _unique(entry.rules + shared.rules + star.rules),
-                                     _unique(entry.include + shared.include + star.include),
-                                     _unique(entry.exclude + shared.exclude + star.exclude),
-                                     _unique(entry.fixes),
-                                     entry.source_fps if entry.source_fps is not None else shared.source_fps)
+        profile[key] = settings(entry, group.settings if group else Entry())
+    for group in groups.values():
+        group.file_settings = settings(Entry(), group.settings)
     counts = Counter(entry.group for entry in files.values())
     log.info(f"Loaded {len(profile)} entries from {path}"
              + "".join(f"; group {name}: {counts[name]} files"

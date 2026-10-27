@@ -36,6 +36,8 @@
 #       gameplay/gui_new/swf/example/module_e.redswf
 #       gameplay/gui_new/swf/example/module_f.redswf
 #           exclude: ^SomeClass$        A file's own settings are indented deeper
+#   The merger patches a .redswf that a mod adds to a group's folder as one of the group's files, with the
+#   group's settings (and those under *).
 #
 # A setting that matches no sprite (under *: if it matches in no file), a fix that changes nothing, or a
 # setting that can't be followed fails --strict.
@@ -114,6 +116,9 @@ gameplay/gui_new/swf/repair/panel_enchanting.redswf
 # rate, whatever its own header says (30 for most), so all of them are rescaled from 24 fps, and only work
 # together: one module left at 24 fps under a 120 fps hud.redswf plays 5x as fast.
 # Left out: modules with no animation (console, subtitles, timelapse, watermark) and questfeed (never loaded).
+# The merger patches any other .redswf a mod has in the group's folder (e.g. its copy of one of those, or a
+# module of its own) as one of the group's files, with the settings under "group:" (every file in swf\hud\
+# is a module that hud.redswf loads: see Hud.as loadModule).
 # The merger builds them (from the game's files, or the copies of mods that change them); releases never ship
 # them, as a HUD with some of them patched and some not plays the others 5x too fast or slow.
 group: hud

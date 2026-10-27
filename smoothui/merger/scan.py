@@ -1,7 +1,7 @@
 """Scan the installed mods: for each file the installed Smooth UI build patches, which mod's copy the game
 loads (see load_order.py), and what keeps a mod or file from being patched. For the files the build doesn't
 ship (a group only the merger builds, see build/profile.py's Group), the game's own copy is the one to patch
-where no mod changes the file.
+where no mod changes the file; a file a mod adds to a group's folder is the group's too (see Scan.group_of).
 
 Read-only, and reads only bundles' tables of contents (except to compare two copies of a file within one
 mod). It must work through MO2's virtual file system, where exists() and is_dir() often say no for files
@@ -28,7 +28,7 @@ from ..witcher3.mods_settings import ModSettings, read_mods_settings
 from ..witcher3.source_file import SourceFile
 from .installed import Installed, installed_build, is_smoothui_folder
 from .load_order import Mod, compare, load_order, make_mods, undetermined_for
-from .screens import file_name, group_name, screen_name
+from .screens import screen_name
 
 log = logging.getLogger(__name__)
 
@@ -53,8 +53,6 @@ class ProblemKind(Enum):
     ORPHANED_COMPAT = "orphaned compat patch"   # the game loads a compat patch's copy that no other mod ships
     MODIO = "mod.io"                    # a mod.io mod ships a file we patch, or mod.io couldn't be checked
     GAME_FILES = "game files"           # the game's own copy of a file only the merger builds can't be read
-    GROUP = "group"                     # a mod adds a file to a group's folder that the group doesn't list, so
-                                        # the group can't be merged (see Scan.unknown_group_files)
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +65,7 @@ class Problem:
 
 @dataclass(slots=True)
 class FileResult:
-    """One file the installed Smooth UI build patches"""
+    """One file the installed Smooth UI build patches (or a file a mod adds to one of its groups)"""
     path: str                                   # profile key
     shippers: list[Mod] = field(default_factory=list)   # the enabled mods shipping it, ours included, in load
                                                 # order: the first one's copy is the one the game loads now
@@ -100,10 +98,10 @@ class Scan:
     # For an enabled Smooth UI the merger can't use: the other enabled mods that ship a .redswf file in its
     # bundles (their screens may be wrong until the merger can patch for it)
     conflicts: list[str] = field(default_factory=list)
-    # {group: [(mod folder, profile key)]}: .redswf files that mods ship in the folder of a group's files, but
-    # that aren't in the group (e.g. a mod's own HUD module): the merger can't tell how to patch them, and they
-    # would play at the group's new frame rate unpatched, so the group must be left out
-    unknown_group_files: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+    # {profile key: group} for the files of the build's groups (see build/profile.py's Group), and the .redswf
+    # files that mods add to a group's folder (e.g. a mod's own HUD module): those play at the group's frame
+    # rate too, so they are the group's files, patched with its settings (see release.with_unlisted_files)
+    group_of: dict[str, str] = field(default_factory=dict)
     # The groups the user turned off (see game.groups_off): their files have no winner, so a build leaves
     # them out, and the game shows its own copies (or the mods')
     groups_off: frozenset[str] = frozenset()
@@ -166,28 +164,22 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), modio_
     # The folders of the groups' files, but those turned off: {folder: group}
     group_dirs = {posixpath.dirname(key): record["group"] for key, record in records.items()
                   if "group" in record and key not in off}
-    # The build's files, and any others in its groups' folders (to find files the groups don't know)
+    # The build's files, and any others in its groups' folders (files that mods add to a group)
     wanted = lambda key: key in keys or posixpath.dirname(key) in group_dirs
     problems = []
     shipped = {}    # Mod: {profile key: (bundle, TocEntry)}
-    unknown_group_files = {}
     mods_dir_length = windows_path_length(mods_dir)
     for mod in order:
         # The package's own problems aren't the scan's: package_state tells them, and a build replaces it
-        found = _mod_files(mods_dir / mod.folder, mod, wanted, [] if is_package_folder(mod.folder) else problems,
-                           mods_dir_length)
-        shipped[mod] = {key: value for key, value in found.items() if key in keys}
-        if not is_own_folder(mod.folder):
-            for key in sorted(found.keys() - keys):
-                group = group_dirs[posixpath.dirname(key)]
-                unknown_group_files.setdefault(group, []).append((mod.folder, key))
-                problems.append(Problem(ProblemKind.GROUP, f"{mod.folder} adds {file_name(key)} to the {group_name(group)}, "
-                                        f"which Smooth UI doesn't know how to patch: the {group_name(group)} can't be "
-                                        "merged, so the game shows it unpatched", mod.folder, key))
+        shipped[mod] = _mod_files(mods_dir / mod.folder, mod, wanted, [] if is_package_folder(mod.folder) else problems,
+                                  mods_dir_length)
+    group_of = {key: record["group"] for key, record in records.items() if "group" in record}
+    group_of |= {key: group_dirs[posixpath.dirname(key)] for mod, found in shipped.items() if not is_own_folder(mod.folder)
+                 for key in found if key not in keys}
     game = _game_copies(game_path, unshipped - off, problems)
 
     files = {}
-    for key in sorted(keys):
+    for key in sorted(group_of.keys() | keys):
         result = files[key] = FileResult(key, [mod for mod in order if key in shipped[mod]])
         others = [mod for mod in result.shippers if not is_own_folder(mod.folder)]
         result.undetermined = undetermined_for(others) if key not in off else []
@@ -209,8 +201,7 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), modio_
         elif key in unshipped:
             result.winner = game.get(key)
     problems += modio_problems(keys, modio_root)
-    return Scan(mods_dir, installed, order, files, problems, unknown_group_files=unknown_group_files,
-                groups_off=frozenset(groups_off))
+    return Scan(mods_dir, installed, order, files, problems, group_of=group_of, groups_off=frozenset(groups_off))
 
 
 def _game_copies(game_path, keys, problems) -> dict[str, SourceFile]:

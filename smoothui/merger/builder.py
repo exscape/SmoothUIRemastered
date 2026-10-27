@@ -12,7 +12,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .. import mod_reviews
-from ..build.release import ReleasePatch, patch_as_release, profile_from_manifest
+from ..build.release import (
+    ReleasePatch,
+    patch_as_release,
+    profile_from_manifest,
+    with_unlisted_files,
+)
 from ..build.reviewed_warnings import WarningSummary
 from ..build.shared import print_file_result
 from ..common import fail, profile_key
@@ -41,12 +46,15 @@ def patch_winners(result: Scan, *, reviews: ModReviews | None = None, pool=None,
     sources = [file.winner for file in result.files.values() if file.winner]
     if not sources:
         return ReleasePatch([], [], [], WarningSummary({}, 0, [], 0), RuleIssues([], []))
+    # The files that mods add to a group are patched as the release would have patched them
+    manifest = with_unlisted_files(installed.manifest, {source.path: result.group_of[source.path] for source in sources
+                                                        if source.path in result.group_of})
     try:
-        profile = {profile_key(key): settings for key, settings in profile_from_manifest(installed.manifest).items()}
+        profile = {profile_key(key): settings for key, settings in profile_from_manifest(manifest).items()}
     except (KeyError, TypeError, ValueError) as e:     # a release that should have raised manifest_format
         fail(f"this version of Smooth UI Tools can't read the manifest of Smooth UI Remastered {installed.version} "
              f"({e!r}): update them")
-    return patch_as_release(sources, {source.path: profile[source.path] for source in sources}, installed.manifest,
+    return patch_as_release(sources, {source.path: profile[source.path] for source in sources}, manifest,
                             mod_reviews=reviews if reviews is not None else mod_reviews.load(), on_file=on_file, pool=pool)
 
 

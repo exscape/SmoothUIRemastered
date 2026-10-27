@@ -238,7 +238,6 @@ CAUSES = {
     "entry": "The merged patches' mods.settings entry is missing or changed.",
     "overridden": "{mod} has priority 0 too, and its name sorts first.",
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
-    "group": "A mod adds a HUD screen that Smooth UI doesn't know how to patch.",
     "group left out": "The HUD only works if all of it is merged, so it is left out.",
     "setting": "The \"Merge the HUD too\" setting changed since the last merge.",
 }
@@ -474,7 +473,7 @@ def row_status(file: FileState) -> tuple[str, str]:
                 "turned off": (OK, "Turned off")}.get(cause, (ERROR, "Left out"))
     if state == State.CHANGED:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
-                "load order": (WARNING, "Load order changed"), "group": (WARNING, "Unknown screen added"),
+                "load order": (WARNING, "Load order changed"),
                 "setting": (WARNING, "Setting changed")}.get(cause, (WARNING, "Mod updated"))
     if state == State.NOT_BUILT and cause == "setting":
         return WARNING, "Setting changed"
