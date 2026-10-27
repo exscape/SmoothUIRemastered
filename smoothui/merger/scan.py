@@ -28,7 +28,7 @@ from ..witcher3.mods_settings import ModSettings, read_mods_settings
 from ..witcher3.source_file import SourceFile
 from .installed import Installed, installed_build, is_smoothui_folder
 from .load_order import Mod, compare, load_order, make_mods, undetermined_for
-from .screens import screen_name
+from .screens import file_name, group_name, screen_name
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +53,8 @@ class ProblemKind(Enum):
     ORPHANED_COMPAT = "orphaned compat patch"   # the game loads a compat patch's copy that no other mod ships
     MODIO = "mod.io"                    # a mod.io mod ships a file we patch, or mod.io couldn't be checked
     GAME_FILES = "game files"           # the game's own copy of a file only the merger builds can't be read
+    GROUP = "group"                     # a mod adds a file to a group's folder that the group doesn't list, so
+                                        # the group can't be merged (see Scan.unknown_group_files)
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +172,11 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
         shipped[mod] = {key: value for key, value in found.items() if key in keys}
         if not is_own_folder(mod.folder):
             for key in sorted(found.keys() - keys):
-                unknown_group_files.setdefault(group_dirs[posixpath.dirname(key)], []).append((mod.folder, key))
+                group = group_dirs[posixpath.dirname(key)]
+                unknown_group_files.setdefault(group, []).append((mod.folder, key))
+                problems.append(Problem(ProblemKind.GROUP, f"{mod.folder} adds {file_name(key)} to the {group_name(group)}, "
+                                        f"which Smooth UI doesn't know how to patch: the {group_name(group)} can't be "
+                                        "merged, so the game shows it unpatched", mod.folder, key))
     game = _game_copies(game_path, unshipped, problems)
 
     files = {}

@@ -220,6 +220,7 @@ CAUSES = {
     "entry": "The merged patches' mods.settings entry is missing or changed.",
     "overridden": "{mod} has priority 0 too, and its name sorts first.",
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
+    "group": "A mod adds a HUD screen that Smooth UI doesn't know how to patch.",
 }
 # What a Smooth UI that can't be used costs, beyond the mods' screens (by installed.Status)
 RISKS = {
@@ -449,10 +450,12 @@ def row_status(file: FileState) -> tuple[str, str]:
         return OK, "Merged anyway" if cause == "forced" else "Merged"
     if state == State.NOT_HELD:
         return {"unchanged": (OK, "Already smooth"), "failed": (ERROR, "Can't merge"),
-                "mod failed": (ERROR, "Mod left out")}.get(cause, (ERROR, "Left out"))
+                "mod failed": (ERROR, "Mod left out"),
+                "group left out": (WARNING, "Left out with its group")}.get(cause, (ERROR, "Left out"))
     if state == State.CHANGED:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
-                "load order": (WARNING, "Load order changed")}.get(cause, (WARNING, "Mod updated"))
+                "load order": (WARNING, "Load order changed"),
+                "group": (WARNING, "Unknown screen added")}.get(cause, (WARNING, "Mod updated"))
     return {State.NOTHING_TO_DO: (OK, "Smooth UI's own copy"), State.NOT_BUILT: (WARNING, "Not merged yet"),
             State.NO_LONGER_NEEDED: (WARNING, "Mod removed"), State.DAMAGED: (ERROR, "Damaged"),
             State.OVERRIDDEN: (WARNING, "Another mod loads first"),

@@ -9,22 +9,27 @@ would patch them cleanly. Light: the launcher imports it, so it must not import 
 
 A package that would hold no files is removed, and its manifest kept in a record in the merger's data
 folder instead (see package.py), which counts while there is no package.
+
+A group of files (e.g. the HUD; see policy.py) only works whole: while the package holds a group, anything
+that would leave the game with a mix of patched and unpatched copies of its files is as bad as a wrong copy
+(Severity.HIGH), and so is a mod adding a file to the group that Smooth UI doesn't know.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum, IntEnum
 from pathlib import Path
 
 from .. import mod_reviews
-from ..common import SmoothUIError
+from ..common import SmoothUIError, profile_key
 from ..files import read_file
 from ..paths import DATA_DIR
 from ..witcher3.mod_bundles import list_bundles, read_bundle_tocs
 from ..witcher3.mods_settings import ModSettings
+from ..witcher3.source_file import GAME_FILES
 from . import tools_version
 from .installed import is_smoothui_folder
 from .package import PACKAGE_MANIFEST, PACKAGE_MANIFEST_FORMAT, record_path, same_copy
@@ -36,7 +41,7 @@ from .scan import (
     is_package_folder,
     scan,
 )
-from .screens import screen_name
+from .screens import file_name, group_name, screen_name
 
 
 class State(Enum):
@@ -79,8 +84,9 @@ class FileState:
     severity: Severity | None = None    # set for the files that open the merger at launch (see Check)
     needs_build: bool = False   # whether building the package again would change it (see State.needs_build)
     cause: str | None = None    # why, in a word, for the window to group files by: for CHANGED, "smoothui" or
-                                # "merger" (updated since the build), "updated" (the mod's copy changed) or
-                                # "load order" (another mod's copy wins now); for NOT_HELD, the status the
+                                # "merger" (updated since the build), "updated" (the mod's copy changed),
+                                # "load order" (another mod's copy wins now) or "group" (a mod adds a file to
+                                # its group that Smooth UI doesn't know); for NOT_HELD, the status the
                                 # manifest records (see NOT_HELD_TEXT); for UP_TO_DATE, "forced" if the user
                                 # chose to patch it anyway
     previous: str | None = None     # CHANGED (but for "smoothui", "merger") and NO_LONGER_NEEDED: the mod whose
@@ -141,6 +147,7 @@ NOT_HELD_TEXT = {
     "left out": "left out, as Smooth UI can't fully merge it",
     "failed": "left out, as it can't be merged",
     "mod failed": "left out, as another of the mod's screens can't be merged",
+    "group left out": "left out, as the {group} is merged whole or not at all",
 }
 
 
@@ -175,6 +182,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                     for mod in result.order)
     held = (manifest or {}).get("files", {})
     not_held = (manifest or {}).get("not_held", {})
+    groups = {profile_key(key): record["group"] for key, record in installed.manifest["files"].items() if "group" in record}
 
     states = []
     for key in sorted(result.files):
@@ -220,7 +228,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                           "is missing or changed: merge again", Severity.MEDIUM, needs_build=True)
             elif record.get("forced"):
                 since = f" on {record['forced_since']}" if record.get("forced_since") else ""
-                text = (f"merged anyway, as you chose{since} ({origin}'s copy), though Smooth UI can't fully merge "
+                text = (f"merged anyway, as you chose{since} ({_copy_of(origin)}), though Smooth UI can't fully merge "
                         "it: it may look or behave wrong in places")
                 if record.get("reasons"):
                     text += f". Why: {'; '.join(record['reasons'])}"
@@ -230,7 +238,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.UP_TO_DATE, text, cause="forced", fixes=fixes)
             else:
                 fixes = tuple(record.get("fixes_not_applied") or ())
-                state(State.UP_TO_DATE, f"merged ({origin}'s copy)" + (", without some fixes" if fixes else ""),
+                state(State.UP_TO_DATE, f"merged ({_copy_of(origin)})" + (", without some fixes" if fixes else ""),
                       cause="fixes" if fixes else None, fixes=fixes)
         elif key in held:
             state(State.DAMAGED, "the merged patches are damaged (their manifest lists it, their bundle doesn't): "
@@ -252,18 +260,41 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                       "merge it now", Severity.MEDIUM, cause="merger")
             else:
                 text = NOT_HELD_TEXT.get(record["status"], record["status"])
+                if record["status"] == "group left out":
+                    text = text.format(group=group_name(groups.get(key, "")))
                 if record["status"] != "unchanged":
                     shown = file.loaded_without_package
-                    text += (", so the game shows its own copy, at its original frame rate" if shown and shown.folder == origin
+                    own = (shown.folder == origin) if shown else origin == GAME_FILES
+                    text += (", so the game shows its own copy, at its original frame rate" if own
                              else f", so the game shows {_copy_name(shown.folder) if shown else 'no copy'}")
-                if record["status"] in ("left out", "failed") and record.get("reasons"):
+                if record["status"] in ("left out", "failed", "group left out") and record.get("reasons"):
                     text += f". Why: {'; '.join(record['reasons'])}"
-                state(State.NOT_HELD, f"{origin}'s copy: {text}", cause=record["status"])
+                state(State.NOT_HELD, f"{_copy_of(origin)}: {text}", cause=record["status"])
         elif manifest is None and manifest_problem is None:
-            state(State.NOT_BUILT, f"{origin}'s copy isn't merged yet", Severity.MEDIUM)
+            state(State.NOT_BUILT, f"{_copy_of(origin)} isn't merged yet", Severity.MEDIUM)
         else:
-            state(State.NOT_BUILT, f"{origin}'s copy is new since the last merge: merge again", Severity.MEDIUM)
-    return states
+            state(State.NOT_BUILT, f"{_copy_of(origin)} is new since the last merge: merge again", Severity.MEDIUM)
+    return _whole_groups(result, states, groups, held)
+
+
+def _whole_groups(result: Scan, states: list[FileState], groups: dict[str, str], held) -> list[FileState]:
+    """states, for a package holding a group (see the module's doc): the group's files that would leave it
+    mixed are as bad as a wrong copy, and a mod adding a file to it changes every one of them"""
+    held_groups = {groups[key] for key in held if key in groups}
+    result_states = []
+    for file in states:
+        group = groups.get(file.path)
+        if group in held_groups and result.unknown_group_files.get(group):
+            mod, key = result.unknown_group_files[group][0]
+            file = replace(file, state=State.CHANGED, severity=Severity.HIGH, needs_build=True, cause="group",
+                           message=f"{mod} adds {file_name(key)} to the {group_name(group)}, which Smooth UI doesn't "
+                           f"know how to patch: merge again (the {group_name(group)} is then left out, as it only works whole)")
+        elif group in held_groups and file.severity == Severity.MEDIUM:
+            file = replace(file, severity=Severity.HIGH,
+                           message=f"{file.message} (until then, the {group_name(group)} is part patched, part not: "
+                           "its animations play at the wrong speeds)")
+        result_states.append(file)
+    return result_states
 
 
 def carried_force(result: Scan) -> tuple[list[str], list[str]]:
@@ -323,8 +354,13 @@ def _read_toc(package_dir, keys):
 def _changed(record, winner):
     """(FileState.cause, the message) for a record about another copy than the winner's"""
     if str(record.get("mod", "")).lower() != winner.origin.lower():
-        return "load order", f"{winner.origin}'s copy is used now, not {record.get('mod')}'s"
-    return "updated", f"{winner.origin} was updated"
+        return "load order", f"{_copy_of(winner.origin)} is used now, not {_copy_of(record.get('mod'))}"
+    return "updated", "the game was updated" if winner.origin == GAME_FILES else f"{winner.origin} was updated"
+
+
+def _copy_of(origin):
+    """A copy, by where it came from (a mod's folder, or GAME_FILES), for messages"""
+    return "the game's own copy" if origin == GAME_FILES else f"{origin}'s copy"
 
 
 def _copy_name(folder):
