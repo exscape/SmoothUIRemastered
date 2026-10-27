@@ -22,26 +22,35 @@ def list_bundles(content_dir: Path) -> list[Path]:
                   if entry.name.lower().endswith(".bundle"))
 
 
-def read_bundle_tocs(content_dir: Path, keys=None) -> dict[str, tuple[Path, TocEntry]]:
-    """{profile key: (bundle file, TocEntry)} for the files in the bundle(s) in content_dir, reading only
-    their tables of contents (see read_entry_content for a file's content). With keys (profile keys), only
-    those files; if they all have one extension, the other files' entries aren't read (see
-    bundle.read_toc). Fails (SmoothUIError) if a bundle can't be read, or if two bundles hold different
-    copies of one file: which one the game would use is unknown."""
-    extensions = {os.path.splitext(key)[1] for key in keys} if keys is not None else set()
-    extension = (extensions.pop() or None) if len(extensions) == 1 else None
-    try:
-        files = {}
-        for bundle in list_bundles(content_dir):
-            for entry in read_toc(bundle, extension):
-                key = profile_key(entry.path)
-                if keys is not None and key not in keys:
-                    continue
-                if key in files and read_entry_content(*files[key]) != read_entry_content(bundle, entry):
-                    fail(f"{entry.path} is in both {files[key][0].name} and {bundle.name}, with different contents")
-                files[key] = (bundle, entry)
-    except (BundleError, OSError) as e:
-        fail(f"can't read the bundles in {content_dir}: {e}")
+def read_bundle_tocs(content_dirs, keys=None, extension=None) -> dict[str, tuple[Path, TocEntry]]:
+    """{profile key: (bundle file, TocEntry)} for the files in the bundle(s) in content_dirs (a folder, or a
+    list of them), reading only their tables of contents (see read_entry_content for a file's content). With
+    keys (profile keys, or a function telling whether a key is wanted), only those files. With extension
+    (default: that of every key, if they share one), only the files with it, and the other files' entries
+    aren't read (see bundle.read_toc). Fails (SmoothUIError) if a bundle can't be read, or if two bundles
+    hold different copies of one of the files: which one the game would use is unknown."""
+    if callable(keys):
+        wanted = keys
+    else:
+        wanted = (lambda key: True) if keys is None else keys.__contains__
+        if extension is None and keys is not None:
+            extensions = {os.path.splitext(key)[1] for key in keys}
+            extension = (extensions.pop() or None) if len(extensions) == 1 else None
+    files = {}
+    for content_dir in [content_dirs] if isinstance(content_dirs, (str, Path)) else content_dirs:
+        try:
+            for bundle in list_bundles(content_dir):
+                for entry in read_toc(bundle, extension):
+                    key = profile_key(entry.path)
+                    if not wanted(key):
+                        continue
+                    if key in files and read_entry_content(*files[key]) != read_entry_content(bundle, entry):
+                        same_folder = files[key][0].parent == bundle.parent
+                        names = [path.name if same_folder else path for path in (files[key][0], bundle)]
+                        fail(f"{entry.path} is in both {names[0]} and {names[1]}, with different contents")
+                    files[key] = (bundle, entry)
+        except (BundleError, OSError) as e:
+            fail(f"can't read the bundles in {content_dir}: {e}")
     return files
 
 

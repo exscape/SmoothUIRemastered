@@ -1,5 +1,7 @@
 """Scan the installed mods: for each file the installed Smooth UI build patches, which mod's copy the game
-loads (see load_order.py), and what keeps a mod or file from being patched.
+loads (see load_order.py), and what keeps a mod or file from being patched. For the files the build doesn't
+ship (a group only the merger builds, see build/profile.py's Group), the game's own copy is the one to patch
+where no mod changes the file.
 
 Read-only, and reads only bundles' tables of contents (except to compare two copies of a file within one
 mod). It must work through MO2's virtual file system, where exists() and is_dir() often say no for files
@@ -10,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -20,6 +23,7 @@ from pathlib import Path
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
 from ..witcher3.bundle import read_toc
 from ..witcher3.mod_bundles import read_bundle_tocs
+from ..witcher3.game_files import game_files
 from ..witcher3.mods_settings import ModSettings, read_mods_settings
 from ..witcher3.source_file import SourceFile
 from .installed import Installed, installed_build, is_smoothui_folder
@@ -48,6 +52,7 @@ class ProblemKind(Enum):
     UNDETERMINED = "undetermined"       # the load order doesn't decide a file's winner
     ORPHANED_COMPAT = "orphaned compat patch"   # the game loads a compat patch's copy that no other mod ships
     MODIO = "mod.io"                    # a mod.io mod ships a file we patch, or mod.io couldn't be checked
+    GAME_FILES = "game files"           # the game's own copy of a file only the merger builds can't be read
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,9 +70,11 @@ class FileResult:
     shippers: list[Mod] = field(default_factory=list)   # the enabled mods shipping it, ours included, in load
                                                 # order: the first one's copy is the one the game loads now
     winner: SourceFile | None = None            # the copy to patch: that of the first shipper that isn't ours
-                                                # (see is_own_folder; a compat patch is already patched). None
-                                                # if no other mod ships it (Smooth UI's own copy covers it), or
-                                                # if undetermined
+                                                # (see is_own_folder; a compat patch is already patched), or for a
+                                                # file the build doesn't ship, the game's own copy if no other mod
+                                                # ships it. None if no other mod ships a shipped file (Smooth UI's
+                                                # own copy covers it), if undetermined, or if the game's copy
+                                                # can't be read
     undetermined: list[Mod] = field(default_factory=list)   # see load_order.undetermined_for
 
     @property
@@ -91,6 +98,10 @@ class Scan:
     # For an enabled Smooth UI the merger can't use: the other enabled mods that ship a .redswf file in its
     # bundles (their screens may be wrong until the merger can patch for it)
     conflicts: list[str] = field(default_factory=list)
+    # {group: [(mod folder, profile key)]}: .redswf files that mods ship in the folder of a group's files, but
+    # that aren't in the group (e.g. a mod's own HUD module): the merger can't tell how to patch them, and they
+    # would play at the group's new frame rate unpatched, so the group must be left out
+    unknown_group_files: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
 
     @property
     def compat_patches(self) -> list[str]:
@@ -141,14 +152,26 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
     if not installed.usable:
         return Scan(mods_dir, installed, order, {}, [], _conflicts(mods_dir, order))
 
-    keys = {profile_key(key) for key in installed.manifest["files"]}
+    records = {profile_key(key): record for key, record in installed.manifest["files"].items()}
+    keys = set(records)
+    unshipped = {key for key, record in records.items() if not record.get("shipped", True)}
+    # The folders of the groups' files: {folder: group}
+    group_dirs = {posixpath.dirname(key): record["group"] for key, record in records.items() if "group" in record}
+    # The build's files, and any others in its groups' folders (to find files the groups don't know)
+    wanted = lambda key: key in keys or posixpath.dirname(key) in group_dirs
     problems = []
     shipped = {}    # Mod: {profile key: (bundle, TocEntry)}
+    unknown_group_files = {}
     mods_dir_length = windows_path_length(mods_dir)
     for mod in order:
         # The package's own problems aren't the scan's: package_state tells them, and a build replaces it
-        shipped[mod] = _mod_files(mods_dir / mod.folder, mod, keys, [] if is_package_folder(mod.folder) else problems,
-                                  mods_dir_length)
+        found = _mod_files(mods_dir / mod.folder, mod, wanted, [] if is_package_folder(mod.folder) else problems,
+                           mods_dir_length)
+        shipped[mod] = {key: value for key, value in found.items() if key in keys}
+        if not is_own_folder(mod.folder):
+            for key in sorted(found.keys() - keys):
+                unknown_group_files.setdefault(group_dirs[posixpath.dirname(key)], []).append((mod.folder, key))
+    game = _game_copies(game_path, unshipped, problems)
 
     files = {}
     for key in sorted(keys):
@@ -168,8 +191,25 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
         elif others:
             winner = others[0]
             result.winner = SourceFile.in_bundle(key, winner.folder, *shipped[winner][key])
+        elif key in unshipped:
+            result.winner = game.get(key)
     problems += modio_problems(keys, modio_root)
-    return Scan(mods_dir, installed, order, files, problems)
+    return Scan(mods_dir, installed, order, files, problems, unknown_group_files=unknown_group_files)
+
+
+def _game_copies(game_path, keys, problems) -> dict[str, SourceFile]:
+    """{profile key: SourceFile} for the game's own copies of keys; what's missing goes into problems"""
+    if not keys:
+        return {}
+    try:
+        found = game_files(game_path, keys)
+    except SmoothUIError as e:
+        problems.append(Problem(ProblemKind.GAME_FILES, f"the game's own files can't be read: {e}"))
+        return {}
+    for key in sorted(keys - found.keys()):
+        problems.append(Problem(ProblemKind.GAME_FILES, f"the game has no {screen_name(key)} ({key}): is the game "
+                                "installed fully, and of the version this Smooth UI is for?", file=key))
+    return found
 
 
 def _conflicts(mods_dir, order) -> list[str]:
@@ -230,7 +270,7 @@ def _mod_files(mod_dir, mod, keys, problems, mods_dir_length):
                                 "load them; left out", mod=mod.folder))
         return {}
     try:
-        return read_bundle_tocs(content, keys)
+        return read_bundle_tocs(content, keys, ".redswf")
     except SmoothUIError as e:
         log.warning(f"{mod.folder} is left out: {e}")     # (the full text, with the path, is for the log)
         reason = (f"its bundle files can't be read{' (not a Witcher 3 bundle)' if 'POTATO70' in str(e) else ''}"
