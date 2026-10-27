@@ -7,6 +7,10 @@
   that means (the fix's CONSEQUENCE).
 - Other problems with a rescale (a setting that wasn't followed or no longer matches, an unreviewed
   warning) leave out that file only, unless the user forces it (force).
+- A group's files (files that only work together, e.g. the HUD) are all in the package, or none are: if one
+  isn't (for any of the reasons above, or because there is no copy of it to patch), or a mod adds a file to
+  the group's folder that the group doesn't list, the whole group is left out. Releases don't ship such
+  groups, so the game then shows its own (or the mods') unpatched copies of all of them: never a mix.
 
 A file left out isn't in the package, so the game loads the copy it would load without the package: the
 mod's own copy at its original frame rate, or the copy of a mod (Smooth UI's own, a compat patch) that
@@ -18,17 +22,17 @@ decide() is cheap and pure: a GUI can call it again with other choices without p
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 
 from ..build.release import ReleasePatch
-from ..common import fail
+from ..common import fail, profile_key
 from ..patcher.fixes import CANT_APPLY, fix_consequence, fix_kind
-from ..witcher3.source_file import SourceFile
+from ..witcher3.source_file import GAME_FILES, SourceFile
 from . import REPORT_URL
 from .installed import is_smoothui_folder
 from .scan import COMPAT_PATCH, Scan
-from .screens import screen_label
+from .screens import file_name, group_name, screen_label
 
 
 class FileStatus(Enum):
@@ -39,6 +43,7 @@ class FileStatus(Enum):
                                     # fixes wasn't needed (or can't apply): not needed in the package
     FAILED = "failed"               # couldn't be patched, so its mod is left out
     MOD_FAILED = "mod failed"       # left out, as another file of its mod couldn't be patched
+    GROUP_LEFT_OUT = "group left out"   # left out, as its group can't be merged whole (see the module's doc)
 
     @property
     def included(self) -> bool:
@@ -72,8 +77,9 @@ class PackageFile:
     status: FileStatus
     issues: list[Issue] = field(default_factory=list)
     result: dict | None = None      # patch_files' result for it, unless it failed
-    error: str | None = None        # FAILED: why
+    error: str | None = None        # FAILED: why; GROUP_LEFT_OUT: why the group can't be merged whole
     fallback: str | None = None     # the mod whose copy the game loads unless the package holds this file
+    group: str | None = None        # the group it is in, if any (see build/profile.py's Group)
 
     @property
     def mod(self) -> str:
@@ -98,33 +104,39 @@ class PackageFile:
         fixes); or "error" (not in the package, although it needs to be)"""
         if self.status in (FileStatus.PATCHED, FileStatus.UNCHANGED, FileStatus.FORCED) and not self.fixes_not_applied:
             return "ok"
-        if self.status.included or self.status == FileStatus.UNCHANGED:
+        # A group left out whole is consistent (the file that keeps it out is the error)
+        if self.status.included or self.status in (FileStatus.UNCHANGED, FileStatus.GROUP_LEFT_OUT):
             return "warning"
         return "error"
 
     def explain(self) -> str:
         """What happened to the file, for the user: if it isn't patched as Smooth UI would, why, and what
         they can do. The first line is the summary; the others are indented."""
-        status, mod = self.status, self.mod
+        status, mod, copy = self.status, self.mod, self._copy()
         if status == FileStatus.PATCHED:
-            summary = f"merged ({mod}'s copy)" + (", without some fixes:" if self.issues else "")
+            summary = f"merged ({copy})" + (", without some fixes:" if self.issues else "")
             details = self._fix_lines()
         elif status == FileStatus.UNCHANGED:
-            summary = f"{mod}'s copy is already smooth: used as it is" + (", without some fixes:" if self.issues else "")
+            summary = f"{copy[0].upper() + copy[1:]} is already smooth: used as it is" + (", without some fixes:" if self.issues else "")
             details = self._fix_lines()
         elif status == FileStatus.FORCED:
-            summary = (f"merged anyway ({mod}'s copy), as you chose, though Smooth UI can't fully merge it. It may "
+            summary = (f"merged anyway ({copy}), as you chose, though Smooth UI can't fully merge it. It may "
                        "look or behave wrong in places:")
             details = [*self._issue_lines(), *self._fix_lines()]
         elif status == FileStatus.MOD_FAILED:
             summary = (f"not merged: another of {mod}'s screens can't be merged, so none of them are. "
                        f"{self._fallback_text()}")
             details = []
+        elif status == FileStatus.GROUP_LEFT_OUT:
+            name = group_name(self.group)
+            summary = (f"not merged: the {name} is merged whole or not at all, and {self.error}. "
+                       f"{self._fallback_text()}")
+            details = []
         elif status == FileStatus.FAILED:
-            summary = f"not merged: {mod}'s copy can't be merged, so none of {mod}'s screens are. {self._fallback_text()}"
+            summary = f"not merged: {copy} can't be merged, so none of {mod}'s screens are. {self._fallback_text()}"
             details = [f"Why: {self.error}", self._report("a bug or limitation")]
         else:
-            summary = f"left out: Smooth UI can't fully merge {mod}'s copy. {self._fallback_text()}"
+            summary = f"left out: Smooth UI can't fully merge {copy}. {self._fallback_text()}"
             details = ["Why:", *self._issue_lines(), *self._fix_lines(),
                        "You can merge it anyway (it may then look or behave wrong in places), or check for a newer merger."]
         if self.issues and status != FileStatus.FAILED:
@@ -142,11 +154,17 @@ class PackageFile:
         return [f"- {fix_kind(issue.fix).header} {fix_consequence(issue.fix)} ({issue.fix} can't apply: {issue.message})"
                 for issue in self.issues if issue.kind == IssueKind.FIX]
 
+    def _copy(self):
+        """The copy that was patched, for the user: the game's copy, or <mod>'s copy"""
+        return "the game's copy" if self.mod == GAME_FILES else f"{self.mod}'s copy"
+
     def _fallback_text(self):
         return f"The game shows {self._fallback()}."
 
     def _fallback(self):
         """The copy the game shows unless the package holds the file"""
+        if self.mod == GAME_FILES and self.fallback is None:
+            return "its own copy, at its original frame rate"
         if self.fallback is None or self.fallback == self.mod:
             return f"{self.mod}'s own copy, at its original frame rate"
         if is_smoothui_folder(self.fallback):
@@ -187,7 +205,36 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
         elif status == FileStatus.PATCHED and any(issue.keeps_out for issue in file_issues):
             status = FileStatus.FORCED if path in force else FileStatus.LEFT_OUT
         files.append(PackageFile(path, source, status, file_issues, result, fallback=fallback))
-    return files
+    return _whole_groups(scan, files)
+
+
+def _whole_groups(scan: Scan, files: list[PackageFile]) -> list[PackageFile]:
+    """files, with every file of a group that can't be merged whole left out (GROUP_LEFT_OUT), and each group
+    file's group set"""
+    groups = defaultdict(set)   # group: its files (profile keys)
+    for key, record in scan.installed.manifest["files"].items():
+        if "group" in record:
+            groups[record["group"]].add(profile_key(key))
+    group_of = {key: group for group, keys in groups.items() for key in keys}
+    by_path = {file.path: file for file in files}
+    def merged(file):   # in the package, or needs no patch
+        return file is not None and (file.status.included or file.status == FileStatus.UNCHANGED)
+    causes = {}     # group: why it can't be merged whole
+    for group, keys in sorted(groups.items()):
+        found = [f"{file_name(key)} " + ("can't be merged (see its own message)" if key in by_path
+                                         else "has no copy to merge (see the problems listed)")
+                 for key in sorted(keys) if not merged(by_path.get(key))]
+        found += [f"{mod} adds {file_name(key)}, which Smooth UI doesn't know how to patch"
+                  for mod, key in scan.unknown_group_files.get(group, [])]
+        if found:
+            causes[group] = "; ".join(found)
+    result = []
+    for file in files:
+        group = group_of.get(file.path)
+        if group in causes and merged(file):
+            file = replace(file, status=FileStatus.GROUP_LEFT_OUT, error=causes[group])
+        result.append(replace(file, group=group) if group else file)
+    return result
 
 
 def _issues(patch: ReleasePatch) -> dict[str, list[Issue]]:

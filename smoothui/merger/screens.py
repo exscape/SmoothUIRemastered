@@ -35,6 +35,22 @@ NAMES = {
 }
 
 
+# Groups of files that only work together (see build/profile.py's Group), by the name the profile gives them
+GROUP_NAMES = {
+    "hud": "HUD",
+}
+# Files in a group's folder are named after the group (by its name in GROUP_NAMES), then the file name less
+# this prefix; the file named as the group itself is the group's name alone
+GROUP_FOLDERS = {
+    "hud/": ("hud", "hud_"),
+}
+
+
+def group_name(group: str) -> str:
+    """A group's name for the user, e.g. HUD"""
+    return GROUP_NAMES.get(group, group)
+
+
 def file_name(path: str) -> str:
     """The file's name without its folder and .redswf, e.g. panel_inventory"""
     name = profile_key(path).rsplit("/", 1)[-1]
@@ -44,7 +60,13 @@ def file_name(path: str) -> str:
 def screen_name(path: str) -> str:
     """The screen's name, e.g. Inventory (for a path as the profile spells it, in any case)"""
     key = profile_key(path).removeprefix(SWF_FOLDER).removesuffix(".redswf")
-    return NAMES.get(key, file_name(path))
+    if key in NAMES:
+        return NAMES[key]
+    for folder, (group, prefix) in GROUP_FOLDERS.items():
+        if key.startswith(folder):
+            rest = key.removeprefix(folder)
+            return group_name(group) if rest == group else f"{group_name(group)}: {rest.removeprefix(prefix)}"
+    return file_name(path)
 
 
 def screen_label(path: str) -> str:
