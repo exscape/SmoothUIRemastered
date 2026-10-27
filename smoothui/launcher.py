@@ -27,6 +27,7 @@ from .merger.game import (
     find_games,
     game_command,
     game_path,
+    groups_off,
     load_settings,
     mods_settings,
 )
@@ -107,7 +108,7 @@ def main(args: list[str], log: Log) -> int:
         # It asks for the game folder on its first run
         game = game_path(read_settings(log))
         log(f"Game folder: {game or 'still not chosen'}")
-    elif package_stale(game, log) and not open_merger(log):
+    elif package_stale(game, log, groups_off(settings)) and not open_merger(log):
         return 0
     return start_game(command_for(args, game, log), log)
 
@@ -136,11 +137,12 @@ def command_for(args: list[str], game: Path | None, log: Log) -> GameCommand | N
     return command
 
 
-def package_stale(game: Path, log: Log) -> bool:
-    """Whether the check says to open the merger; False if it fails (after a message box)"""
+def package_stale(game: Path, log: Log, off=frozenset()) -> bool:
+    """Whether the check says to open the merger (off: the groups turned off, see game.groups_off); False if
+    it fails (after a message box)"""
     start = time.perf_counter()
     try:
-        found = check(game, mods_settings())
+        found = check(game, mods_settings(), groups_off=off)
     except Exception as e:  # noqa: BLE001 (the game starts anyway)
         text = log.failure("The check failed", e)
         msg_box(f"Smooth UI couldn't check whether your merged patches are up to date:\n\n{text}\n\n"

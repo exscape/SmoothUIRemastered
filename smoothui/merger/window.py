@@ -113,6 +113,7 @@ from .game import (
     game_environment,
     game_folder_of,
     game_path,
+    groups_off,
     is_game_folder,
     mods_settings,
     save_settings,
@@ -150,6 +151,7 @@ from .gui_texts import (
     GUIDE_LINK,
     HELP,
     HIDE_LOG,
+    HUD_HEADING,
     INFO,
     LATER,
     LAUNCHER,
@@ -191,6 +193,8 @@ from .gui_texts import (
     SHORTCUT_MADE,
     SHORTCUT_NAME,
     SHOW_LOG,
+    SMOOTH_HUD,
+    SMOOTH_HUD_NOTE,
     SMOOTHUI_NOT_CHECKED,
     STOP_MERGE,
     STOP_MERGE_TITLE,
@@ -651,8 +655,8 @@ class MergerWindow:
         layout.addLayout(row)
 
     def make_welcome(self):
-        """The first run's page: what the merger does, the game folder, the launcher. Continue saves the
-        settings. In stale mode, closing the window starts the game without them (the launcher opens the
+        """The first run's page: what the merger does, the game folder, the HUD, the launcher. Continue saves
+        the settings. In stale mode, closing the window starts the game without them (the launcher opens the
         merger again next time)."""
         page, layout = self.make_page()
         self.heading(layout, WELCOME_HEADING, 0, 17)
@@ -660,6 +664,8 @@ class MergerWindow:
         self.heading(layout, GAME_HEADING)
         self.welcome_chooser = GameChooser(self, self.welcome_chosen)
         layout.addWidget(self.welcome_chooser.widget)
+        self.welcome_hud_box = self.hud_section(layout)
+        self.welcome_hud_box.setChecked(self.smooth_hud)
         self.heading(layout, LAUNCHER_HEADING)
         layout.addWidget(self.launcher_section(self.welcome_chooser))
         self.continue_button = button(CONTINUE, self.confirm_welcome, primary=True)
@@ -674,6 +680,7 @@ class MergerWindow:
         layout.addSpacing(10)
         self.update_box = QCheckBox(CHECK_UPDATES.replace("&", "&&"))
         layout.addWidget(self.update_box)
+        self.hud_box = self.hud_section(layout)
         self.heading(layout, GAME_HEADING)
         self.settings_chooser = GameChooser(self, lambda folder: None)
         layout.addWidget(self.settings_chooser.widget)
@@ -682,6 +689,16 @@ class MergerWindow:
         self.save_button = button(SAVE, self.save_settings_page, primary=True)
         self.page_buttons(layout, button(CANCEL, lambda: self.show_page(self.main_page)), self.save_button)
         return page
+
+    def hud_section(self, layout) -> QCheckBox:
+        """The Smooth HUD setting, under its heading, with what it does: its check box"""
+        self.heading(layout, HUD_HEADING)
+        box = QCheckBox(SMOOTH_HUD.replace("&", "&&"))
+        layout.addWidget(box)
+        note = label(SMOOTH_HUD_NOTE, tone="muted", wrap=True)
+        note.setContentsMargins(0, 2, 0, 0)
+        layout.addWidget(note)
+        return box
 
     def make_help(self):
         """The help page: the versions, how to set the tools up, reporting a bug, the data folder, the licenses"""
@@ -811,9 +828,14 @@ class MergerWindow:
             self.change_game(folder)
 
     def confirm_welcome(self):
-        """Continue: save the settings, with the folder chosen, and show the main page"""
+        """Continue: save the settings, with the folder chosen and the HUD setting, and show the main page (the
+        scan, made with the default HUD setting, runs again if it changed)"""
         folder = self.welcome_chooser.selected()
-        if folder is not None and self.save_game(folder, self.welcome_chooser):
+        smooth_hud = self.welcome_hud_box.isChecked()
+        hud_changed = smooth_hud != self.smooth_hud
+        if folder is not None and self.save_game(folder, self.welcome_chooser, smooth_hud=smooth_hud):
+            if hud_changed:
+                self.change_game(folder)
             self.show_page(self.main_page)
 
     def open_settings(self):
@@ -821,33 +843,38 @@ class MergerWindow:
             self.settings_page = self.make_settings()
         self.settings_chooser.show(self.candidates or [], self.game, searching=self.candidates is None)
         self.update_box.setChecked(self.check_updates)
+        self.hud_box.setChecked(self.smooth_hud)
         self.find_game_folders()
         self.show_page(self.settings_page)
 
     def save_settings_page(self):
-        """Save: the game folder chosen and the update check, if either changed (a new folder is scanned);
-        back to the main page"""
+        """Save: the game folder chosen, the update check and the HUD setting, if any changed (a new folder is
+        scanned, and the folder again for a new HUD setting); back to the main page"""
         folder = self.settings_chooser.selected() or self.game
         new_folder = folder is not None and not same_folder(folder, self.game)
-        if folder is not None and (new_folder or self.update_box.isChecked() != self.check_updates):
-            if not self.save_game(folder, self.settings_chooser, self.update_box.isChecked()):
+        hud_changed = self.hud_box.isChecked() != self.smooth_hud
+        if folder is not None and (new_folder or hud_changed or self.update_box.isChecked() != self.check_updates):
+            if not self.save_game(folder, self.settings_chooser, self.update_box.isChecked(), self.hud_box.isChecked()):
                 return
-            if new_folder:
+            if new_folder or hud_changed:
                 self.change_game(folder)
         self.show_page(self.main_page)
 
-    def save_game(self, folder, chooser, check_updates=None) -> bool:
-        """Save the settings with the game folder, and check_updates (None: as it is); a failure is said in
-        chooser"""
+    def save_game(self, folder, chooser, check_updates=None, smooth_hud=None) -> bool:
+        """Save the settings with the game folder, check_updates and smooth_hud (None: as they are); a failure
+        is said in chooser"""
         check_updates = self.check_updates if check_updates is None else check_updates
-        settings = Settings(folder, check_updates, self.settings.last_update_check if self.settings else None)
+        smooth_hud = self.smooth_hud if smooth_hud is None else smooth_hud
+        settings = Settings(folder, check_updates, self.settings.last_update_check if self.settings else None,
+                            smooth_hud)
         try:
             save_settings(settings, gui.DATA_DIR)
         except SmoothUIError as e:
             log.error(f"The settings can't be saved: {e}")
             chooser.say(SETTINGS_NOT_SAVED.format(error=e), ERROR)
             return False
-        log.info(f"Settings saved: the game folder is {folder}; update check {'on' if check_updates else 'off'}")
+        log.info(f"Settings saved: the game folder is {folder}; update check {'on' if check_updates else 'off'}; "
+                 f"HUD merging {'on' if smooth_hud else 'off'}")
         self.settings = settings
         return True
 
@@ -855,10 +882,15 @@ class MergerWindow:
     def check_updates(self) -> bool:
         return self.settings.check_updates if self.settings else True
 
+    @property
+    def smooth_hud(self) -> bool:
+        return self.settings.smooth_hud if self.settings else True
+
     def change_game(self, game):
-        """Use another game folder: scan it, after the scan that runs now (if any), whose result is for the
-        old one"""
-        log.info(f"Game folder: {game}")
+        """Use another game folder, or the same one with a changed setting the scan depends on: scan it, after
+        the scan that runs now (if any), whose result is for the old one"""
+        if not same_folder(game, self.game):
+            log.info(f"Game folder: {game}")
         self.game = game
         self.found = self.scan_error = self.merged = self.merge_error = None
         self.keep_order = False
@@ -866,7 +898,7 @@ class MergerWindow:
             self.scan_again = True
             self.refresh()
         else:
-            start_scan(game, self.calls)
+            start_scan(game, self.calls, groups_off(self.settings))
             self.set_busy("scan")   # now, not once "scanning" arrives: another change meanwhile must wait for it
 
     # ---- Qt's thread: what threads hand over ----
@@ -1278,7 +1310,7 @@ class MergerWindow:
                 self.merged = self.merge_error = None
                 self.keep_order = False
             self.scan_again = self.downloaded_meanwhile = False
-            start_scan(self.game, self.calls)
+            start_scan(self.game, self.calls, groups_off(self.settings))
             self.set_busy("scan")
             return
         if error is not None:
@@ -1307,7 +1339,7 @@ class MergerWindow:
         if not keep_result:
             self.merged = self.merge_error = None
             self.keep_order = False
-        start_scan(self.game, self.calls)
+        start_scan(self.game, self.calls, groups_off(self.settings))
 
     def play(self):
         """Play, outside stale mode: check again first, as the launcher does right before it starts the game
@@ -1494,7 +1526,8 @@ class MergerWindow:
         start = time.perf_counter()
         started = time.strftime("%Y-%m-%d %H:%M:%S")
         settings = mods_settings()
-        force, notes = carried_force(scan(self.game, settings))
+        off = groups_off(self.settings)
+        force, notes = carried_force(scan(self.game, settings, groups_off=off))
         for note in notes:
             log.warning(note)
         if force:
@@ -1507,7 +1540,7 @@ class MergerWindow:
             force = [path for path in force if path not in reverted]
         result = None
         try:
-            result = build_package(self.game, settings, force=force, pool=self.pool, data_dir=gui.DATA_DIR,
+            result = build_package(self.game, settings, force=force, groups_off=off, pool=self.pool, data_dir=gui.DATA_DIR,
                                    on_file=on_file, progress=lambda *progress: self.calls.put(("progressed", progress)))
         finally:
             if not (play and result is not None and result.clean and not self.critical_update()):

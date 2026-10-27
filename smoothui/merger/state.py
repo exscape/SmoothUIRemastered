@@ -12,7 +12,9 @@ folder instead (see package.py), which counts while there is no package.
 
 A group of files (e.g. the HUD; see policy.py) only works whole: while the package holds a group, anything
 that would leave the game with a mix of patched and unpatched copies of its files is as bad as a wrong copy
-(Severity.HIGH), and so is a mod adding a file to the group that Smooth UI doesn't know.
+(Severity.HIGH), and so is a mod adding a file to the group that Smooth UI doesn't know. A group the user
+turned off (scan.Scan.groups_off) is fine while the package doesn't hold it; one turned on or off since the
+last build needs a build (Severity.MEDIUM: either way, the game shows the whole group one way).
 """
 
 from __future__ import annotations
@@ -85,10 +87,12 @@ class FileState:
     needs_build: bool = False   # whether building the package again would change it (see State.needs_build)
     cause: str | None = None    # why, in a word, for the window to group files by: for CHANGED, "smoothui" or
                                 # "merger" (updated since the build), "updated" (the mod's copy changed),
-                                # "load order" (another mod's copy wins now) or "group" (a mod adds a file to
-                                # its group that Smooth UI doesn't know); for NOT_HELD, the status the
-                                # manifest records (see NOT_HELD_TEXT); for UP_TO_DATE, "forced" if the user
-                                # chose to patch it anyway
+                                # "load order" (another mod's copy wins now), "group" (a mod adds a file to
+                                # its group that Smooth UI doesn't know) or "setting" (its group was turned
+                                # off since the build); for NOT_BUILT, "setting" if its group was turned on
+                                # since the build; for NOT_HELD, the status the manifest records (see
+                                # NOT_HELD_TEXT), or "turned off" (its group is); for UP_TO_DATE, "forced" if
+                                # the user chose to patch it anyway
     previous: str | None = None     # CHANGED (but for "smoothui", "merger") and NO_LONGER_NEEDED: the mod whose
                                     # copy the last merge used
     fixes: tuple[str, ...] = ()     # UP_TO_DATE: the fixes the merged copy lacks (a fix that can't apply)
@@ -184,6 +188,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     held = (manifest or {}).get("files", {})
     not_held = (manifest or {}).get("not_held", {})
     groups = {profile_key(key): record["group"] for key, record in installed.manifest["files"].items() if "group" in record}
+    was_off = set((manifest or {}).get("groups_off", ()))
 
     states = []
     for key in sorted(result.files):
@@ -201,6 +206,16 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             state(State.UNDETERMINED, "the load order doesn't decide which mod's copy the game uses (see the problems)")
         elif toc_problem and (key in held or (manifest is None and winner is not None)):
             state(State.DAMAGED, f"the merged patches can't be used ({toc_problem}): merge again", Severity.HIGH)
+        elif groups.get(key) in result.groups_off:
+            name = group_name(groups[key])
+            shown = file.loaded_without_package
+            shows = f"{_copy_name(shown.folder)}, unpatched" if shown else "its own copy, at its original frame rate"
+            if key in toc:
+                state(State.CHANGED, f"merging the {name} is turned off in the settings, but the merged patches hold "
+                      f"it: merge again (the game then shows {shows})", Severity.MEDIUM, needs_build=True, cause="setting")
+            else:
+                state(State.NOT_HELD, f"merging the {name} is turned off in the settings: the game shows {shows}",
+                      cause="turned off")
         elif key in toc:
             record = held.get(key)
             entry = toc[key][1]
@@ -274,6 +289,9 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.NOT_HELD, f"{_copy_of(origin)}: {text}", cause=record["status"])
         elif manifest is None and manifest_problem is None:
             state(State.NOT_BUILT, f"{_copy_of(origin)} isn't merged yet", Severity.MEDIUM)
+        elif groups.get(key) in was_off:
+            state(State.NOT_BUILT, f"merging the {group_name(groups[key])} was turned on in the settings since the last "
+                  "merge: merge again", Severity.MEDIUM, cause="setting")
         else:
             state(State.NOT_BUILT, f"{_copy_of(origin)} is new since the last merge: merge again", Severity.MEDIUM)
     return _whole_groups(result, states, groups, held)
@@ -295,7 +313,7 @@ def _whole_groups(result: Scan, states: list[FileState], groups: dict[str, str],
             file = replace(file, state=State.CHANGED, severity=Severity.HIGH, needs_build=True, cause="group",
                            message=f"{mod} adds {file_name(key)} to the {group_name(group)}, which Smooth UI doesn't "
                            f"know how to patch: merge again (the {group_name(group)} is then left out, as it only works whole)")
-        elif group in loaded_groups and file.severity == Severity.MEDIUM:
+        elif group in loaded_groups and file.severity == Severity.MEDIUM and file.cause != "setting":
             file = replace(file, severity=Severity.HIGH,
                            message=f"{file.message} (until then, the {group_name(group)} is part patched, part not: "
                            "its animations play at the wrong speeds)")

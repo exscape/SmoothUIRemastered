@@ -45,6 +45,13 @@ class Settings:
     game_path: Path
     check_updates: bool = True      # whether the merger looks for updates when it starts (see updates.py)
     last_update_check: int | None = None    # when it last did (Unix time), if ever
+    smooth_hud: bool = True         # whether the merger merges the HUD (see groups_off)
+
+
+def groups_off(settings: Settings | None) -> frozenset[str]:
+    """The groups of files (see build/profile.py's Group) the merger leaves out, as the settings say (None:
+    their defaults): the HUD, unless Smooth HUD is on"""
+    return frozenset() if settings is None or settings.smooth_hud else frozenset({"hud"})
 
 
 def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
@@ -62,14 +69,18 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
         last_check = settings.get("last_update_check")
         if last_check is not None and type(last_check) is not int:
             raise TypeError(f"last_update_check is {last_check!r}, not a whole number")
-        return Settings(to_native(settings["game_path"]), check_updates, last_check)
+        smooth_hud = settings.get("smooth_hud", True)
+        if not isinstance(smooth_hud, bool):
+            raise TypeError(f"smooth_hud is {smooth_hud!r}, not true or false")
+        return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud)
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
 
 
 def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
     make_dirs(data_dir)
-    fields = {"game_path": to_windows(settings.game_path), "check_updates": settings.check_updates}
+    fields = {"game_path": to_windows(settings.game_path), "check_updates": settings.check_updates,
+              "smooth_hud": settings.smooth_hud}
     if settings.last_update_check is not None:
         fields["last_update_check"] = settings.last_update_check
     text = json.dumps(fields, indent=1) + "\n"

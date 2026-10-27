@@ -52,6 +52,7 @@ from .game import (
     MODS_SETTINGS_ENV,
     Settings,
     game_path,
+    groups_off,
     load_settings,
     mo2_inside_game,
     mods_settings,
@@ -104,7 +105,7 @@ def main() -> int:
     self_update.start_cleanup(DATA_DIR)     # what an update left (it deletes data\\update\\)
     calls = queue.Queue()       # (function, args) to call on Qt's thread
     if game is not None:        # on the first run, once the welcome page knows the folders found
-        start_scan(game, calls)
+        start_scan(game, calls, groups_off(settings))
 
     from . import window  # imports Qt, which takes a while: after the scan has started
     return window.run(game, stale, settings, calls, log_records, updated_from=updated_from, critical=critical)
@@ -171,10 +172,11 @@ def in_thread(calls: queue.Queue, work, done, *args):
     threading.Thread(target=run, daemon=True).start()   # daemon: closing mid-build mustn't wait for it
 
 
-def start_scan(game: Path, calls: queue.Queue):
+def start_scan(game: Path, calls: queue.Queue, off=frozenset()):
+    """Check (state.check) in a thread; off: the groups turned off (see game.groups_off)"""
     def work():
         start = time.perf_counter()
-        found = check(game, mods_settings(), data_dir=DATA_DIR)
+        found = check(game, mods_settings(), data_dir=DATA_DIR, groups_off=off)
         return found, time.perf_counter() - start
     calls.put(("scanning", ()))
     in_thread(calls, work, "scanned")

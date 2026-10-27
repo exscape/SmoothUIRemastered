@@ -22,8 +22,8 @@ from pathlib import Path
 
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
 from ..witcher3.bundle import read_toc
-from ..witcher3.mod_bundles import read_bundle_tocs
 from ..witcher3.game_files import game_files
+from ..witcher3.mod_bundles import read_bundle_tocs
 from ..witcher3.mods_settings import ModSettings, read_mods_settings
 from ..witcher3.source_file import SourceFile
 from .installed import Installed, installed_build, is_smoothui_folder
@@ -104,6 +104,9 @@ class Scan:
     # that aren't in the group (e.g. a mod's own HUD module): the merger can't tell how to patch them, and they
     # would play at the group's new frame rate unpatched, so the group must be left out
     unknown_group_files: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+    # The groups the user turned off (see game.groups_off): their files have no winner, so a build leaves
+    # them out, and the game shows its own copies (or the mods')
+    groups_off: frozenset[str] = frozenset()
 
     @property
     def compat_patches(self) -> list[str]:
@@ -140,8 +143,10 @@ def entry_needed(order: list[Mod], ours: ModSettings | None) -> bool:
                if not is_package_folder(mod.folder) and mod.folder.lower() != SCRIPT_MERGER_FOLDER.lower())
 
 
-def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None, manifests=None) -> Scan:
+def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), modio_root: Path | None = None,
+         manifests=None) -> Scan:
     """Scan the game's Mods\\ folder, with the load order from mods_settings (the path of mods.settings).
+    groups_off: see Scan.groups_off.
 
     modio_root is the folder holding mod.io's mods (default: found from %PUBLIC%); manifests ({version:
     manifest}) replace the release manifests the merger has, for tests. Fails (SmoothUIError) only if
@@ -152,13 +157,15 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
     order = load_order(mods)
     installed = installed_build(mods_dir, folders, mods, manifests)
     if not installed.usable:
-        return Scan(mods_dir, installed, order, {}, [], _conflicts(mods_dir, order))
+        return Scan(mods_dir, installed, order, {}, [], _conflicts(mods_dir, order), groups_off=frozenset(groups_off))
 
     records = {profile_key(key): record for key, record in installed.manifest["files"].items()}
     keys = set(records)
     unshipped = {key for key, record in records.items() if not record.get("shipped", True)}
-    # The folders of the groups' files: {folder: group}
-    group_dirs = {posixpath.dirname(key): record["group"] for key, record in records.items() if "group" in record}
+    off = {key for key, record in records.items() if record.get("group") in groups_off}
+    # The folders of the groups' files, but those turned off: {folder: group}
+    group_dirs = {posixpath.dirname(key): record["group"] for key, record in records.items()
+                  if "group" in record and key not in off}
     # The build's files, and any others in its groups' folders (to find files the groups don't know)
     wanted = lambda key: key in keys or posixpath.dirname(key) in group_dirs
     problems = []
@@ -177,13 +184,13 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
                 problems.append(Problem(ProblemKind.GROUP, f"{mod.folder} adds {file_name(key)} to the {group_name(group)}, "
                                         f"which Smooth UI doesn't know how to patch: the {group_name(group)} can't be "
                                         "merged, so the game shows it unpatched", mod.folder, key))
-    game = _game_copies(game_path, unshipped, problems)
+    game = _game_copies(game_path, unshipped - off, problems)
 
     files = {}
     for key in sorted(keys):
         result = files[key] = FileResult(key, [mod for mod in order if key in shipped[mod]])
         others = [mod for mod in result.shippers if not is_own_folder(mod.folder)]
-        result.undetermined = undetermined_for(others)
+        result.undetermined = undetermined_for(others) if key not in off else []
         if COMPAT_PATCH.fullmatch(result.loaded.folder if result.loaded else "") and not others:
             # The merger replaces these compat patches, so one that the game still uses should go
             problems.append(Problem(ProblemKind.ORPHANED_COMPAT,
@@ -194,13 +201,16 @@ def scan(game_path: Path, mods_settings: Path, *, modio_root: Path | None = None
             problems.append(Problem(ProblemKind.UNDETERMINED, f"the load order doesn't decide whose {screen_name(key)} the "
                                     f"game uses: {names} change it, and at least one of them has a mods.settings entry "
                                     "without a Priority. Give it one", file=key))
+        elif key in off:
+            pass
         elif others:
             winner = others[0]
             result.winner = SourceFile.in_bundle(key, winner.folder, *shipped[winner][key])
         elif key in unshipped:
             result.winner = game.get(key)
     problems += modio_problems(keys, modio_root)
-    return Scan(mods_dir, installed, order, files, problems, unknown_group_files=unknown_group_files)
+    return Scan(mods_dir, installed, order, files, problems, unknown_group_files=unknown_group_files,
+                groups_off=frozenset(groups_off))
 
 
 def _game_copies(game_path, keys, problems) -> dict[str, SourceFile]:

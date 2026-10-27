@@ -19,6 +19,7 @@ from ..paths import DATA_DIR
 from ..witcher3.user_files import mods_settings_path
 from . import updates
 from .builder import build_package
+from .game import groups_off, load_settings
 from .installed import is_smoothui_folder
 from .load_order import Group
 from .scan import is_package_folder
@@ -75,7 +76,7 @@ def main():
 
 def show_scan(game_path, mods_settings, data_dir):
     start = time.perf_counter()
-    found = check(game_path, mods_settings, data_dir=data_dir)
+    found = check(game_path, mods_settings, data_dir=data_dir, groups_off=_groups_off(data_dir))
     elapsed = time.perf_counter() - start
     result = found.scan
 
@@ -152,11 +153,17 @@ def show_updates(data_dir):
 
 def build(args, game_path, mods_settings):
     start = time.perf_counter()
-    result = build_package(game_path, mods_settings, force=args.force, out_dir=args.out, data_dir=args.data_dir)
+    result = build_package(game_path, mods_settings, force=args.force, out_dir=args.out, data_dir=args.data_dir,
+                           groups_off=_groups_off(args.data_dir))
     show_build(result)
     log.info(f"\nMerged in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
     if not result.clean:
         sys.exit(2)
+
+
+def _groups_off(data_dir):
+    """The groups turned off (see game.groups_off) in the merger's settings in data_dir (none if it has none)"""
+    return groups_off(load_settings(data_dir) if data_dir is not None else None)
 
 
 def show_build(result):

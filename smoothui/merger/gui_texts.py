@@ -111,6 +111,11 @@ GAME_NOT_FOUND = "The game wasn't found: choose its folder."
 CHOOSE_FOLDER = "Choose another folder..."
 CHOOSE_FOLDER_TITLE = "Choose the game's folder (the one that holds bin, content and Mods)"
 SETTINGS_NOT_SAVED = "The settings can't be saved: {error}"
+# The Smooth HUD setting (game.Settings.smooth_hud), on the welcome and settings pages
+HUD_HEADING = "The HUD"
+SMOOTH_HUD = "Merge the HUD too (recommended)"
+SMOOTH_HUD_NOTE = ("Smooth UI Remastered itself doesn't change the HUD (such as the list of picked-up items, or the "
+                   "radial menu): the merger makes it smooth, from the game's own files or your HUD mods' copies.")
 # The launcher
 LAUNCHER_HEADING = "Starting the game"
 LAUNCHER = "Start the game with SmoothUILauncher.exe: it checks your mods first, and opens the merger if they changed."
@@ -235,6 +240,7 @@ CAUSES = {
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
     "group": "A mod adds a HUD screen that Smooth UI doesn't know how to patch.",
     "group left out": "The HUD only works if all of it is merged, so it is left out.",
+    "setting": "The \"Merge the HUD too\" setting changed since the last merge.",
 }
 # What a Smooth UI that can't be used costs, beyond the mods' screens (by installed.Status)
 RISKS = {
@@ -417,8 +423,8 @@ def _checked(found: Check, stale):
 
     # Up to date: what the merged patches hold, and what they can't
     causes = [(_cause(file), file.winner) for file in found.states
-              if file.state == State.UNDETERMINED or (file.state == State.NOT_HELD and file.cause != "unchanged")
-              or file.cause == "fixes"]
+              if file.state == State.UNDETERMINED
+              or (file.state == State.NOT_HELD and file.cause not in ("unchanged", "turned off")) or file.cause == "fixes"]
     patched = [(file.winner, file.path, file.group) for file in found.states if file.state == State.UP_TO_DATE]
     if causes:
         headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
@@ -429,7 +435,7 @@ def _checked(found: Check, stale):
     if patched:
         return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.",),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
-    if any(file.state == State.NOT_HELD for file in found.states):
+    if any(file.state == State.NOT_HELD and file.cause != "turned off" for file in found.states):
         return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens are already smooth.",),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     return Card(OK, "Nothing to merge", ("No other mod changes Smooth UI's screens.",),
@@ -464,12 +470,14 @@ def row_status(file: FileState) -> tuple[str, str]:
         return OK, "Merged anyway" if cause == "forced" else "Merged"
     if state == State.NOT_HELD:
         return {"unchanged": (OK, "Already smooth"), "failed": (ERROR, "Can't merge"),
-                "mod failed": (ERROR, "Mod left out"),
-                "group left out": (WARNING, "Left out with its group")}.get(cause, (ERROR, "Left out"))
+                "mod failed": (ERROR, "Mod left out"), "group left out": (WARNING, "Left out with its group"),
+                "turned off": (OK, "Turned off")}.get(cause, (ERROR, "Left out"))
     if state == State.CHANGED:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
-                "load order": (WARNING, "Load order changed"),
-                "group": (WARNING, "Unknown screen added")}.get(cause, (WARNING, "Mod updated"))
+                "load order": (WARNING, "Load order changed"), "group": (WARNING, "Unknown screen added"),
+                "setting": (WARNING, "Setting changed")}.get(cause, (WARNING, "Mod updated"))
+    if state == State.NOT_BUILT and cause == "setting":
+        return WARNING, "Setting changed"
     return {State.NOTHING_TO_DO: (OK, "Smooth UI's own copy"), State.NOT_BUILT: (WARNING, "Not merged yet"),
             State.NO_LONGER_NEEDED: (WARNING, "Mod removed"), State.DAMAGED: (ERROR, "Damaged"),
             State.OVERRIDDEN: (WARNING, "Another mod loads first"),

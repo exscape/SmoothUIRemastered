@@ -177,7 +177,7 @@ def parse_profile(path: Path, *, is_override: bool = False) -> tuple[dict[str, E
                 entry, group = _add_file(files, text, None), None
         except ValueError as e:
             fail(f"{path}:{number}: {e}")
-    for name, found in groups.items():
+    for name in groups:
         if not any(entry.group == name for entry in files.values()):
             fail(f"{path}: group {name} has no files")
     return files, star or Entry(), groups

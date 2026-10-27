@@ -269,10 +269,9 @@ def patch_fps(data, pos, settings, body_hook=None):
         fixed, fix_records = apply_fixes(body, settings.fixes, BEFORE_RESCALE)
         if fixed is not None:
             body[:] = fixed
-        if settings.source_fps is not None:
-            # Rescale from the rate it really plays at, keeping its speed in game
-            if patch_fps_in_body(body, settings.source_fps) is None:
-                raise MalformedSwfError("can't read the frame rate in its header")
+        # Rescale from the rate it really plays at, keeping its speed in game
+        if settings.source_fps is not None and patch_fps_in_body(body, settings.source_fps) is None:
+            raise MalformedSwfError("can't read the frame rate in its header")
         result = rescale_body(body, settings.target_fps, rules=settings.rules, include=settings.include,
                               exclude=settings.exclude)
         if result.new_fps is not None:

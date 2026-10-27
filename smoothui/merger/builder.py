@@ -72,7 +72,8 @@ def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_
     package_dir = Path(out_dir or result.mods_dir) / PACKAGE_FOLDER
     record = record_path(data_dir, result.mods_dir) if data_dir is not None and out_dir is None else None
     reviews_sha256 = reviews.sha256 if reviews is not None else mod_reviews.sha256()
-    written = write_package(package_dir, result.installed, files, record, reviews_sha256=reviews_sha256)
+    written = write_package(package_dir, result.installed, files, record, reviews_sha256=reviews_sha256,
+                            groups_off=result.groups_off)
     if out_dir is not None or written.empty:
         return Installation(package_dir, written, None)
     backup = None
