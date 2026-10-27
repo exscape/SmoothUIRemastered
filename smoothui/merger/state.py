@@ -280,9 +280,13 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
 
 
 def _whole_groups(result: Scan, states: list[FileState], groups: dict[str, str], held) -> list[FileState]:
-    """states, for a package holding a group (see the module's doc): the group's files that would leave it
-    mixed are as bad as a wrong copy, and a mod adding a file to it changes every one of them"""
+    """states, for a package holding a group (see the module's doc): a mod adding a file to the group changes
+    every one of them, and while the game loads some of the group's files from the package, the others
+    (each not patched) leave it mixed, which is as bad as a wrong copy. (If the game loads none of them from
+    the package, e.g. its mods.settings entry is disabled, the whole group is unpatched: not mixed.)"""
     held_groups = {groups[key] for key in held if key in groups}
+    loaded_groups = {groups[key] for key, file in result.files.items()
+                     if key in groups and file.loaded and is_package_folder(file.loaded.folder)}
     result_states = []
     for file in states:
         group = file.group
@@ -291,7 +295,7 @@ def _whole_groups(result: Scan, states: list[FileState], groups: dict[str, str],
             file = replace(file, state=State.CHANGED, severity=Severity.HIGH, needs_build=True, cause="group",
                            message=f"{mod} adds {file_name(key)} to the {group_name(group)}, which Smooth UI doesn't "
                            f"know how to patch: merge again (the {group_name(group)} is then left out, as it only works whole)")
-        elif group in held_groups and file.severity == Severity.MEDIUM:
+        elif group in loaded_groups and file.severity == Severity.MEDIUM:
             file = replace(file, severity=Severity.HIGH,
                            message=f"{file.message} (until then, the {group_name(group)} is part patched, part not: "
                            "its animations play at the wrong speeds)")
