@@ -7,10 +7,11 @@ build. Never for a release.
 
 Each exe is built on its own, so the launcher holds only what it imports (no Qt), then both go into OUT_DIR,
 which is deleted first. Nuitka puts the files the exes need next to them; the files both builds have must be
-the same. Our own files go there too: manifests\\, LICENSE.txt, README_tools.md.
+the same. Our own files go there too: manifests\\, LICENSE.txt, README_tools.md, and licenses\\.
 """
 import argparse
 import filecmp
+import importlib.metadata
 import platform
 import re
 import shutil
@@ -19,6 +20,7 @@ import sys
 import tomllib
 from fnmatch import fnmatch
 from pathlib import Path
+from xml.etree import ElementTree
 
 import PySide6
 
@@ -104,7 +106,8 @@ def merger_data_files(version_file):
 
 
 def nuitka(script, exe_name, description, icon, version, options):
-    """Build script into WORK_DIR/<its name>/<its name>.dist; returns that folder"""
+    """Build script into WORK_DIR/<its name>/<its name>.dist, with Nuitka's report on it next to that folder
+    (report.xml); returns the folder"""
     out = WORK_DIR / Path(script).stem
     dotted = f"{version}.0"
     command = [
@@ -137,6 +140,77 @@ def combine(dists, out_dir):
 def is_ucrt(name):
     name = name.lower()
     return name == "ucrtbase.dll" or name.startswith("api-ms-win-")
+
+
+# Licenses: ours next to the exes; in licenses\\, Python's (which also covers what it includes: OpenSSL,
+# bzip2, libffi, the Microsoft runtime), Nuitka's (its runtime library is in each exe), those of each package
+# with modules in the build, from its .dist-info folder, and the window's font's.
+LICENSE_FILE_PREFIXES = ("LICENSE", "LICENCE", "COPYING", "NOTICE")
+# PySide6's and shiboken6's .dist-info hold only Qt's commercial license text: their LGPL texts, where their
+# source code is, and the notices of the third-party code in Qt are in assets/licenses/PySide6/ instead (written by
+# dev-tools/qt-licenses.py, its README by hand)
+QT_DISTRIBUTIONS = {"PySide6_Essentials", "shiboken6"}
+QT_LICENSES = ROOT / "assets" / "licenses" / "PySide6"
+FONT_LICENSE = ROOT / "smoothui" / "merger" / "fonts" / "OFL.txt"
+
+
+def is_lgpl(dist):
+    meta = dist.metadata
+    text = " ".join([meta.get("License-Expression") or "", meta.get("License") or "", *(meta.get_all("Classifier") or [])])
+    return "LGPL" in text or "Lesser General Public" in text
+
+
+def bundled_distributions(dists):
+    """The installed distributions (packages) that have modules in the builds, from Nuitka's reports on them"""
+    names = {module.get("distribution") for dist in dists
+             for module in ElementTree.parse(dist.parent / "report.xml").getroot().iter("module")}
+    names.discard(None)
+    return sorted((importlib.metadata.distribution(name) for name in names), key=lambda d: d.metadata["Name"].lower())
+
+
+def license_files(dist):
+    """The license files in a distribution's .dist-info folder (or its licenses\\ subfolder)"""
+    return [f for f in dist.files or []
+            if f.parts[0].endswith(".dist-info") and f.name.upper().startswith(LICENSE_FILE_PREFIXES)]
+
+
+def write_licenses(out_dir, dists):
+    licenses_dir = out_dir / "licenses"
+    python_version = platform.python_version()
+    (licenses_dir / "Python").mkdir(parents=True)
+    shutil.copyfile(Path(sys.base_prefix) / "LICENSE.txt", licenses_dir / "Python" / "LICENSE.txt")
+    readme = [
+        f"Third-party software in {PRODUCT}'s tools; each one's license is in the folder of the same name.",
+        "",
+        f"Python {python_version}, with the libraries it includes (OpenSSL, bzip2, libffi): https://www.python.org/",
+    ]
+    for dist in [importlib.metadata.distribution("nuitka"), *bundled_distributions(dists)]:
+        name, version = dist.metadata["Name"], dist.version
+        if name in QT_DISTRIBUTIONS:
+            (licenses_dir / "PySide6").mkdir(exist_ok=True)
+            for f in sorted(QT_LICENSES.iterdir()):
+                shutil.copyfile(f, licenses_dir / "PySide6" / f.name)
+            readme.append(f"{name} {version} (LGPL; see PySide6\\README.txt): https://pypi.org/project/{name}/{version}/")
+            continue
+        # The LGPL lets users replace the library with a modified version, which Nuitka compiles into the exe
+        # (unlike Qt's, PySide6's and shiboken6's DLLs and modules, see their README)
+        if is_lgpl(dist):
+            raise SystemExit(f"ERROR: {name} {version} (LGPL) is compiled into the build, so it can't be replaced")
+        files = license_files(dist)
+        if not files:
+            raise SystemExit(f"ERROR: {name} {version} is in the build but has no license file in its .dist-info")
+        (licenses_dir / name).mkdir()
+        for f in files:
+            shutil.copyfile(dist.locate_file(f), licenses_dir / name / f.name)
+        if name.lower() == "nuitka":
+            readme.append(f"{name} {version} (its runtime library, in each exe; AGPLv3 with the Nuitka Runtime Library "
+                          f"Exception, LICENSE-RUNTIME.txt): https://pypi.org/project/{name}/{version}/")
+        else:
+            readme.append(f"{name} {version}: https://pypi.org/project/{name}/{version}/")
+    (licenses_dir / "Roboto").mkdir()
+    shutil.copyfile(FONT_LICENSE, licenses_dir / "Roboto" / FONT_LICENSE.name)
+    readme.append("Roboto 3.016 (the merger window's font): https://github.com/googlefonts/roboto-3-classic")
+    (licenses_dir / "README.txt").write_text("\n".join(readme) + "\n", encoding="utf-8", newline="\r\n")
 
 
 def main():
@@ -189,6 +263,7 @@ def main():
     shutil.copyfile(ROOT / "manifests" / "reviewed_mod_warnings.txt", out_dir / "manifests" / "reviewed_mod_warnings.txt")
     shutil.copyfile(ROOT / "LICENSE.txt", out_dir / "LICENSE.txt")
     shutil.copyfile(ROOT / "README_tools.md", out_dir / "README_tools.md")
+    write_licenses(out_dir, [launcher, merger])
     print(f"Built: {out_dir}")
 
 
