@@ -1,7 +1,7 @@
 """Updating the tools to a newer release (see updates.py for finding one). No Qt.
 
-Every exe in the tools' folder shares _internal\\, so none of them can replace it while it runs. Hence a
-helper: the new version's own merger, run from where it was unpacked.
+Both exes in the tools' folder run from the files next to them (Python's, Qt's), so neither can replace
+them while it runs. Hence a helper: the new version's own merger, run from where it was unpacked.
 1. prepare (in the merger's thread): download the zip to data\\update\\, check it, unpack it, and check that
    what it holds is the new version.
 2. start_helper: SmoothUIMerger.exe --finish-update APP_DIR OLD_VERSION [--critical] PID... (from the
@@ -52,11 +52,14 @@ HELPER_LOG = "update.log"
 MERGER_EXE = "SmoothUIMerger.exe"
 # Passed on by the helper to the new merger: the update was a critical one (its card says so)
 CRITICAL_ARG = "--critical"
-REQUIRED = (MERGER_EXE, "SmoothUILauncher.exe", "_internal")
-VERSION_FILE = Path("_internal") / "smoothui" / "merger" / "tools_version.txt"
+REQUIRED = (MERGER_EXE, "SmoothUILauncher.exe")
+VERSION_FILE = Path("smoothui") / "merger" / "tools_version.txt"
+# The names a version ships at the top of the tools' folder, one per line (written by build-tools.py): what
+# an update replaces even if the new version no longer ships it
+SHIPPED_LIST = Path("smoothui") / "merger" / "shipped.txt"
 
-# What the tools' folder holds besides the user's data\ (the names of every version so far): what an update
-# replaces even if the new version no longer ships it. Whatever else is in the folder is left alone.
+# The same for the versions from before that list (built with PyInstaller). Whatever else is in the folder,
+# besides the user's data\, is left alone.
 SHIPPED_NAMES = (MERGER_EXE, "SmoothUILauncher.exe", "_internal", "manifests", "licenses", "LICENSE.txt",
                  "README_tools.md", "smoothui.ico", "smoothui-launcher.ico")
 KEPT_NAMES = ("data",)
@@ -197,7 +200,7 @@ def finish(args: list[str], new_root: Path = APP_DIR) -> int:
 
 def swap(new_root: Path, app_dir: Path, old_dir: Path, retry_for: float = RETRY_FOR):
     """Replace the tools in app_dir with those in new_root: every file under the names the new version ships
-    (or any version has shipped) moves to old_dir, then the new version's files are copied in, and the
+    (or the installed one does, see SHIPPED_LIST and SHIPPED_NAMES) moves to old_dir, then the new version's files are copied in, and the
     folders left empty are deleted. On a failure, everything is put back as it was, and this fails
     (UpdateFailed).
 
@@ -207,8 +210,8 @@ def swap(new_root: Path, app_dir: Path, old_dir: Path, retry_for: float = RETRY_
     # In any case, as Windows compares names (e.g. a Data\ in the zip must not take the user's data\);
     # spelled as the new version spells them
     kept = {name.casefold() for name in KEPT_NAMES}
-    names = sorted({name.casefold(): name for name in (*SHIPPED_NAMES, *(p.name for p in new_root.iterdir()))
-                    if name.casefold() not in kept}.values())
+    shipped = (*SHIPPED_NAMES, *_shipped_list(app_dir), *(p.name for p in new_root.iterdir()))
+    names = sorted({name.casefold(): name for name in shipped if name.casefold() not in kept}.values())
     old_files = [file for name in names for file in _files(app_dir, name)]
     new_files = [file for name in names for file in _files(new_root, name)]
     if os.path.lexists(old_dir):
@@ -238,6 +241,17 @@ def swap(new_root: Path, app_dir: Path, old_dir: Path, retry_for: float = RETRY_
         raise
     finally:
         _remove_empty_folders(app_dir, names)
+
+
+def _shipped_list(app_dir: Path) -> list[str]:
+    """The names in the installed version's SHIPPED_LIST (none without one); only plain names, as a damaged
+    list must not reach outside the folder"""
+    try:
+        lines = (app_dir / SHIPPED_LIST).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    return [name for name in (line.strip() for line in lines)
+            if name and name not in (".", "..") and not any(c in name for c in "/\\:")]
 
 
 def _files(folder: Path, name: str) -> list[Path]:

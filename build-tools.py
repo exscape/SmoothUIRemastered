@@ -31,6 +31,8 @@ PRODUCT = "Smooth UI Remastered"
 
 # The version file, at the path of smoothui/merger/, whose VERSION_FILE it is: a frozen tool has no config.toml
 VERSION_DEST = "smoothui/merger/tools_version.txt"
+# The names this version ships at the top of the folder, which an update replaces (self_update.SHIPPED_LIST)
+SHIPPED_DEST = "smoothui/merger/shipped.txt"
 
 # Keep the launcher light. Nuitka follows every import, also those inside functions and under TYPE_CHECKING;
 # the launch check needs none of these (tests/test_state.py LightImports)
@@ -264,6 +266,7 @@ def main():
     shutil.copyfile(ROOT / "LICENSE.txt", out_dir / "LICENSE.txt")
     shutil.copyfile(ROOT / "README_tools.md", out_dir / "README_tools.md")
     write_licenses(out_dir, [launcher, merger])
+    (out_dir / SHIPPED_DEST).write_text("".join(f"{p.name}\n" for p in sorted(out_dir.iterdir())), encoding="utf-8")
     print(f"Built: {out_dir}")
 
 
