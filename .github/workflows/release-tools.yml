@@ -43,10 +43,7 @@ jobs:
 
       # Nuitka compiles with the runner's MSVC
       - name: Build
-        run: python build-tools.py build/dist/SmoothUIMerger
-
-      - name: Zip
-        run: python dev-tools/make-tools-zip.py build/dist/SmoothUIMerger "dist/SmoothUITools-$VERSION.zip"
+        run: python build-tools.py --zip "dist/SmoothUITools-$VERSION.zip"
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:

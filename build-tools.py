@@ -1,13 +1,21 @@
-"""Builds the tools' exes with Nuitka: SmoothUILauncher.exe and SmoothUIMerger.exe, in one folder. Run on 64-bit
-Windows Python (env_gui, see requirements_gui.txt), never under WSL's Python (build-tools.sh runs this from WSL):
-    env_gui/Scripts/python.exe build-tools.py OUT_DIR [--dev-manifests] [--version X.Y.Z]
-OUT_DIR must be inside build/ (e.g. build/dist/SmoothUIMerger, as build-tools.sh uses).
---dev-manifests: also ship the manifests of Smooth UI's dev builds, so a test build knows an installed dev
-build. Never for a release.
+#!/usr/bin/env python3
+"""Builds the tools' exes with Nuitka: SmoothUILauncher.exe and SmoothUIMerger.exe, in one folder. Builds on
+64-bit Windows Python (env_gui, see requirements_gui.txt); from WSL, this runs itself again on env_gui's.
+    env_gui/Scripts/python.exe build-tools.py      (or from WSL: ./build-tools.py)
+        build into build/dist/SmoothUIMerger/, then mirror that into dist/SmoothUIMerger/, keeping its data/
+        (the tools' settings and logs)
+    --dev-manifests   a test build that also knows Smooth UI's dev builds (never for a release)
+    --version X.Y.Z   a test build that says it is that version (not config.toml's)
+    --zip [ZIP]       zip the build as a release ships it (default dist/SmoothUITools-X.Y.Z.zip), instead of
+                      mirroring it into dist/SmoothUIMerger/
+    --out DIR         build into DIR instead (inside build/), and leave it there
 
-Each exe is built on its own, so the launcher holds only what it imports (no Qt), then both go into OUT_DIR,
-which is deleted first. Nuitka puts the files the exes need next to them; the files both builds have must be
-the same. Our own files go there too: manifests\\, LICENSE.txt, README_tools.md, and licenses\\.
+Each exe is built on its own, so the launcher holds only what it imports (no Qt), then both go into the build
+folder, which is deleted first. Nuitka puts the files the exes need next to them; the files both builds have
+must be the same. Our own files go there too: manifests\\, LICENSE.txt, README_tools.md, and licenses\\.
+
+dist/SmoothUIMerger/ itself is never deleted, only mirrored into: WSL1 can keep showing a deleted folder that
+Windows made again (while a WSL process, e.g. a file watcher, still holds the old one).
 """
 import argparse
 import filecmp
@@ -18,13 +26,15 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import zipfile
 from fnmatch import fnmatch
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from xml.etree import ElementTree
 
-import PySide6
-
 ROOT = Path(__file__).resolve().parent
+BUILD_DIR = ROOT / "build" / "dist" / "SmoothUIMerger"
+INSTALL_DIR = ROOT / "dist" / "SmoothUIMerger"
+ZIP_FOLDER = "Smooth UI Tools"          # the folder at the root of a release zip
 WORK_DIR = ROOT / "build" / "nuitka"    # Nuitka's build folders and reports, and the version file
 COMPANY = "Aeluwas"
 PRODUCT = "Smooth UI Remastered"
@@ -55,11 +65,47 @@ QT_PLUGIN_DEST = "PySide6/qt-plugins"   # where Nuitka puts them
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Build the tools' exes with Nuitka")
-    parser.add_argument("out_dir", type=Path, help="the folder to build into (deleted first)")
     parser.add_argument("--dev-manifests", action="store_true",
                         help="also ship the dev builds' manifests (for test builds, never for a release)")
     parser.add_argument("--version", help="X.Y.Z instead of tools_version in config.toml (for test builds)")
+    parser.add_argument("--zip", nargs="?", const="", metavar="ZIP",
+                        help="zip the build (default dist/SmoothUITools-X.Y.Z.zip) instead of mirroring it into "
+                             "dist/SmoothUIMerger/")
+    parser.add_argument("--out", type=Path, metavar="DIR",
+                        help="build into DIR (inside build/, deleted first) and leave it there")
+    # zip: None, "" (the default zip) or a path. No type=Path: argparse would also convert the "" to Path("."), the current folder
     return parser.parse_args()
+
+
+def in_wsl():
+    return platform.system() == "Linux" and "microsoft" in platform.release().lower()
+
+
+def windows_path(path):
+    """A WSL path as Windows sees it; it need not exist yet"""
+    path = path.resolve()
+    existing = next(p for p in (path, *path.parents) if p.exists())
+    base = subprocess.run(["wslpath", "-w", str(existing)], capture_output=True, text=True, check=True).stdout.strip()
+    return str(PureWindowsPath(base, *path.relative_to(existing).parts))
+
+
+def run_on_windows(args):
+    """From WSL: run this script again on env_gui's Windows Python, with the paths as Windows sees them"""
+    python = ROOT / "env_gui" / "Scripts" / "python.exe"
+    if not python.is_file():
+        raise SystemExit(f"ERROR: no {python.relative_to(ROOT)} (see requirements_gui.txt)")
+    if not re.match(r"[A-Za-z]:\\", windows_path(ROOT)):
+        raise SystemExit(f"ERROR: the repo must be on a Windows drive, not {windows_path(ROOT)}")
+    command = [str(python), windows_path(Path(__file__))]
+    if args.dev_manifests:
+        command.append("--dev-manifests")
+    if args.version is not None:
+        command += ["--version", args.version]
+    if args.zip is not None:
+        command += ["--zip", *([windows_path(Path(args.zip))] if args.zip else [])]
+    if args.out is not None:
+        command += ["--out", windows_path(args.out)]
+    raise SystemExit(subprocess.run(command, cwd=ROOT, check=False).returncode)
 
 
 def check_python():
@@ -86,6 +132,8 @@ def read_tools_version(version):
 
 def qt_dropped():
     """--noinclude-dlls options for the Qt files the merger doesn't need"""
+    # Only on env_gui's Python, not WSL's (run_on_windows)
+    import PySide6
     plugins = Path(PySide6.__file__).parent / "plugins"
     dropped = [f"{QT_PLUGIN_DEST}/{p.relative_to(plugins).as_posix()}" for p in sorted(plugins.rglob("*.dll"))
                if not any(fnmatch(p.relative_to(plugins).as_posix(), kept) for kept in QT_PLUGINS_KEPT)]
@@ -229,9 +277,38 @@ def write_licenses(out_dir, dists):
     (licenses_dir / "README.txt").write_text("\n".join(readme) + "\n", encoding="utf-8", newline="\r\n")
 
 
+def write_zip(built, zip_path):
+    """Zip the build as a release ships it, in the folder ZIP_FOLDER"""
+    files = sorted(p for p in built.rglob("*") if p.is_file())
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for path in files:
+            z.write(path, f"{ZIP_FOLDER}/{path.relative_to(built).as_posix()}")
+    print(f"Wrote {zip_path} ({zip_path.stat().st_size / 1024 / 1024:.1f} MiB, {len(files)} files)")
+
+
+def mirror(built, target):
+    """Make target the same as built, except for its data\\ (robocopy: copies only what changed)"""
+    # /XD with a full path: only that folder. Exit codes below 8 mean success. Its output (which lists each file
+    # it deletes) only on failure.
+    command = ["robocopy", str(built), str(target), "/MIR", "/XD", str(target / "data"), "/R:2", "/W:1",
+               "/NJH", "/NJS", "/NDL", "/NFL", "/NP"]
+    result = subprocess.run(command, capture_output=True, text=True, errors="replace", check=False)
+    code = result.returncode
+    if code >= 8:
+        print(result.stdout, result.stderr, sep="", end="")
+        raise SystemExit(f"ERROR: robocopy failed (exit code {code}): is SmoothUILauncher.exe or SmoothUIMerger.exe running?")
+    print(f"Mirrored into: {target}")
+
+
 def main():
     args = parse_args()
+    if in_wsl():
+        run_on_windows(args)
     check_python()
+    out_dir = (args.out or BUILD_DIR).resolve()
+    if not out_dir.is_relative_to(ROOT / "build"):
+        raise SystemExit(f"ERROR: --out must be inside {ROOT / 'build'} (it is deleted first), not {out_dir}")
     version = read_tools_version(args.version)
     print(f"Tools version {version}")
     WORK_DIR.mkdir(parents=True, exist_ok=True)
@@ -248,9 +325,6 @@ def main():
         f"--nofollow-import-to={','.join(MERGER_EXCLUDES)}", *qt_dropped(), *merger_data_files(version_file),
     ])
 
-    out_dir = args.out_dir.resolve()
-    if not out_dir.is_relative_to(ROOT / "build"):
-        raise SystemExit(f"ERROR: OUT_DIR must be inside {ROOT / 'build'} (it is deleted first), not {out_dir}")
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
@@ -283,6 +357,11 @@ def main():
     write_licenses(out_dir, [launcher, merger])
     (out_dir / SHIPPED_DEST).write_text("".join(f"{p.name}\n" for p in sorted(out_dir.iterdir())), encoding="utf-8")
     print(f"Built: {out_dir}")
+
+    if args.zip is not None:
+        write_zip(out_dir, Path(args.zip) if args.zip else ROOT / "dist" / f"SmoothUITools-{version}.zip")
+    elif args.out is None:
+        mirror(out_dir, INSTALL_DIR)
 
 
 if __name__ == "__main__":

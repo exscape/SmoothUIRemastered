@@ -168,7 +168,7 @@ On Windows, in `cmd.exe` or PowerShell:
    ```
 4. Build (this takes a few minutes; the first build also downloads a tool Nuitka uses, Dependency Walker, into `%LOCALAPPDATA%\Nuitka`):
    ```
-   env_gui\Scripts\python.exe build-tools.py build\dist\SmoothUIMerger
+   env_gui\Scripts\python.exe build-tools.py
    ```
-   The tools are then in `build\dist\SmoothUIMerger\`, ready to use. To zip them as a release is zipped: `env_gui\Scripts\python.exe dev-tools\make-tools-zip.py build\dist\SmoothUIMerger SmoothUITools.zip`
+   The tools are then in `dist\SmoothUIMerger\`, ready to use; a new build there keeps their settings and logs (`data\`). Or add `--zip` to zip them as a release is zipped instead: `dist\SmoothUITools-X.Y.Z.zip`.
 <!-- /nexus:skip -->
