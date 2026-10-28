@@ -1,4 +1,9 @@
 
+# v0.3.3
+
+* Support making the HUD high FPS, but only when using [Smooth UI Tools](https://www.nexusmods.com/witcher3/mods/15202) because of how the HUD is built. A downloadable version would be *very* likely to cause compatibility issues, breaking the HUD when other mods change it.
+  * The effects are quite small in general, but can be seen in the loot feed (the scrolling on the left side when you pick up several items), the radial wheel (signs/weapon selector), the quest arrow in the minimap, etc.
+
 # v0.3.2
 
 * Gwent: add card effects speed settings (from Default/Off to Default/200%/300%/400%/Instant) -- Instant is a better name than Off
