@@ -17,6 +17,8 @@ Download them from [their Nexus Mods page](https://www.nexusmods.com/witcher3/mo
 That's it. This works with any mod manager, though Mod Organizer 2 needs a few extra steps (see below).  
 The sections below also have optional tips for other mod managers, such as convenient ways to start the game through the launcher.
 
+Note: the downloaded folder contains many files due to the way they are built. Only `SmoothUILauncher.exe`, `SmoothUIMerger.exe` and the `data` folder (created on first start) are really relevant; everything else is static.
+
 <!-- nexus:skip -->
 **Setup for your mod manager:**
 
