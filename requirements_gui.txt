@@ -1,5 +1,5 @@
-# The merger (merger-gui.py, launcher.py), run from source or built with smoothui-tools.spec: install in
-# env_gui, on 64-bit Windows Python. It does what the command-line tools do, so it needs their packages too.
+# The merger (merger-gui.py, launcher.py), run from source or built with build-tools.py: install in env_gui,
+# on 64-bit Windows Python. It does what the command-line tools do, so it needs their packages too.
 -r requirements.txt
 # The window: Qt Widgets (LGPL). Essentials is Qt's base modules only, without the add-ons.
 PySide6-Essentials==6.12.0
@@ -7,14 +7,3 @@ PySide6-Essentials==6.12.0
 # Nuitka (build-tools.py), which needs a C compiler: MSVC Build Tools. Build with Python 3.14: Nuitka 4.3.1's
 # 3.15 support is only experimental.
 Nuitka==4.3.1
-
-# PyInstaller, with its bootloader compiled here rather than the prebuilt one (smoothui-tools.spec refuses to
-# build with that). Install a C compiler first (MSVC Build Tools or MinGW-w64), then, in cmd.exe:
-#     set PYINSTALLER_COMPILE_BOOTLOADER=1
-#     pip cache remove pyinstaller            (else pip may reuse a PyInstaller it built without the variable)
-#     pip uninstall pyinstaller               (only if one is installed already)
-#     pip install -r requirements_gui.txt
-# For another PyInstaller version, add its prebuilt bootloaders' hashes to the spec first:
-# dev-tools/pyinstaller-hashes.py prints them.
---no-binary pyinstaller
-pyinstaller==6.22.3

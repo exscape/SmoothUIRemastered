@@ -9,8 +9,8 @@ fix's .abc) are found relative to that module instead, which works either way.
 import sys
 from pathlib import Path
 
-# Nuitka defines __compiled__ in every module it compiles; PyInstaller (smoothui-tools.spec) sets sys.frozen
-FROZEN = "__compiled__" in globals() or getattr(sys, "frozen", False)
+# Nuitka defines __compiled__ in every module it compiles
+FROZEN = "__compiled__" in globals()
 
 # The folder holding the exes when frozen, else the repo root. Never the current directory: mod managers
 # and Steam start the tool from anywhere.

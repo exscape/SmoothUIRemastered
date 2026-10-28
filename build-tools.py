@@ -126,6 +126,20 @@ def nuitka(script, exe_name, description, icon, version, options):
     return out / f"{Path(script).stem}.dist"
 
 
+def report_modules(dist):
+    """The names of the modules in a build, from Nuitka's report on it"""
+    return {module.get("name") for module in ElementTree.parse(dist.parent / "report.xml").getroot().iter("module")}
+
+
+def check_launcher(dist):
+    """The launcher must hold none of LAUNCHER_EXCLUDES (Nuitka leaves out what they import, not an import
+    that reaches them some other way): the exe's counterpart of tests/test_state.py LightImports"""
+    found = sorted(name for name in report_modules(dist)
+                   if any(name == excluded or name.startswith(excluded + ".") for excluded in LAUNCHER_EXCLUDES))
+    if found:
+        raise SystemExit(f"ERROR: the launcher holds modules it must not: {', '.join(found)}")
+
+
 def combine(dists, out_dir):
     """Copy the builds into out_dir; a file that two builds both have must be the same in each"""
     for dist in dists:
@@ -228,6 +242,7 @@ def main():
         f"--nofollow-import-to={','.join(LAUNCHER_EXCLUDES)}",
         f"--include-data-files={version_file}={VERSION_DEST}",
     ])
+    check_launcher(launcher)
     merger = nuitka("merger-gui.py", "SmoothUIMerger.exe", "Smooth UI Remastered merger", "Merger.ico", version, [
         "--enable-plugin=pyside6", "--include-qt-plugins=platforms,styles,imageformats", "--noinclude-qt-translations",
         f"--nofollow-import-to={','.join(MERGER_EXCLUDES)}", *qt_dropped(), *merger_data_files(version_file),

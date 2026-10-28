@@ -152,7 +152,7 @@ The releases are built by GitHub from the tagged source code, and you can check 
 
 On Windows, in `cmd.exe` or PowerShell:
 
-1. Install [Python](https://www.python.org/downloads/) (64-bit). The initial release of Smooth UI Tools uses 3.15.2, but the latest version likely works.
+1. Install [Python](https://www.python.org/downloads/) 3.14 (64-bit): the releases use 3.14.10. Python 3.15 doesn't work yet (Nuitka, which builds the exes, only partly supports it). Also install a C compiler: [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), with "Desktop development with C++".
 2. Get the source code of a release, and open `cmd.exe` in its folder. Either:
    - download "Source code (zip)" under the release on [GitHub](https://github.com/exscape/SmoothUIRemastered/releases), and extract it, or
    - with [Git](https://git-scm.com/):
@@ -163,14 +163,12 @@ On Windows, in `cmd.exe` or PowerShell:
      ```
 3. Install the packages, at the exact versions the release used, in a new environment:
    ```
-   py -m venv env_gui
+   py -3.14 -m venv env_gui
    env_gui\Scripts\python.exe -m pip install -r requirements_gui-lock.txt
    ```
-4. Build:
+4. Build (this takes a few minutes; the first build also downloads a tool Nuitka uses, Dependency Walker, into `%LOCALAPPDATA%\Nuitka`):
    ```
-   env_gui\Scripts\pyinstaller.exe --clean --noconfirm smoothui-tools.spec -- --prebuilt-bootloader
+   env_gui\Scripts\python.exe build-tools.py build\dist\SmoothUIMerger
    ```
-   `--prebuilt-bootloader` uses the bootloader (the start of each exe) that comes with PyInstaller. The releases use one compiled from PyInstaller's source instead, as antivirus programs flag the prebuilt one more often.
-
-   The tools are then in `dist\SmoothUIMerger\`, ready to use. To zip them as a release is zipped: `env_gui\Scripts\python.exe dev-tools\make-tools-zip.py dist\SmoothUIMerger SmoothUITools.zip`
+   The tools are then in `build\dist\SmoothUIMerger\`, ready to use. To zip them as a release is zipped: `env_gui\Scripts\python.exe dev-tools\make-tools-zip.py build\dist\SmoothUIMerger SmoothUITools.zip`
 <!-- /nexus:skip -->

@@ -28,7 +28,7 @@ jobs:
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: "3.15.2"
+          python-version: "3.14.10"
           architecture: x64
 
       # First, so that a release without notes fails before the slow build
@@ -38,17 +38,15 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
           python dev-tools/release-notes.py "$version" build/release-notes.md
 
-      # PyInstaller from source, with its bootloader compiled here (smoothui-tools.spec refuses the prebuilt one)
       - name: Install packages
-        env:
-          PYINSTALLER_COMPILE_BOOTLOADER: "1"
-        run: python -m pip install --no-binary pyinstaller -r requirements_gui-lock.txt
+        run: python -m pip install -r requirements_gui-lock.txt
 
+      # Nuitka compiles with the runner's MSVC
       - name: Build
-        run: python -m PyInstaller --clean --noconfirm smoothui-tools.spec
+        run: python build-tools.py build/dist/SmoothUIMerger
 
       - name: Zip
-        run: python dev-tools/make-tools-zip.py dist/SmoothUIMerger "dist/SmoothUITools-$VERSION.zip"
+        run: python dev-tools/make-tools-zip.py build/dist/SmoothUIMerger "dist/SmoothUITools-$VERSION.zip"
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
