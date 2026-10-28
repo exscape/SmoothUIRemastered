@@ -37,6 +37,7 @@ it must be made again whenever a bundle changes (see metadata_store.py).
 
 from __future__ import annotations
 
+import logging
 import os
 import struct
 import zlib
@@ -60,6 +61,8 @@ NONE, ZLIB, SNAPPY, DOBOZ, LZ4, LZ4HC = range(6)
 COMPRESSION_NAMES = {NONE: "none", ZLIB: "zlib", SNAPPY: "snappy", DOBOZ: "doboz", LZ4: "lz4", LZ4HC: "lz4hc"}
 # Compresses in about 60% of the time of level 9, and costs less than 1% of extra space
 LZ4HC_LEVEL = 6
+
+log = logging.getLogger(__name__)
 
 
 class BundleError(ValueError):
@@ -92,8 +95,13 @@ class BundleEntry(NamedTuple):
             raise BundleError(f"{self.path}: can't decompress ({compression_name(self.compression)}): {e}") from None
         if len(content) != self.size:
             raise BundleError(f"{self.path}: decompressed to {len(content)} bytes, expected {self.size}")
-        if zlib.crc32(content) != self.crc:
-            raise BundleError(f"{self.path}: CRC mismatch, the bundle is corrupt")
+        crc = zlib.crc32(content)
+        if crc != self.crc:
+            # Some mods' bundles have no CRCs at all (zero), so those are only warned about
+            if self.crc == 0:
+                log.warning(f"{self.path}: the bundle has no CRC for this file, so it can't be checked")
+            else:
+                raise BundleError(f"{self.path}: CRC mismatch, the bundle is corrupt; expected {self.crc}, actual {crc}")
         return content
 
 
