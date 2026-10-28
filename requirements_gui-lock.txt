@@ -1,5 +1,5 @@
 # Exact versions for release builds (.github/workflows/release-tools.yml): env_gui's pip freeze. Before a tools
-# release, update env_gui from requirements_gui.txt, test, then: env_gui/Scripts/python.exe -m pip freeze
+# release, ./release-helper.py tools-packages updates env_gui from requirements_gui.txt and rewrites this file
 brotli==1.2.1
 colorama==0.4.6
 inflate64==1.0.4
