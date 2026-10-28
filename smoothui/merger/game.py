@@ -320,23 +320,26 @@ def game_command(args: list[str], game: Path | None) -> GameCommand | None:
     return GameCommand([str(exe), *args], exe.parent, None)
 
 
-# What PyInstaller's runtime hook for Qt sets in the frozen merger's environment
-QT_VARIABLES = ("QT_PLUGIN_PATH", "QML2_IMPORT_PATH")
+# What the frozen merger's Qt (PySide6, and Nuitka's support for it) sets in its environment
+QT_VARIABLES = ("QT_PLUGIN_PATH", "QML2_IMPORT_PATH", "PYSIDE6_OPTION_PYTHON_ENUM")
 
 
-def game_environment(environ: dict[str, str], bundle: str | None) -> dict[str, str]:
-    """The environment the merger starts the game with: its own (environ), without what PyInstaller's runtime
-    hook for Qt adds to it in the frozen merger (bundle: its _internal folder, sys._MEIPASS; None when run from
-    source): the Qt variables, and bundle at the front of PATH, where DLLs that the game or what it loads
-    (overlays, ReShade) looks for could be found. The launcher doesn't load Qt: the game it starts has none of it."""
+def game_environment(environ: dict[str, str], app_dir: Path | None) -> dict[str, str]:
+    """The environment the merger starts the game with: its own (environ), without what loading Qt adds to it
+    in the frozen merger (app_dir: the tools' folder; None when run from source): the Qt variables, and the
+    tools' folder and its PySide6\\ at the front of PATH, where DLLs that the game or what it loads (overlays,
+    ReShade) looks for could be found. The launcher doesn't load Qt: the game it starts has none of it."""
     env = dict(environ)
-    if bundle is None:
+    if app_dir is None:
         return env
     for name in QT_VARIABLES:
         env.pop(name, None)
-    bundle = os.path.normcase(os.path.normpath(bundle))
+    # Resolved: PATH may have the folder's short name (C:\\PROGRA~1\\...)
+    app = os.path.normcase(os.path.realpath(app_dir))
+    def inside(folder):
+        real = os.path.normcase(os.path.realpath(folder))
+        return real == app or real.startswith(os.path.join(app, ""))
     for name, value in env.items():
         if name.upper() == "PATH":
-            env[name] = os.pathsep.join(folder for folder in value.split(os.pathsep)
-                                        if folder and os.path.normcase(os.path.normpath(folder)) != bundle)
+            env[name] = os.pathsep.join(folder for folder in value.split(os.pathsep) if folder and not inside(folder))
     return env

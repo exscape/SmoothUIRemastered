@@ -1354,7 +1354,7 @@ class MergerWindow:
         folder while the game runs. Without the merger's Qt environment (see game_environment)."""
         command = game_command([], self.game)
         log.info(f"Starting the game: {subprocess.list2cmdline(command.args)}")
-        env = game_environment(os.environ, getattr(sys, "_MEIPASS", None))
+        env = game_environment(os.environ, APP_DIR if FROZEN else None)
         try:
             subprocess.Popen(command.args, cwd=command.cwd, env=env)
         except OSError as e:

@@ -21,7 +21,7 @@ _mutexes = []
 def msg_box(text: str, flags: int = MB_ICONWARNING):
     """Show a message box and wait for the user to close it. Never raises."""
     try:
-        # Without this, Windows scales the box up on HiDPI monitors, blurred: PyInstaller's exe manifest
+        # Without this, Windows scales the box up on HiDPI monitors, blurred: the exes' manifest (Nuitka's)
         # doesn't declare DPI awareness. It is per process, so the game isn't affected; Qt sets its own
         # (newer) mode, and setting one a second time fails without changing anything.
         ctypes.windll.shcore.SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE)
@@ -34,7 +34,7 @@ def msg_box(text: str, flags: int = MB_ICONWARNING):
 
 
 def ms_since_process_start() -> float | None:
-    """Wall-clock ms since this process was created (with PyInstaller's bootloader); None if unknown"""
+    """Wall-clock ms since this process was created (so including Python's start); None if unknown"""
     try:
         kernel32 = ctypes.windll.kernel32
     except AttributeError:

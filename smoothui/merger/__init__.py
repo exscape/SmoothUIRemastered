@@ -42,7 +42,7 @@ def tools_version() -> str:
             fail(f"can't read the merger's version: {e}")
     else:
         # Only the repo has a config. Read here, not with build.shared's load_config: that imports the
-        # patcher, which the launcher must not (and PyInstaller would then bundle it into the launcher).
+        # patcher, which the launcher must not (and Nuitka would then compile it into the launcher).
         # tomllib is imported here too, as a frozen tool never needs it.
         import tomllib
         path = REPO_ROOT / "config" / "config.toml"
