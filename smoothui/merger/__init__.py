@@ -27,7 +27,7 @@ UPDATE_URL_ENV = "SMOOTHUI_UPDATE_URL"
 UPDATE_TOKEN_ENV = "SMOOTHUI_UPDATE_TOKEN"
 
 # The merger's version is [versions] tools_version in config/config.toml. A frozen tool has no config:
-# smoothui-tools.spec writes the version into this file (in _internal\, at this module's path).
+# the build (build-tools.py) writes the version into this file, at this module's path.
 VERSION_FILE = Path(__file__).with_name("tools_version.txt")
 VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 

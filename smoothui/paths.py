@@ -1,15 +1,16 @@
 """Where the code finds its files.
 
-Run from the repo (the command-line tools), everything is relative to the repo root. Frozen (PyInstaller,
-see smoothui-tools.spec), the tool is one folder: the exes, with the files we ship next to them (manifests\\,
-licenses\\), the user's data in data\\, and PyInstaller's _internal\\. Files that belong to a
-module (e.g. a fix's .abc) are found relative to that module instead, which works either way.
+Run from the repo (the command-line tools), everything is relative to the repo root. Frozen (built by
+build-tools.py), the tool is one folder: the exes, with the files we ship next to them (manifests\\,
+licenses\\), the user's data in data\\, and the files the exes need. Files that belong to a module (e.g. a
+fix's .abc) are found relative to that module instead, which works either way.
 """
 
 import sys
 from pathlib import Path
 
-FROZEN = getattr(sys, "frozen", False)
+# Nuitka defines __compiled__ in every module it compiles; PyInstaller (smoothui-tools.spec) sets sys.frozen
+FROZEN = "__compiled__" in globals() or getattr(sys, "frozen", False)
 
 # The folder holding the exes when frozen, else the repo root. Never the current directory: mod managers
 # and Steam start the tool from anywhere.

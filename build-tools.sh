@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Builds dist/SmoothUIMerger/ (SmoothUILauncher.exe and SmoothUIMerger.exe, see smoothui-tools.spec) from
-# WSL, with env_gui's Windows Python.
+# Builds dist/SmoothUIMerger/ (SmoothUILauncher.exe and SmoothUIMerger.exe, see build-tools.py) from WSL,
+# with env_gui's Windows Python.
 #     ./build-tools.sh                   a build as released: release manifests only
 #     ./build-tools.sh --dev-manifests   a test build that also knows Smooth UI's dev builds
 #     ./build-tools.sh --version X.Y.Z   a test build that says it is that version (not config.toml's)
 #     ./build-tools.sh --zip             make dist/SmoothUITools-X.Y.Z.zip (what a release ships, without data/)
 #                                        instead of mirroring into dist/SmoothUIMerger/
 #
-# PyInstaller builds into build/dist/, which it deletes first; robocopy then mirrors that into
-# dist/SmoothUIMerger/, keeping its data/ (the tools' settings and logs). So dist/SmoothUIMerger/ itself is
-# never deleted: WSL1 can keep showing a deleted folder that Windows made again (while a WSL process, e.g.
+# build-tools.py builds into build/dist/SmoothUIMerger/, which it deletes first; robocopy then mirrors that
+# into dist/SmoothUIMerger/, keeping its data/ (the tools' settings and logs). So dist/SmoothUIMerger/ itself
+# is never deleted: WSL1 can keep showing a deleted folder that Windows made again (while a WSL process, e.g.
 # a file watcher, still holds the old one).
 set -euo pipefail
 cd "$(dirname "$0")"
 
-spec_args=()
+build_args=()
 make_zip=0
 while (( $# )); do
     case "$1" in
-        --dev-manifests) spec_args+=("$1") ;;
+        --dev-manifests) build_args+=("$1") ;;
         --version)
             [[ $# -ge 2 && "$2" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "error: --version needs X.Y.Z" >&2; exit 2; }
-            spec_args+=(--version "$2"); shift ;;
+            build_args+=(--version "$2"); shift ;;
         --zip) make_zip=1 ;;
         *) echo "usage: $0 [--dev-manifests] [--version X.Y.Z] [--zip]" >&2; exit 2 ;;
     esac
@@ -36,12 +36,11 @@ fi
 built="$root\\build\\dist\\SmoothUIMerger"
 target="$root\\dist\\SmoothUIMerger"
 
-env_gui/Scripts/pyinstaller.exe --clean --noconfirm --distpath "$root\\build\\dist" smoothui-tools.spec \
-    -- "${spec_args[@]}"
+env_gui/Scripts/python.exe build-tools.py "$built" "${build_args[@]}"
 
 if (( make_zip )); then
     # The version in the build, whichever way it was set
-    version=$(<"build/dist/SmoothUIMerger/_internal/smoothui/merger/tools_version.txt")
+    version=$(<"build/dist/SmoothUIMerger/smoothui/merger/tools_version.txt")
     zip="dist/SmoothUITools-${version%$'\r'}.zip"
     env_wsl/bin/python dev-tools/make-tools-zip.py build/dist/SmoothUIMerger "$zip"
     exit 0
