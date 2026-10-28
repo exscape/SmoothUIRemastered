@@ -570,10 +570,11 @@ def _cause(file: FileState) -> str:
 def _changed_mod(file: FileState, found: Check) -> str | None:
     """The mod a file's cause is about: for a copy that changed, the mod that changed. For a removed mod, the
     one the last merge used; when another mod's copy is used now, the one the last merge used if it no
-    longer ships the file (removed or disabled), else the one used now (new, or moved up)."""
+    longer ships the file (removed or disabled), else the one used now (new, or moved up). The game's own
+    copy is always there, so when a mod's copy replaced it, that mod is what changed."""
     if file.state == State.NO_LONGER_NEEDED:
         return file.previous
-    if file.cause == "load order" and file.previous:
+    if file.cause == "load order" and file.previous and file.previous != GAME_FILES:
         result = found.scan.files.get(file.path)
         if file.previous.lower() not in {mod.folder.lower() for mod in (result.shippers if result else [])}:
             return file.previous
