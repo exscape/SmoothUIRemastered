@@ -69,7 +69,7 @@ def parse_args():
                         help="also ship the dev builds' manifests (for test builds, never for a release)")
     parser.add_argument("--version", help="X.Y.Z instead of tools_version in config.toml (for test builds)")
     parser.add_argument("--zip", nargs="?", const="", metavar="ZIP",
-                        help="zip the build (default dist/SmoothUITools-X.Y.Z.zip) instead of mirroring it into "
+                        help="zip the build (default dist/SmoothUITools-X.Y.Z-test.zip) instead of mirroring it into "
                              "dist/SmoothUIMerger/")
     parser.add_argument("--out", type=Path, metavar="DIR",
                         help="build into DIR (inside build/, deleted first) and leave it there")
@@ -359,7 +359,7 @@ def main():
     print(f"Built: {out_dir}")
 
     if args.zip is not None:
-        write_zip(out_dir, Path(args.zip) if args.zip else ROOT / "dist" / f"SmoothUITools-{version}.zip")
+        write_zip(out_dir, Path(args.zip) if args.zip else ROOT / "dist" / f"SmoothUITools-{version}-test.zip")
     elif args.out is None:
         mirror(out_dir, INSTALL_DIR)
 
