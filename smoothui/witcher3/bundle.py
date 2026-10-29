@@ -86,7 +86,15 @@ class BundleEntry(NamedTuple):
             if self.compression == NONE:
                 content = self.stored
             elif self.compression == ZLIB:
-                content = zlib.decompress(self.stored)
+                decompressor = zlib.decompressobj()
+                content = decompressor.decompress(self.stored)
+                # Some mods' bundles have zlib streams without their end (the last block and the checksum),
+                # which the game reads: accepted when they hold the whole file (the CRC is checked below)
+                if not decompressor.eof:
+                    if len(content) != self.size:
+                        raise zlib.error("incomplete or truncated stream")
+                    log.warning(f"{self.path}: the bundle's zlib stream for this file has no end, but holds "
+                                f"the whole file, so it's used")
             elif self.compression in (LZ4, LZ4HC):
                 content = lz4.block.decompress(self.stored, uncompressed_size=self.size)
             else:

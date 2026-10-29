@@ -1,3 +1,6 @@
+# v0.9.2
+* Fixed: some mods giving errors (not just warnings) despite working well in-game. The merger is now more lenient, and able to merge/patch more mods.
+
 # v0.9.1
 
 * Added: support merging the HUD, making the entire HUD high framerate. Also tested together with a few of the top HUD mods (SAHUD, Friendly HUD).

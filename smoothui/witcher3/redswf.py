@@ -90,12 +90,13 @@ class RedSwf:
         if version != CR2W_VERSION:
             raise RedSwfError(f"CR2W version {version} is not supported (expected {CR2W_VERSION})")
         self.file_size, self.buffer_size = struct.unpack_from("<II", d, OFF_FILE_SIZE)
-        if self.file_size != len(d):
-            raise RedSwfError(f"header file size {self.file_size} != actual size {len(d)}")
 
-        # Header/tables/chunks whose stored CRC doesn't match their contents. Tolerated (it happens
-        # when a SWF was patched in place), but replacing the SWF must not add any.
+        # Header/tables/chunks whose stored CRC doesn't match their contents, and a header file size that
+        # doesn't match the file. Tolerated (it happens when a SWF was patched in place; the game reads such
+        # files), but replacing the SWF must not add any. The chunks must still end exactly at the file's end.
         self.stale = set()
+        if self.file_size != len(d):
+            self.stale.add("header file size")
         if struct.unpack_from("<I", d, OFF_HEADER_CRC)[0] != header_crc(d):
             self.stale.add("header")
 
@@ -236,7 +237,8 @@ class RedSwf:
         exports = b"".join(rows)
         head = bytearray(d[:self.tables[T_EXPORTS][0]]) + exports
         size = len(head) + sum(len(chunk_data) for chunk_data in chunks)
-        struct.pack_into("<II", head, OFF_FILE_SIZE, size, self.buffer_size + size - len(d))
+        # The buffer size stays as far above the file size as it was (the old file size may be stale: see __init__)
+        struct.pack_into("<II", head, OFF_FILE_SIZE, size, self.buffer_size - self.file_size + size)
         struct.pack_into("<I", head, OFF_EXPORTS_CRC, zlib.crc32(exports))
         # Last, as it covers the fields above
         struct.pack_into("<I", head, OFF_HEADER_CRC, header_crc(head))
@@ -276,8 +278,7 @@ def swf_sha256(redswf: bytes | bytearray) -> str:
             body = decompressor.decompress(body)
         except zlib.error as e:
             raise RedSwfError(f"the SWF's zlib stream is corrupt: {e}") from e
-        if not decompressor.eof:
-            raise RedSwfError("the SWF's zlib stream is truncated")
+        # A stream without its end is fine if it holds the whole SWF (see swf_patch): checked below
         sig = SWF_UNCOMPRESSED_SIGS[sig]
     if SWF_HEADER_SIZE + len(body) < declared:
         raise RedSwfError(f"the SWF is {SWF_HEADER_SIZE + len(body)} bytes, but its header states {declared}")
@@ -337,8 +338,8 @@ def verify_replacement(old: RedSwf, out: bytes, swf: bytes) -> list[str]:
         problems.append("the SWF chunk's properties changed")
     if old.swf_trailer != new.swf_trailer:
         problems.append("the SWF chunk's trailer changed")
-    if new.buffer_size - old.buffer_size != len(new.data) - len(old.data):
-        problems.append("the header's buffer size is wrong")
+    if new.file_size != len(new.data) or new.buffer_size - new.file_size != old.buffer_size - old.file_size:
+        problems.append("the header's sizes are wrong")
     if old.data[TABLES_START:old.tables[T_EXPORTS][0]] != new.data[TABLES_START:new.tables[T_EXPORTS][0]]:
         problems.append("the string/name tables changed")
 

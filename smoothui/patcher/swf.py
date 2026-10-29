@@ -1,9 +1,12 @@
 """Low-level SWF manipulation code, used by the patchers"""
 
+import logging
 import struct
 import zlib
 
 from ..common import SmoothUIError
+
+log = logging.getLogger(__name__)
 
 
 class MalformedSwfError(SmoothUIError):
@@ -44,7 +47,7 @@ def swf_patch(data, pos, patch, body_hook=None):
     body. It returns the body to use (possibly a different bytearray, of a different
     length), so it can be used for debugging or manual editing.
 
-    Returns None if there is no complete zlib stream at pos (not an SWF payload).
+    Returns None if there is no zlib stream at pos that holds the whole SWF (not an SWF payload).
     Otherwise returns (stream_end, result, new_swf_bytes): new_swf_bytes is the new header +
     compressed stream, or None if body was not modified. result is None if patch returned None.
     """
@@ -54,17 +57,20 @@ def swf_patch(data, pos, patch, body_hook=None):
         body = bytearray(decompressor.decompress(memoryview(data)[stream_start:]))
     except zlib.error:
         return None
+    stream_end = len(data) - len(decompressor.unused_data)
+    (declared_total,) = struct.unpack_from("<I", data, pos + 4)
+    # A stream without its end (the last block and the checksum) is accepted if it holds the whole SWF:
+    # seen in a mod whose .redswf has the SWF length 4 bytes short, which the game reads
     if not decompressor.eof:
-        return None  # Truncated stream
-
-    stream_len = len(data) - stream_start - len(decompressor.unused_data)
-    stream_end = stream_start + stream_len
+        if SWF_HEADER_SIZE + len(body) < declared_total:
+            return None  # Truncated stream
+        log.warning("The SWF's zlib stream has no end (its length in the .redswf may be too short), but holds "
+                    "the whole SWF, so it's used")
 
     # Every single file .redswf (as of game version 5.01) contains stale data! Let's drop it.
     # For example, panel_alchemy.redswf has 2069 bytes of junk data following the end of the SWF
     # payload. Nothing in the game would read them, so I see no reason to preserve them.
     # The 20 files patched (as of v0.3 development) range between 24 and 3927 bytes of trailing junk.
-    (declared_total,) = struct.unpack_from("<I", data, pos + 4)
     declared_body_len = declared_total - SWF_HEADER_SIZE
     if declared_body_len < 0 or declared_body_len > len(body):
         raise MalformedSwfError(f"declared length {declared_total} doesn't match the decompressed size "

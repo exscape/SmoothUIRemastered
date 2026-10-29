@@ -133,7 +133,12 @@ def _patch_file(source, settings, body_hook=None):
     # the container's data is copied as few times as possible (big files are 10-20 MiB)
     try:
         assert 1 <= settings.target_fps <= 256
-        rescale_report, new_swf_bytes = process(RedSwf(data).swf, settings, body_hook)
+        redswf = RedSwf(data)
+        if "header file size" in redswf.stale:
+            log.warning(f"The .redswf's header states a file size of {redswf.file_size} bytes, but the file has "
+                        f"{len(data)}; this is ignored")
+        rescale_report, new_swf_bytes = process(redswf.swf, settings, body_hook)
+        del redswf
         if new_swf_bytes is None:
             return {**result, "status": "kept", "report": rescale_report}
         out = replace_swf(data, new_swf_bytes)
