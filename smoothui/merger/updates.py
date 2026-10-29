@@ -79,6 +79,7 @@ class Asset:
     url: str
     size: int
     sha256: str     # hex
+    updated: float | None = None    # when GitHub says the asset was uploaded (epoch seconds), if it says
 
 
 @dataclass(slots=True)
@@ -203,6 +204,7 @@ def download_manifests(assets: list[Asset], folder: Path, timeout: float = TIMEO
                 fail(f"it can't be read: {e}")
             if not is_manifest:
                 fail("it isn't a manifest")
+            _set_time(part, asset)
             os.replace(part, target)
         except (SmoothUIError, OSError) as e:
             log.warning(f"Update check: {what} can't be downloaded: {e}")
@@ -345,7 +347,26 @@ def _asset(asset: dict) -> Asset | None:
         return None
     # With the test token, through the API: a private repo's download links need a browser login
     url = asset["url"] if token() else asset["browser_download_url"]
-    return Asset(asset["name"], url, int(asset["size"]), match[1])
+    return Asset(asset["name"], url, int(asset["size"]), match[1], _timestamp(asset.get("updated_at")))
+
+
+def _timestamp(text) -> float | None:
+    """GitHub's date and time (e.g. 2026-10-29T16:59:00Z) as epoch seconds; None if it isn't one"""
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def _set_time(path: Path, asset: Asset):
+    """Give a downloaded file the time GitHub has for the asset, not that of the download. Never fails: the
+    time only tells the user when the file was uploaded."""
+    if asset.updated is None:
+        return
+    try:
+        os.utime(path, (asset.updated, asset.updated))
+    except (OSError, OverflowError, ValueError) as e:
+        log.info(f"Update check: couldn't set the time of {asset.name}: {e}")
 
 
 def _recent(age: float) -> bool:
