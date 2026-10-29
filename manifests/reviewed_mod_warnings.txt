@@ -81,3 +81,12 @@ mod0000_ConjunctionMapFramework:
 # our fixes only).
 mod0000_UIRemasteredEdition:
     dont-merge known-broken hud
+
+# Map and Icons Remastered
+modmapredraw:
+    dont-merge known-broken panel_worldmap hud_minimap2
+
+# Map and Icons Remastered + Smooth Map compat patch
+# Smooth Map by itself works without any warnings.
+mod000SmoothMap_MapRemastered:
+    dont-merge known-broken panel_worldmap
