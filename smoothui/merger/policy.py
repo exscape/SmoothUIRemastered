@@ -33,10 +33,10 @@ from ..build.release import ReleasePatch
 from ..common import fail
 from ..patcher.fixes import CANT_APPLY, fix_consequence, fix_kind
 from ..witcher3.source_file import GAME_FILES, SourceFile
-from . import REPORT_URL
 from .installed import is_smoothui_folder
 from .scan import COMPAT_PATCH, Scan
-from .screens import file_name, group_name, screen_label
+from .screens import file_name, screen_label
+from .state import WHY, not_merged, original_frame_rate
 
 
 class FileStatus(Enum):
@@ -124,76 +124,73 @@ class PackageFile:
             return "warning"
         return "error"
 
+    @property
+    def reason(self) -> str | None:
+        """Why its rescale has problems, in a word for the user (see state.WHY): "code" (a warning that isn't
+        reviewed) or "changes" (a setting that wasn't followed, or no longer matches); None if neither"""
+        kinds = {issue.kind for issue in self.issues}
+        return "code" if IssueKind.WARNING in kinds else "changes" if IssueKind.RULE in kinds else None
+
+    @property
+    def to_report(self) -> bool:
+        """Whether it is worth a bug report: left out for a problem (not known not to work), or failed"""
+        return self.status in (FileStatus.LEFT_OUT, FileStatus.FAILED, FileStatus.MOD_FAILED)
+
     def explain(self, label: str | None = None) -> str:
-        """What happened to the file, for the user: if it isn't patched as Smooth UI would, why, and what
-        they can do. The first line is the summary, after label (default: its screen_label); the others
-        are indented. A group's files left out with it say the same, so that they can be told as one (see
-        screens.by_group)."""
-        status, mod, copy = self.status, self.mod, self._copy()
+        """What happened to the file, for the user, in short: if it isn't patched as Smooth UI would, why (in
+        plain words), and what the game shows instead. The first line is the summary, after label (default: its
+        screen_label); the others are indented: the fixes it lacks, and the technical details. A group's files
+        left out with it say the same, so that they can be told as one (see screens.by_group)."""
+        status, copy = self.status, self._copy()
         if status == FileStatus.PATCHED:
             summary = f"merged ({copy})" + (", without some fixes:" if self.issues else "")
-            details = self._fix_lines()
         elif status == FileStatus.UNCHANGED:
             summary = f"{copy[0].upper() + copy[1:]} is already smooth: used as it is" + (", without some fixes:" if self.issues else "")
-            details = self._fix_lines()
         elif status == FileStatus.FORCED:
-            summary = (f"merged anyway ({copy}), as you chose, though Smooth UI can't fully merge it. It may "
-                       "look or behave wrong in places:")
-            details = [*self._issue_lines(), *self._fix_lines()]
-        elif status == FileStatus.KNOWN_BROKEN:
-            summary = f"not merged: {copy} is known not to work with Smooth UI. {self._fallback_text()}"
-            # Its other issues don't matter: it is left out anyway
-            details = ["Why:", *(f"- {issue.message}" for issue in self.issues if issue.kind == IssueKind.KNOWN_BROKEN),
-                       "You can merge it anyway, but it will most likely look or behave wrong."]
-        elif status == FileStatus.MOD_FAILED:
-            summary = (f"not merged: another of {mod}'s screens can't be merged, so none of them are. "
-                       f"{self._fallback_text()}")
-            details = []
+            summary = (f"merged anyway, as you chose: {copy} {WHY.get(self.reason) or WHY['left out']}, so it may look "
+                       "or behave wrong in places" + (". Without some fixes:" if self.fixes_not_applied else "."))
         elif status == FileStatus.GROUP_LEFT_OUT:
-            name = group_name(self.group)
-            shows = (f"The game shows the {name} unpatched, at its original frame rate." if self._own_fallback()
-                     else self._fallback_text())
-            summary = f"not merged: the {name} is merged whole or not at all, and {self.error}. {shows}"
-            details = []
-        elif status == FileStatus.FAILED:
-            summary = f"not merged: {copy} can't be merged, so none of {mod}'s screens are. {self._fallback_text()}"
-            details = [f"Why: {self.error}", self._report("a bug or limitation")]
+            summary = f"{not_merged(status.value, copy, self.mod, group=self.group, kept_out_by=self.error)} {self._runs()}"
         else:
-            summary = f"left out: Smooth UI can't fully merge {copy}. {self._fallback_text()}"
-            details = ["Why:", *self._issue_lines(), *self._fix_lines(),
-                       "You can merge it anyway (it may then look or behave wrong in places), or check for a newer merger."]
-        if self.issues and status not in (FileStatus.FAILED, FileStatus.KNOWN_BROKEN):
-            details.append(self._report("a limitation"))
-        return "\n  ".join([f"{screen_label(self.path) if label is None else label}: {summary}", *details])
+            reason = self.reason if status == FileStatus.LEFT_OUT else None
+            summary = f"{not_merged(status.value, copy, self.mod, reason=reason)} {self._runs()}"
+        lines = self._fix_lines() if status.included or status == FileStatus.UNCHANGED else []
+        if details := self._details():
+            lines.append(f"Details: {details}")
+        return "\n  ".join([f"{screen_label(self.path) if label is None else label}: {summary}", *lines])
 
-    def _report(self, what):
-        return (f"Most likely {what} of Smooth UI Tools, not of {self.mod}: please report it at {REPORT_URL}, with "
-                f"{self.mod}'s version and this log.")
-
-    def _issue_lines(self):
-        return [f"- {issue.message}" for issue in self.issues if issue.keeps_out]
+    def _details(self):
+        """The technical reasons, for the log: the warnings' reviews (see mod_reviews.py), the settings'
+        problems, the failure, the fixes that can't apply; none for a file left out with its group or its mod"""
+        if self.status == FileStatus.FAILED:
+            return self.error
+        if self.status in (FileStatus.GROUP_LEFT_OUT, FileStatus.MOD_FAILED):
+            return None
+        shown = self.issues
+        if self.status == FileStatus.KNOWN_BROKEN:
+            shown = [issue for issue in shown if issue.kind == IssueKind.KNOWN_BROKEN]
+        elif self.status in (FileStatus.PATCHED, FileStatus.UNCHANGED):
+            shown = [issue for issue in shown if issue.kind == IssueKind.FIX]
+        return "; ".join(issue.review if issue.review else f"{issue.fix}: {issue.message}" if issue.fix else issue.message
+                         for issue in shown) or None
 
     def _fix_lines(self):
-        return [f"- {fix_kind(issue.fix).header} {fix_consequence(issue.fix)} ({issue.fix} can't apply: {issue.message})"
+        return [f"- {fix_kind(issue.fix).header} {fix_consequence(issue.fix)} ({issue.fix})"
                 for issue in self.issues if issue.kind == IssueKind.FIX]
 
     def _copy(self):
         """The copy that was patched, for the user: the game's copy, or <mod>'s copy"""
         return "the game's copy" if self.mod == GAME_FILES else f"{self.mod}'s copy"
 
-    def _fallback_text(self):
-        return f"The game shows {self._fallback()}."
-
-    def _own_fallback(self):
-        """Whether the game shows the file's own copy (the game's or its mod's), unless the package holds it"""
-        return self.fallback is None or self.fallback == self.mod
+    def _runs(self):
+        """What the game shows instead, as a sentence: the file's own copy (said of its whole group, if it is
+        left out with it), or another"""
+        if self.fallback is None or self.fallback == self.mod:
+            return original_frame_rate(self.group if self.status == FileStatus.GROUP_LEFT_OUT else None)
+        return f"The game uses {self._fallback()} instead."
 
     def _fallback(self):
-        """The copy the game shows unless the package holds the file"""
-        if self.mod == GAME_FILES and self.fallback is None:
-            return "its own copy, at its original frame rate"
-        if self._own_fallback():
-            return f"{self.mod}'s own copy, at its original frame rate"
+        """The copy the game shows unless the package holds the file, when it isn't the file's own"""
         if is_smoothui_folder(self.fallback):
             return f"Smooth UI's own copy, without {self.mod}'s changes (it comes first in the load order)"
         if COMPAT_PATCH.fullmatch(self.fallback):
@@ -248,11 +245,13 @@ def _whole_groups(scan: Scan, files: list[PackageFile]) -> list[PackageFile]:
         return file is not None and (file.status.included or file.status == FileStatus.UNCHANGED)
     causes = {}     # group: why it can't be merged whole
     for group, keys in sorted(groups.items()):
-        found = [f"{file_name(key)} " + ("can't be merged (see its own message)" if key in by_path
-                                         else "has no copy to merge (see the problems listed)")
-                 for key in sorted(keys) if not merged(by_path.get(key))]
+        missing = sorted(key for key in keys if not merged(by_path.get(key)))
+        cant = [file_name(key) for key in missing if key in by_path]
+        no_copy = [file_name(key) for key in missing if key not in by_path]
+        found = ([f"{_join(cant)} can't be merged"] if cant else []) + \
+                ([f"{_join(no_copy)} {'has' if len(no_copy) == 1 else 'have'} no copy to merge"] if no_copy else [])
         if found:
-            causes[group] = "; ".join(found)
+            causes[group] = " and ".join(found)
     result = []
     for file in files:
         group = scan.group_of.get(file.path)
@@ -280,3 +279,7 @@ def _issues(patch: ReleasePatch) -> dict[str, list[Issue]]:
             if fix["result"] == CANT_APPLY:
                 issues[result["path"]].append(Issue(IssueKind.FIX, fix["detail"], fix["name"]))
     return issues
+
+
+def _join(names):
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"

@@ -159,6 +159,8 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
                 kept = old.get("forced_since") if old.get("forced") and same_copy(old, file.source) else None
                 held[file.path]["forced_since"] = kept or today
                 held[file.path]["reasons"] = [issue.message for issue in file.issues if issue.keeps_out]
+                # Why, in a word, for the user (see state.WHY)
+                held[file.path]["reason"] = file.reason
         else:
             not_held[file.path] = {
                 "mod": file.mod,
@@ -168,6 +170,8 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
                 "status": file.status.value,
                 "reasons": [file.error] if file.error else [issue.message for issue in file.issues],
             }
+            if file.status.value == "left out":
+                not_held[file.path]["reason"] = file.reason      # see above
             if file.status.value == "known broken":
                 # Its other issues don't matter: it is left out anyway
                 not_held[file.path]["reasons"] = [issue.message for issue in file.issues if issue.review in file.known_broken]

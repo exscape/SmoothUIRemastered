@@ -29,6 +29,9 @@ from .state import State, check
 log = logging.getLogger(__name__)
 
 LEVELS = {"ok": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
+# After the screens, if some can't be merged (see policy.PackageFile.to_report)
+REPORT = ("Please report the screens that can't be merged (Write a bug report... in the merger's window), with each "
+          "mod's version. They can then be checked, and either merged, or marked as not working with Smooth UI.")
 
 
 def parse_args():
@@ -177,6 +180,8 @@ def show_build(result):
         log.log(LEVELS[file.severity], file.explain(label))
     if not result.files:
         log.info("No other mod changes a screen Smooth UI patches")
+    if any(file.to_report for file in result.files):
+        log.info(REPORT)
     _show_problems(result.problems)
 
     log.info("Merged patches", extra=HEADING)

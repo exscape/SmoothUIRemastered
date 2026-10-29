@@ -87,7 +87,7 @@ PATCH_ANYWAY_QUESTION = ("Smooth UI can't fully merge these screens:\n\n{screens
                          "look or behave wrong in places. You can revert each one later, in its details in the list.")
 # The same, for a screen known not to work (in its details only, never on the card)
 KNOWN_BROKEN_ANYWAY_NOTE = "It is known not to work with Smooth UI, so it will most likely look or behave wrong."
-KNOWN_BROKEN_QUESTION = ("{mod}'s copy of {screen} is known not to work with Smooth UI (its details say why).\n\n"
+KNOWN_BROKEN_QUESTION = ("{mod}'s copy of {screen} is known not to work with Smooth UI.\n\n"
                          "Merge it anyway? It will most likely look or behave wrong. You can revert it later, in "
                          "its details in the list.")
 # On a card that is otherwise fine
@@ -110,7 +110,7 @@ REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate.
 REVERT_GROUP = "Leave it out again"
 REVERT_GROUP_NOTE = "The {group} is then left out whole: the game shows it unpatched, at its original frame rate."
 # A group's row: after the files that keep it out, instead of each file left out with them
-GROUP_LEFT_OUT = "So the rest of the {group} is left out too: it is merged whole or not at all."
+GROUP_LEFT_OUT = "The rest of the {group} is left out too, as it is merged whole or not at all."
 
 DELETE_FAILED = "The merged patches can't be deleted: {error}\n\nDelete the folder {folder} yourself before you play."
 FAILED = "Smooth UI Merger failed:\n\n{error}\n\nDetails are in data\\{log}."
@@ -247,9 +247,11 @@ GAME_COPIES = {
     "left out": "The HUD can't be fully merged.",
     "fixes": "The HUD is merged without some fixes.",
 }
-# After a merge, below the sentences about mods' copies (left out, or merged without some fixes)
-REPORT_MODS = ("This is most likely a limitation of Smooth UI Tools, not of the mods. Please report it, with each "
-               "mod's version, so it can be fixed for everyone.")
+# Below the sentences about mods' copies (left out, or merged without some fixes)
+REPORT_MODS = ("Please write a bug report, with each mod's version. The screens can then be checked, and either "
+               "merged, or marked as not working with Smooth UI.")
+# The same, when the only problem is fixes that can't apply
+REPORT_FIXES = "Please write a bug report, with each mod's version, so that the missing fixes can be looked into."
 NUMBERS = ("No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten")
 # The other causes, one sentence each: one with {mod} once per mod, one without it once
 CAUSES = {
@@ -381,7 +383,7 @@ def _merged(result: BuildResult, stale, cant_merge):
         notes.append("See the notes below.")
     headline = ("Merged, but some screens couldn't be merged" if any(file.severity == "error" for file in result.files)
                 else "Merged, with problems")
-    report = [REPORT_MODS] if causes else []
+    report = _report(causes)
     anyway = () if cant_merge else anyway_button(len(left_out(None, result)), stale)
     # Only screens left out or merged without some fixes: the game then uses those mods' own copies (a
     # re-scan's card offers Play too), so the user can play from here; not with what the notes tell of
@@ -462,7 +464,8 @@ def _checked(found: Check, stale):
                     else "Some screens can't be merged")
         anyway = anyway_button(len(left_out(found)), stale)
         buttons = (PLAY, *anyway, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge"), *anyway)
-        return Card(WARNING, headline, _sentences(causes, known), buttons)
+        # (Not for missing fixes alone: that card shows whenever the window opens, and a merge asks once)
+        return Card(WARNING, headline, _sentences(causes, [*_report(causes, fixes=False), *known]), buttons)
     if patched:
         return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.", *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
@@ -473,6 +476,15 @@ def _checked(found: Check, stale):
         return Card(OK, "Nothing to merge", known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     return Card(OK, "Nothing to merge", ("No other mod changes Smooth UI's screens.",),
                 (PLAY, DONT_START) if stale else (PLAY, RESCAN))
+
+
+def _report(causes, fixes=True) -> list[str]:
+    """The card's request for a bug report, for causes ((key, mod), see _sentences): for screens left out, or
+    (fixes) merged without some fixes; not for a group left out alone (another cause keeps it out)"""
+    keys = {key for key, _ in causes}
+    if keys & {"left out", "failed", "mod failed"}:
+        return [REPORT_MODS]
+    return [REPORT_FIXES] if fixes and "fixes" in keys else []
 
 
 def _unusable(installed, stale):
