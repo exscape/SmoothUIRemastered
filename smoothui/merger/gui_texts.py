@@ -374,13 +374,21 @@ def _merging(stale, progress):
 
 def _merged(result: BuildResult, stale, cant_merge):
     """After a merge in the window (cant_merge: see _card)"""
-    known = _screens(KNOWN_BROKEN, ((file.path, file.group, file.mod) for file in result.files
-                                    if file.status.value == "known broken"))
+    scan = result.scan
+    rules = [(key, scan.group_of.get(key), choice.mod, choice.reason) for key, choice in scan.screens_off.items()
+             if choice.reason is not None]
+    known = _screens(KNOWN_BROKEN, [*((file.path, file.group, file.mod) for file in result.files
+                                      if file.status.value == "known broken"),
+                                    *((path, group, mod) for path, group, mod, reason in rules
+                                      if reason == mod_reviews.KNOWN_BROKEN)])
+    known += _by_rule([rule for rule in rules if rule[3] != mod_reviews.KNOWN_BROKEN])
+    known += _screens(TURNED_OFF, ((key, scan.group_of.get(key), choice.mod)
+                                   for key, choice in scan.screens_off.items() if choice.reason is None))
     if result.clean:
         included = [(file.mod, file.path, file.group) for file in result.files if file.status.included]
         headline = (f"Merged: {_patched(included)}" if included
                     else "Merged: your mods' copies are already smooth"
-                    if any(file.status.value == "unchanged" for file in result.files) or not known
+                    if any(file.status.value == "unchanged" for file in result.files)
                     else "Nothing to merge")
         return Card(OK, headline, known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     causes = []
@@ -482,7 +490,8 @@ def _checked(found: Check, stale, merges_now=()):
     known = _screens(KNOWN_BROKEN, ((file.path, file.group, file.winner) for file in found.states
                                     if file.state == State.NOT_HELD and (file.cause == "known broken" or (
                                         file.cause == "by rule" and file.reason == mod_reviews.KNOWN_BROKEN))))
-    known += _by_rule([file for file in found.states if file.state == State.NOT_HELD and file.cause == "by rule"
+    known += _by_rule([(file.path, file.group, file.winner, file.reason) for file in found.states
+                       if file.state == State.NOT_HELD and file.cause == "by rule"
                        and file.reason != mod_reviews.KNOWN_BROKEN])
     off = [file for file in found.states if file.state == State.NOT_HELD and file.cause == "by choice"]
     now_groups = {file.group for file in off if file.path in merges_now and file.group}
@@ -707,11 +716,11 @@ def _screens(sentence, files) -> tuple[str, ...]:
 
 def _by_rule(files) -> tuple[str, ...]:
     """The sentences for screens that Smooth UI leaves out for mods, one per mod and reason (files: their
-    FileStates); a group is named once, and a long list is cut"""
+    (path, group, mod, reason)); a group is named once, and a long list is cut"""
     found = {}
-    for file in files:
-        name = group_name(file.group) if file.group else screen_name(file.path)
-        found.setdefault((file.reason == mod_reviews.ALREADY_SMOOTH, file.winner), set()).add(name)
+    for path, group, mod, reason in files:
+        name = group_name(group) if group else screen_name(path)
+        found.setdefault((reason == mod_reviews.ALREADY_SMOOTH, mod), set()).add(name)
     sentences = []
     for (smooth, mod), names in sorted(found.items(), key=lambda item: (not item[0][0], str(item[0][1]).lower())):
         names = sorted(names)

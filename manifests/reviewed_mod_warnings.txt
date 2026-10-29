@@ -9,6 +9,8 @@
 #                                      the opposite: that warning means the mod's copy doesn't work with Smooth UI,
 #                                      so the merger leaves it out as known not to work, instead of warning about it.
 #                                      Tools v0.9.1 and older skip these lines (with a line in their log).
+#                                      Not for a group's file (hud_*): use dont-merge with the group's name instead,
+#                                      else the rest of the group is shown as a problem.
 #     dont-merge <reason> <screen> [<screen> ...]
 #     dont-merge <reason> all except <screen> [<screen> ...]
 #                                      leave out these screens of the mod's (or all but these), whatever the warnings.

@@ -1396,6 +1396,7 @@ class MergerWindow:
                 log.warning(f"Trying to merge the screens you turned off failed: {error_text(error)}")
                 return
             self.merges_now = {key: changed[key] for key in result}
+            self.renew_choices(found.scan, set(changed) - set(result))
             if result:
                 log.info(f"Turned off, but they merge now: {', '.join(map(screen_label, result))}")
                 self.refresh()
@@ -1403,6 +1404,20 @@ class MergerWindow:
         log.info(f"Trying to merge, as something changed since you turned them off: "
                  f"{', '.join(map(screen_label, changed))}")
         in_thread(self.calls, work, done)
+
+    def renew_choices(self, scan, keys):
+        """The user's choices not to merge these files, which the trial found still don't merge: recorded
+        again with what they were tried with, so that the trial runs again only once something changes"""
+        reviews, tools = scan.reviews.sha256, tools_version()
+        renewed, chosen = False, []
+        for choice in screens_off(self.settings):
+            copy = scan.off_copies.get(choice.path)
+            if choice.path in keys and scan.screens_off.get(choice.path) == choice and copy is not None:
+                choice = choice._replace(size=copy.size, crc32=copy.toc_entry.crc, reviews=reviews, tools=tools)
+                renewed = True
+            chosen.append(choice)
+        if renewed:
+            self.save_screens_off(chosen)
 
     def rescan(self, keep_result=False):
         """Scan again; the last merge's result (and the rows' places) stays only with keep_result (right after

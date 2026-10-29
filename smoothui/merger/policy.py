@@ -249,9 +249,11 @@ def _whole_groups(scan: Scan, files: list[PackageFile]) -> list[PackageFile]:
     causes = {}     # group: why it can't be merged whole
     for group, keys in sorted(groups.items()):
         missing = sorted(key for key in keys if not merged(by_path.get(key)))
-        cant = [file_name(key) for key in missing if key in by_path]
+        broken = [file_name(key) for key in missing if key in by_path and by_path[key].status == FileStatus.KNOWN_BROKEN]
+        cant = [file_name(key) for key in missing if key in by_path and file_name(key) not in broken]
         no_copy = [file_name(key) for key in missing if key not in by_path]
-        found = ([f"{_join(cant)} can't be merged"] if cant else []) + \
+        found = ([f"{_join(broken)} {'is' if len(broken) == 1 else 'are'} known not to work"] if broken else []) + \
+                ([f"{_join(cant)} can't be merged"] if cant else []) + \
                 ([f"{_join(no_copy)} {'has' if len(no_copy) == 1 else 'have'} no copy to merge"] if no_copy else [])
         if found:
             causes[group] = "; ".join(found)
