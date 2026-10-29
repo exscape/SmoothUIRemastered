@@ -1,7 +1,7 @@
 """Replace the SWF payload of a .redswf file with one of any size.
 
-A .redswf is a REDengine 3 "CR2W" resource (version 164) holding one CSwfResource chunk (the SWF),
-followed by zero or more CSwfTexture chunks. Everything is stored uncompressed, back to back:
+A .redswf is a REDengine 3 "CR2W" resource (version 164; some mods' files are 162 or 163, laid out
+the same way, and are written back as 164) holding one CSwfResource chunk (the SWF), followed by zero or more CSwfTexture chunks. Everything is stored uncompressed, back to back:
 
   0      header, 40 bytes: 'CR2W' | u32 version | u32 flags | u64 timestamp | u32 build |
          u32 file_size | u32 buffer_size | u32 header_crc | u32 unknown
@@ -43,8 +43,9 @@ from ..patcher.swf import (
 log = logging.getLogger(__name__)
 
 CR2W_MAGIC = b"CR2W"
-CR2W_VERSION = 164
-OFF_FILE_SIZE, OFF_BUFFER_SIZE, OFF_HEADER_CRC = 24, 28, 32
+CR2W_VERSION = 164                      # written
+CR2W_READ_VERSIONS = (162, 163, 164)    # the same layout
+OFF_VERSION, OFF_FILE_SIZE, OFF_BUFFER_SIZE, OFF_HEADER_CRC = 4, 24, 28, 32
 SLOTS_START, SLOT_COUNT, SLOT_SIZE = 40, 10, 12
 TABLES_START = SLOTS_START + SLOT_COUNT * SLOT_SIZE
 T_STRINGS, T_NAMES, T_EXPORTS = 0, 1, 4
@@ -86,9 +87,10 @@ class RedSwf:
         self.view = memoryview(d)   # for slicing big chunks without copying them
         if len(d) < TABLES_START or d[:4] != CR2W_MAGIC:
             raise RedSwfError("not a CR2W file")
-        (version,) = struct.unpack_from("<I", d, 4)
-        if version != CR2W_VERSION:
-            raise RedSwfError(f"CR2W version {version} is not supported (expected {CR2W_VERSION})")
+        (self.version,) = struct.unpack_from("<I", d, OFF_VERSION)
+        if self.version not in CR2W_READ_VERSIONS:
+            raise RedSwfError(f"CR2W version {self.version} is not supported "
+                              f"(expected {CR2W_READ_VERSIONS[0]}-{CR2W_READ_VERSIONS[-1]})")
         self.file_size, self.buffer_size = struct.unpack_from("<II", d, OFF_FILE_SIZE)
 
         # Header/tables/chunks whose stored CRC doesn't match their contents, and a header file size that
@@ -240,6 +242,7 @@ class RedSwf:
         # The buffer size stays as far above the file size as it was (the old file size may be stale: see __init__)
         struct.pack_into("<II", head, OFF_FILE_SIZE, size, self.buffer_size - self.file_size + size)
         struct.pack_into("<I", head, OFF_EXPORTS_CRC, zlib.crc32(exports))
+        struct.pack_into("<I", head, OFF_VERSION, CR2W_VERSION)
         # Last, as it covers the fields above
         struct.pack_into("<I", head, OFF_HEADER_CRC, header_crc(head))
         return b"".join([head, *chunks])
@@ -321,6 +324,8 @@ def verify_replacement(old: RedSwf, out: bytes, swf: bytes) -> list[str]:
         return [f"the result doesn't parse: {e}"]
 
     problems = []
+    if new.version != CR2W_VERSION:
+        problems.append(f"the result is CR2W version {new.version}")
     if not new.stale <= old.stale:
         problems.append(f"new CRC mismatches: {', '.join(sorted(new.stale - old.stale))}")
     if new.swf != swf:
@@ -343,7 +348,7 @@ def verify_replacement(old: RedSwf, out: bytes, swf: bytes) -> list[str]:
     if old.data[TABLES_START:old.tables[T_EXPORTS][0]] != new.data[TABLES_START:new.tables[T_EXPORTS][0]]:
         problems.append("the string/name tables changed")
 
-    allowed = {*range(OFF_FILE_SIZE, OFF_HEADER_CRC + 4), *range(OFF_EXPORTS_CRC, OFF_EXPORTS_CRC + 4)}
+    allowed = {*range(OFF_VERSION, OFF_VERSION + 4), *range(OFF_FILE_SIZE, OFF_HEADER_CRC + 4), *range(OFF_EXPORTS_CRC, OFF_EXPORTS_CRC + 4)}
     changed = {i for i in range(TABLES_START) if old.data[i] != new.data[i]}
     if changed - allowed:
         problems.append(f"unexpected header bytes changed: {sorted(changed - allowed)[:8]}")

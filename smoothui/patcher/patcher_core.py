@@ -15,7 +15,7 @@ from ..common import SmoothUIError, fail, profile_key
 from ..log import SUBHEADING
 from ..parallel import make_pool, replay_records, run_logged, worker_count
 from ..witcher3.bundle import BundleError, make_entry
-from ..witcher3.redswf import RedSwf, RedSwfError, replace_swf, swf_sha256
+from ..witcher3.redswf import CR2W_VERSION, RedSwf, RedSwfError, replace_swf, swf_sha256
 from . import dev_mode
 from .dev_mode import dev_make_body_hook, resolve_dev_target
 from .fixes import AFTER_RESCALE, BEFORE_RESCALE, apply_fixes
@@ -137,6 +137,8 @@ def _patch_file(source, settings, body_hook=None):
         if "header file size" in redswf.stale:
             log.warning(f"The .redswf's header states a file size of {redswf.file_size} bytes, but the file has "
                         f"{len(data)}; this is ignored")
+        if redswf.version != CR2W_VERSION:
+            log.info(f"The .redswf is CR2W version {redswf.version}: it is written as version {CR2W_VERSION}")
         rescale_report, new_swf_bytes = process(redswf.swf, settings, body_hook)
         del redswf
         if new_swf_bytes is None:
