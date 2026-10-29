@@ -9,6 +9,7 @@
     --zip [ZIP]       zip the build as a release ships it (default dist/SmoothUITools-X.Y.Z.zip), instead of
                       mirroring it into dist/SmoothUIMerger/
     --out DIR         build into DIR instead (inside build/), and leave it there
+    --install         also mirror the build into the author's own install (GAME_INSTALL_DIR), keeping its data/
 
 Each exe is built on its own, so the launcher holds only what it imports (no Qt), then both go into the build
 folder, which is deleted first. Nuitka puts the files the exes need next to them; the files both builds have
@@ -38,6 +39,7 @@ ZIP_FOLDER = "Smooth UI Tools"          # the folder at the root of a release zi
 WORK_DIR = ROOT / "build" / "nuitka"    # Nuitka's build folders and reports, and the version file
 COMPANY = "Aeluwas"
 PRODUCT = "Smooth UI Remastered"
+GAME_INSTALL_DIR = Path(r"d:\Games\The Witcher 3 Remastered\Smooth UI Tools")   # for --install
 
 # The version file, at the path of smoothui/merger/, whose VERSION_FILE it is: a frozen tool has no config.toml
 VERSION_DEST = "smoothui/merger/tools_version.txt"
@@ -73,6 +75,8 @@ def parse_args():
                              "dist/SmoothUIMerger/")
     parser.add_argument("--out", type=Path, metavar="DIR",
                         help="build into DIR (inside build/, deleted first) and leave it there")
+    parser.add_argument("--install", action="store_true",
+                        help="also replace everything in the author's install folder but its data\\ with the build")
     # zip: None, "" (the default zip) or a path. No type=Path: argparse would also convert the "" to Path("."), the current folder
     return parser.parse_args()
 
@@ -105,6 +109,8 @@ def run_on_windows(args):
         command += ["--zip", *([windows_path(Path(args.zip))] if args.zip else [])]
     if args.out is not None:
         command += ["--out", windows_path(args.out)]
+    if args.install:
+        command.append("--install")
     raise SystemExit(subprocess.run(command, cwd=ROOT, check=False).returncode)
 
 
@@ -306,6 +312,8 @@ def main():
     if in_wsl():
         run_on_windows(args)
     check_python()
+    if args.install and not GAME_INSTALL_DIR.is_dir():
+        raise SystemExit(f"ERROR: --install: no folder {GAME_INSTALL_DIR}")
     out_dir = (args.out or BUILD_DIR).resolve()
     if not out_dir.is_relative_to(ROOT / "build"):
         raise SystemExit(f"ERROR: --out must be inside {ROOT / 'build'} (it is deleted first), not {out_dir}")
@@ -362,6 +370,8 @@ def main():
         write_zip(out_dir, Path(args.zip) if args.zip else ROOT / "dist" / f"SmoothUITools-{version}-test.zip")
     elif args.out is None:
         mirror(out_dir, INSTALL_DIR)
+    if args.install:
+        mirror(out_dir, GAME_INSTALL_DIR)
 
 
 if __name__ == "__main__":
