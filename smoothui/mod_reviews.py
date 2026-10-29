@@ -5,8 +5,8 @@ The game's own code is reviewed in config/reviewed_warnings.txt, and each releas
 warnings each of its files had, so the merger hides those where a mod's copy has the same code. Warnings in
 code that a mod added or changed are reviewed here instead, in manifests/MOD_REVIEWS. It ships with the
 tools, and is uploaded to the "manifests" GitHub release too, from which the update check downloads it
-(see merger/updates.py): new reviews reach the merger without a release. A downloaded copy is used
-instead of the shipped one.
+(see merger/updates.py): new reviews reach the merger without a release. Whichever copy is newer is used
+(a downloaded one has the time it was uploaded; the shipped one wins a tie).
 
 The file groups reviews under a header naming the mods they are for: a regular expression, then ":". It
 must match a mod's folder name in full, ignoring case (a mod may ship as one folder, or as several):
@@ -101,8 +101,11 @@ class ModReviews:
 
 
 def path() -> Path | None:
-    """The file in use: the downloaded copy if there is one, else the shipped one; None if there is neither"""
-    return next((found for folder in reversed(MANIFEST_DIRS) if (found := folder / MOD_REVIEWS).is_file()), None)
+    """The file in use: the newest copy, by modification time (the shipped one if they are as new; a downloaded
+    copy has the time it was uploaded, so that a newer build of the tools isn't overridden by an older upload);
+    None if there is none"""
+    found = [file for folder in MANIFEST_DIRS if (file := folder / MOD_REVIEWS).is_file()]
+    return max(found, key=lambda file: file.stat().st_mtime, default=None)
 
 
 def sha256() -> str | None:
