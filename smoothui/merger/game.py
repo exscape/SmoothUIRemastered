@@ -1,6 +1,7 @@
 """Where the game and its mods.settings are, the command that starts the game, and the merger's settings
 (data\\settings.json): the game folder the user confirmed in the merger, whether it checks for updates,
-and when it last did. The launcher opens the merger while there are none.
+and when it last did, whether it merges the HUD, and the screens the user chose not to merge. The launcher
+opens the merger while there are none.
 
 The merger finds candidates for the game folder (find_games) for the user to confirm, and both exes read
 it from the settings, so nothing is passed between them. For tests only, two environment variables
@@ -25,6 +26,7 @@ from ..files import make_dirs, read_file, write_file
 from ..paths import APP_DIR, DATA_DIR
 from ..windows import module_loaded
 from ..witcher3.user_files import mods_settings_path
+from .scan import ScreenOff
 
 GAME_PATH_ENV = "SMOOTHUI_GAME_PATH"
 MODS_SETTINGS_ENV = "SMOOTHUI_MODS_SETTINGS"
@@ -46,12 +48,26 @@ class Settings:
     check_updates: bool = True      # whether the merger looks for updates when it starts (see updates.py)
     last_update_check: int | None = None    # when it last did (Unix time), if ever
     smooth_hud: bool = True         # whether the merger merges the HUD (see groups_off)
+    # The mods' copies of screens the user chose not to merge (see scan.Scan.screens_off), oldest first. A
+    # choice stays while the mod doesn't ship the screen, or another mod's copy wins: it applies again if
+    # the mod's copy wins again.
+    screens_off: tuple[ScreenOff, ...] = ()
 
 
 def groups_off(settings: Settings | None) -> frozenset[str]:
     """The groups of files (see build/profile.py's Group) the merger leaves out, as the settings say (None:
     their defaults): the HUD, unless Smooth HUD is on"""
     return frozenset() if settings is None or settings.smooth_hud else frozenset({"hud"})
+
+
+def screens_off(settings: Settings | None) -> tuple[ScreenOff, ...]:
+    """The screens the user chose not to merge (none for None)"""
+    return settings.screens_off if settings else ()
+
+
+def turned_off(settings: Settings | None) -> dict:
+    """What the settings (None: their defaults) turn off, as scan.scan's options (groups_off, screens_off)"""
+    return {"groups_off": groups_off(settings), "screens_off": screens_off(settings)}
 
 
 def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
@@ -72,7 +88,11 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
         smooth_hud = settings.get("smooth_hud", True)
         if not isinstance(smooth_hud, bool):
             raise TypeError(f"smooth_hud is {smooth_hud!r}, not true or false")
-        return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud)
+        off = settings.get("not_merged", [])
+        if not isinstance(off, list):
+            raise TypeError(f"not_merged is {off!r}, not a list")
+        off = tuple(ScreenOff(str(choice["screen"]), str(choice["mod"]), str(choice.get("since", ""))) for choice in off)
+        return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off)
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
 
@@ -83,6 +103,9 @@ def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
               "smooth_hud": settings.smooth_hud}
     if settings.last_update_check is not None:
         fields["last_update_check"] = settings.last_update_check
+    if settings.screens_off:
+        fields["not_merged"] = [{"screen": choice.path, "mod": choice.mod, "since": choice.since}
+                                for choice in settings.screens_off]
     text = json.dumps(fields, indent=1) + "\n"
     write_file(Path(data_dir) / SETTINGS_FILE, text.encode("utf-8"))
 

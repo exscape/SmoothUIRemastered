@@ -19,6 +19,7 @@ import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import NamedTuple
 
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
 from ..witcher3.bundle import read_toc
@@ -88,6 +89,13 @@ class FileResult:
         return next((mod for mod in self.shippers if not is_package_folder(mod.folder)), None)
 
 
+class ScreenOff(NamedTuple):
+    """The user's choice not to merge a mod's copy of a screen (see game.Settings.screens_off)"""
+    path: str       # profile key
+    mod: str        # the mod's folder
+    since: str      # the date it was chosen (ISO)
+
+
 @dataclass(slots=True)
 class Scan:
     mods_dir: Path | None                       # the game's Mods\ folder, None if it has none
@@ -105,6 +113,10 @@ class Scan:
     # The groups the user turned off (see game.groups_off): their files have no winner, so a build leaves
     # them out, and the game shows its own copies (or the mods')
     groups_off: frozenset[str] = frozenset()
+    # The files the user chose not to merge, while the copy they chose that for is the one that would be
+    # patched: {profile key: the choice}. They have no winner either. One of a group's files turns off the
+    # whole group (it is merged whole or not at all), so those get its choice too.
+    screens_off: dict[str, ScreenOff] = field(default_factory=dict)
 
     @property
     def compat_patches(self) -> list[str]:
@@ -141,10 +153,10 @@ def entry_needed(order: list[Mod], ours: ModSettings | None) -> bool:
                if not is_package_folder(mod.folder) and mod.folder.lower() != SCRIPT_MERGER_FOLDER.lower())
 
 
-def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), modio_root: Path | None = None,
-         manifests=None) -> Scan:
+def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screens_off=(),
+         modio_root: Path | None = None, manifests=None) -> Scan:
     """Scan the game's Mods\\ folder, with the load order from mods_settings (the path of mods.settings).
-    groups_off: see Scan.groups_off.
+    groups_off: see Scan.groups_off; screens_off: the user's ScreenOffs (see Scan.screens_off).
 
     modio_root is the folder holding mod.io's mods (default: found from %PUBLIC%); manifests ({version:
     manifest}) replace the release manifests the merger has, for tests. Fails (SmoothUIError) only if
@@ -201,7 +213,23 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), modio_
         elif key in unshipped:
             result.winner = game.get(key)
     problems += modio_problems(keys, modio_root)
-    return Scan(mods_dir, installed, order, files, problems, group_of=group_of, groups_off=frozenset(groups_off))
+    off_now = _screens_off(files, group_of, screens_off)
+    for key in off_now:
+        files[key].winner = None
+    return Scan(mods_dir, installed, order, files, problems, group_of=group_of, groups_off=frozenset(groups_off),
+                screens_off=off_now)
+
+
+def _screens_off(files, group_of, screens_off) -> dict[str, ScreenOff]:
+    """See Scan.screens_off"""
+    chosen = {(profile_key(choice.path), choice.mod.lower()): choice for choice in screens_off}
+    off = {key: chosen[key, result.winner.origin.lower()] for key, result in files.items()
+           if result.winner is not None and (key, result.winner.origin.lower()) in chosen}
+    groups = {}
+    for key, choice in sorted(off.items()):
+        if key in group_of:
+            groups.setdefault(group_of[key], choice)
+    return off | {key: groups[group] for key, group in group_of.items() if group in groups and key not in off}
 
 
 def _game_copies(game_path, keys, problems) -> dict[str, SourceFile]:

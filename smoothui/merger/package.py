@@ -64,20 +64,19 @@ def record_path(data_dir: Path, mods_dir: Path) -> Path:
 
 
 def write_package(package_dir: Path, installed: Installed, files: list[PackageFile], record: Path | None = None, *,
-                  reviews_sha256: str | None, groups_off=()) -> Written:
+                  reviews_sha256: str | None, groups_off=(), screens_off=()) -> Written:
     """Write the package into package_dir (created if needed), replacing what it held: the files in files
     that are to be included (see policy.FileStatus.included), and a manifest recording files (see
     package_manifest). installed: the Smooth UI build they were patched for; reviews_sha256: the reviews of
-    mods' code they were patched with (see mod_reviews.py); groups_off: the groups turned off (see
-    scan.Scan.groups_off). If none is to be included,
-    remove the package instead, and write the manifest to record (see above), if given; else delete
-    record."""
+    mods' code they were patched with (see mod_reviews.py); groups_off and screens_off: the groups and
+    files turned off (see scan.Scan.groups_off and screens_off). If none is to be included, remove the
+    package instead, and write the manifest to record (see above), if given; else delete record."""
     package_dir = Path(package_dir)
     content = package_dir / "content"
     previous = _read_manifest(package_dir / PACKAGE_MANIFEST)
     delete_file(package_dir / PACKAGE_MANIFEST)
     included = sorted((file for file in files if file.status.included), key=lambda file: file.path)
-    manifest = package_manifest(installed, files, previous, reviews_sha256, groups_off)
+    manifest = package_manifest(installed, files, previous, reviews_sha256, groups_off, screens_off)
     if not included:
         removed, unknown = remove_package(package_dir)
         log.info("Nothing to merge: " + ("removed the merged patches" if removed else "their folder stays, as it holds other files"))
@@ -133,7 +132,7 @@ def same_copy(record: dict, source) -> bool:
 
 
 def package_manifest(installed: Installed, files: list[PackageFile], previous: dict | None = None,
-                     reviews_sha256: str | None = None, groups_off=()) -> dict:
+                     reviews_sha256: str | None = None, groups_off=(), screens_off=()) -> dict:
     """What the package holds, and what it was built from: for each file it holds, the copy it was patched
     from (to tell whether that changed without reading it) and the output (to tell whether the package
     is intact); for each other file, why it isn't there, and the copy that was decided on. A forced file
@@ -193,6 +192,8 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
         "not_held": not_held,
         # The groups turned off (see scan.Scan.groups_off): their files are in neither of the above
         "groups_off": sorted(groups_off),
+        # The files the user chose not to merge (see scan.Scan.screens_off): in neither either
+        "screens_off": sorted(screens_off),
     }
 
 

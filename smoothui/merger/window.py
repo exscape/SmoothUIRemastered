@@ -37,6 +37,7 @@ it). New Smooth UI manifests make an unknown Smooth UI build scan again.
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
@@ -113,10 +114,11 @@ from .game import (
     game_environment,
     game_folder_of,
     game_path,
-    groups_off,
     is_game_folder,
     mods_settings,
     save_settings,
+    screens_off,
+    turned_off,
 )
 from .gui import LOG_FILE, REPORT_FILE, LogFormatter, error_text, in_thread, start_scan
 from .gui_texts import (
@@ -140,6 +142,11 @@ from .gui_texts import (
     DATA,
     DATA_HEADING,
     DELETE_FAILED,
+    DONT_MERGE,
+    DONT_MERGE_GROUP_NOTE,
+    DONT_MERGE_MOD,
+    DONT_MERGE_MOD_NOTE,
+    DONT_MERGE_NOTE,
     DOWNLOAD_PAGE,
     ERROR,
     FAILED,
@@ -202,6 +209,8 @@ from .gui_texts import (
     STOP_MERGE_TITLE,
     TEST_MODE,
     TITLE,
+    TURN_ON,
+    TURN_ON_NOTE,
     UNKNOWN_FILES,
     UPDATE,
     UPDATE_AVAILABLE,
@@ -221,6 +230,7 @@ from .gui_texts import (
     Card,
     also_changed,
     capitalized,
+    dont_merge,
     left_out,
     merging_status,
     release_notes,
@@ -234,8 +244,8 @@ from .gui_texts import (
 )
 from .installed import Status
 from .package import remove_package
-from .scan import PACKAGE_FOLDER, is_package_folder, scan
-from .screens import group_name, screen_label
+from .scan import PACKAGE_FOLDER, ScreenOff, is_package_folder, scan
+from .screens import group_name, screen_label, screen_name
 from .shortcut import create_shortcut, desktop_folder
 from .state import FileState, State, carried_force
 
@@ -572,7 +582,7 @@ class MergerWindow:
         self.rows_merging = False   # whether rows show a merge's progress, not their FileState
         self.keep_order = False     # since a merge (until Re-scan): rows stay where they were (see show_screens)
         self.row_order = {}         # by path: the row's position in the list, as last shown
-        self.details = {}           # by path: (its frame, its button or None)
+        self.details = {}           # by path: (its frame, its buttons)
         self.list_row = 0
 
         self.log_view = QPlainTextEdit(readOnly=True)
@@ -868,7 +878,7 @@ class MergerWindow:
         check_updates = self.check_updates if check_updates is None else check_updates
         smooth_hud = self.smooth_hud if smooth_hud is None else smooth_hud
         settings = Settings(folder, check_updates, self.settings.last_update_check if self.settings else None,
-                            smooth_hud)
+                            smooth_hud, screens_off(self.settings))
         try:
             save_settings(settings, gui.DATA_DIR)
         except SmoothUIError as e:
@@ -900,7 +910,7 @@ class MergerWindow:
             self.scan_again = True
             self.refresh()
         else:
-            start_scan(game, self.calls, groups_off(self.settings))
+            start_scan(game, self.calls, turned_off(self.settings))
             self.set_busy("scan")   # now, not once "scanning" arrives: another change meanwhile must wait for it
 
     # ---- Qt's thread: what threads hand over ----
@@ -1084,8 +1094,8 @@ class MergerWindow:
         """The card's buttons (on or off), and those in the screens' details (also off while something runs)"""
         for widget in self.card_buttons.findChildren(QPushButton) if self.card_buttons is not None else []:
             widget.setEnabled(on)
-        for _, widget in self.details.values():
-            if widget is not None:
+        for _, widgets in self.details.values():
+            for widget in widgets:
                 widget.setEnabled(on and not self.busy)
 
     def press_default(self):
@@ -1228,7 +1238,8 @@ class MergerWindow:
         anyway (a screen left out for its rescale's problems or known not to work, never for a failure; the
         latter asks first) or its revert. For a group's row, both take every file of it left out so (or
         forced): the group is merged whole or not at all, so forcing or reverting only some of them would
-        leave the others' choice to no effect."""
+        leave the others' choice to no effect. And Don't merge for a screen left out (see dont_merge), or Turn
+        merging on again for one the user chose not to merge."""
         state, cells, row, members = self.rows[path]
         cells[4].setText("▾")
         frame = QFrame(objectName="details")
@@ -1241,7 +1252,7 @@ class MergerWindow:
             layout.addWidget(label(f"•  {fix_text(name)}", wrap=True))
         if not state.group and (also := also_changed(self.found.scan.files[path], state.winner)):
             layout.addWidget(label(also, wrap=True))
-        widget = None
+        actions = []    # (text, note, command)
         left = [file.path for file in members if file.state == State.NOT_HELD and file.cause in ("left out", "known broken")]
         known_broken = any(file.state == State.NOT_HELD and file.cause == "known broken" for file in members)
         forced = [file.path for file in members if file.state == State.UP_TO_DATE and file.cause == "forced"]
@@ -1262,11 +1273,30 @@ class MergerWindow:
         else:
             text = None
         if text:
+            actions.append((text, note, command))
+        if off := dont_merge(members, self.found.states):
+            mod = off[0][1]
+            if state.group:
+                choice = next(path for path, _ in off)
+                text, note = DONT_MERGE, DONT_MERGE_GROUP_NOTE.format(group=group_name(state.group), mod=mod,
+                                                                      screen=screen_name(choice))
+            elif len(off) > 1:
+                text, note = DONT_MERGE_MOD.format(mod=mod), DONT_MERGE_MOD_NOTE.format(mod=mod)
+            else:
+                text, note = DONT_MERGE, DONT_MERGE_NOTE.format(mod=mod)
+            actions.append((text, note, lambda: self.turn_off(off)))
+        chosen = {self.found.scan.screens_off[file.path] for file in members
+                  if file.cause == "by choice" and file.path in self.found.scan.screens_off}
+        if chosen:
+            actions.append((TURN_ON, TURN_ON_NOTE.format(mod=state.winner), lambda: self.turn_on(chosen)))
+        widgets = []
+        for text, note, command in actions:
             buttons = QHBoxLayout()
             buttons.setContentsMargins(0, 4, 0, 0)
             buttons.setSpacing(10)
             widget = button(text, command)
             widget.setEnabled(not self.busy)
+            widgets.append(widget)
             buttons.addWidget(widget)
             buttons.addWidget(label(note, wrap=True), 1)
             layout.addLayout(buttons)
@@ -1274,7 +1304,7 @@ class MergerWindow:
         outer = QVBoxLayout(holder)
         outer.setContentsMargins(0, 2, 16, 8)
         outer.addWidget(frame)
-        self.details[path] = (holder, widget)
+        self.details[path] = (holder, widgets)
         self.list_grid.addWidget(holder, row, 1, 1, 5)
 
     def notes(self) -> list[tuple[str, str]]:
@@ -1319,7 +1349,7 @@ class MergerWindow:
                 self.merged = self.merge_error = None
                 self.keep_order = False
             self.scan_again = self.downloaded_meanwhile = False
-            start_scan(self.game, self.calls, groups_off(self.settings))
+            start_scan(self.game, self.calls, turned_off(self.settings))
             self.set_busy("scan")
             return
         if error is not None:
@@ -1348,7 +1378,7 @@ class MergerWindow:
         if not keep_result:
             self.merged = self.merge_error = None
             self.keep_order = False
-        start_scan(self.game, self.calls, groups_off(self.settings))
+        start_scan(self.game, self.calls, turned_off(self.settings))
 
     def play(self):
         """Play, outside stale mode: check again first, as the launcher does right before it starts the game
@@ -1475,6 +1505,36 @@ class MergerWindow:
 
     # ---- Merge, remove ----
 
+    def turn_off(self, off):
+        """Don't merge these copies of screens ((path, mod)), from today: saved in the settings, then scanned
+        again (the package doesn't hold them, so nothing needs merging)"""
+        chosen = screens_off(self.settings)
+        known = {(choice.path, choice.mod.lower()) for choice in chosen}
+        today = datetime.date.today().isoformat()
+        new = tuple(ScreenOff(path, mod, today) for path, mod in off if (path, mod.lower()) not in known)
+        if self.save_screens_off((*chosen, *new)):
+            log.info(f"Merging turned off for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in off)}")
+            self.rescan()
+
+    def turn_on(self, chosen):
+        """Merge these screens again (ScreenOffs the settings hold): dropped from the settings, then merged"""
+        if self.save_screens_off(tuple(choice for choice in screens_off(self.settings) if choice not in chosen)):
+            log.info("Merging turned on again for: "
+                     + ", ".join(f"{screen_label(choice.path)} ({choice.mod})" for choice in sorted(chosen)))
+            self.merge(self.stale)
+
+    def save_screens_off(self, chosen) -> bool:
+        """Save the settings with these screens not to merge; a failure is said in a message box"""
+        settings = replace(self.settings, screens_off=tuple(chosen))
+        try:
+            save_settings(settings, gui.DATA_DIR)
+        except SmoothUIError as e:
+            log.error(f"The settings can't be saved: {e}")
+            show_error(self.root, TITLE, SETTINGS_NOT_SAVED.format(error=e))
+            return False
+        self.settings = settings
+        return True
+
     def merge_anyway(self, play=False):
         """Merge every screen that was left out anyway (the card's button), once the user confirms"""
         paths = left_out(self.found, self.merged)
@@ -1535,8 +1595,8 @@ class MergerWindow:
         start = time.perf_counter()
         started = time.strftime("%Y-%m-%d %H:%M:%S")
         settings = mods_settings()
-        off = groups_off(self.settings)
-        force, notes = carried_force(scan(self.game, settings, groups_off=off))
+        off = turned_off(self.settings)
+        force, notes = carried_force(scan(self.game, settings, **off))
         for note in notes:
             log.warning(note)
         if force:
@@ -1549,7 +1609,7 @@ class MergerWindow:
             force = [path for path in force if path not in reverted]
         result = None
         try:
-            result = build_package(self.game, settings, force=force, groups_off=off, pool=self.pool, data_dir=gui.DATA_DIR,
+            result = build_package(self.game, settings, force=force, **off, pool=self.pool, data_dir=gui.DATA_DIR,
                                    on_file=on_file, progress=lambda *progress: self.calls.put(("progressed", progress)))
         finally:
             if not (play and result is not None and result.clean and not self.critical_update()):

@@ -14,7 +14,8 @@ A group of files (e.g. the HUD; see policy.py) only works whole: while the packa
 that would leave the game with a mix of patched and unpatched copies of its files is as bad as a wrong copy
 (Severity.HIGH). A group the user
 turned off (scan.Scan.groups_off) is fine while the package doesn't hold it; one turned on or off since the
-last build needs a build (Severity.MEDIUM: either way, the game shows the whole group one way).
+last build needs a build (Severity.MEDIUM: either way, the game shows the whole group one way). The same goes
+for a screen the user chose not to merge (scan.Scan.screens_off).
 """
 
 from __future__ import annotations
@@ -82,7 +83,8 @@ class FileState:
     path: str                   # profile key
     state: State
     message: str                # for the user
-    winner: str | None = None   # the mod whose copy a build would patch (see scan.FileResult.winner)
+    winner: str | None = None   # the mod whose copy a build would patch (see scan.FileResult.winner); for a
+                                # screen the user chose not to merge, the mod whose copy that is about
     severity: Severity | None = None    # set for the files that open the merger at launch (see Check)
     needs_build: bool = False   # whether building the package again would change it (see State.needs_build)
     cause: str | None = None    # why, in a word, for the window to group files by: for CHANGED, "smoothui" or
@@ -90,7 +92,9 @@ class FileState:
                                 # "load order" (another mod's copy wins now) or "setting" (its group was
                                 # turned off since the build); for NOT_BUILT, "setting" if its group was turned on
                                 # since the build; for NOT_HELD, the status the manifest records (see
-                                # NOT_HELD_TEXT), or "turned off" (its group is); for UP_TO_DATE, "forced" if
+                                # NOT_HELD_TEXT), "turned off" (its group is), or "by choice" (the user
+                                # chose not to merge it, or a file of its group; also CHANGED's and
+                                # NOT_BUILT's cause once that changed since the build); for UP_TO_DATE, "forced" if
                                 # the user chose to patch it anyway
     previous: str | None = None     # CHANGED (but for "smoothui", "merger") and NO_LONGER_NEEDED: the mod whose
                                     # copy the last merge used
@@ -198,6 +202,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     not_held = (manifest or {}).get("not_held", {})
     groups = result.group_of
     was_off = set((manifest or {}).get("groups_off", ()))
+    screens_were_off = set((manifest or {}).get("screens_off", ()))
 
     states = []
     for key in sorted(result.files):
@@ -225,6 +230,20 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             else:
                 state(State.NOT_HELD, f"merging the {name} is turned off in the settings: the game shows {shows}",
                       cause="turned off")
+        elif key in result.screens_off:
+            choice = result.screens_off[key]
+            shown = file.loaded_without_package
+            shows = (f"{choice.mod}'s own copy, at its original frame rate" if shown and shown.folder == choice.mod
+                     else f"{_copy_name(shown.folder)}, unpatched" if shown else "its own copy, at its original frame rate")
+            since = f" (since {choice.since})" if choice.since else ""
+            what = (f"merging {choice.mod}'s copy is turned off{since}" if choice.path == key else
+                    f"merging the {group_name(groups[key])} is turned off, as merging {choice.mod}'s copy of "
+                    f"{screen_name(choice.path)} is{since}")
+            if key in toc:
+                state(State.CHANGED, f"{what}, but the merged patches hold it: merge again (the game then shows {shows})",
+                      Severity.MEDIUM, needs_build=True, cause="by choice", origin=choice.mod)
+            else:
+                state(State.NOT_HELD, f"{what}: the game shows {shows}", cause="by choice", origin=choice.mod)
         elif key in toc:
             record = held.get(key)
             entry = toc[key][1]
@@ -299,6 +318,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.NOT_HELD, f"{_copy_of(origin)}: {text}", cause=record["status"])
         elif manifest is None and manifest_problem is None:
             state(State.NOT_BUILT, f"{_copy_of(origin)} isn't merged yet", Severity.MEDIUM)
+        elif key in screens_were_off:
+            what = f"the {group_name(groups[key])}" if key in groups else _copy_of(origin)
+            state(State.NOT_BUILT, f"merging {what} was turned on again since the last merge: merge again",
+                  Severity.MEDIUM, cause="by choice")
         elif groups.get(key) in was_off:
             state(State.NOT_BUILT, f"merging the {group_name(groups[key])} was turned on in the settings since the last "
                   "merge: merge again", Severity.MEDIUM, cause="setting")
@@ -318,7 +341,8 @@ def _whole_groups(result: Scan, states: list[FileState]) -> list[FileState]:
     result_states = []
     for file in states:
         group = file.group
-        if group in loaded_groups and file.severity == Severity.MEDIUM and file.cause != "setting":
+        # (Turned off or on, by the setting or the user's choice, is the whole group: not mixed)
+        if group in loaded_groups and file.severity == Severity.MEDIUM and file.cause not in ("setting", "by choice"):
             file = replace(file, severity=Severity.HIGH,
                            message=f"{file.message} (until then, the {group_name(group)} is part patched, part not: "
                            "its animations play at the wrong speeds)")

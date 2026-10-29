@@ -92,6 +92,18 @@ KNOWN_BROKEN_QUESTION = ("{mod}'s copy of {screen} is known not to work with Smo
                          "its details in the list.")
 # On a card that is otherwise fine
 KNOWN_BROKEN = "Not merged, as known not to work with Smooth UI: {screens}."
+# The user's choice not to merge a mod's copy (in the details of a screen left out), and its revert
+DONT_MERGE = "Don't merge it"
+DONT_MERGE_NOTE = ("The game then keeps showing {mod}'s own copy, at its original frame rate, and the merger stops "
+                   "warning about it. You can turn merging on again here.")
+DONT_MERGE_MOD = "Don't merge {mod}'s screens"
+DONT_MERGE_MOD_NOTE = ("The game then keeps showing {mod}'s own copies, at their original frame rate, and the merger "
+                       "stops warning about them. You can turn merging on again here.")
+DONT_MERGE_GROUP_NOTE = ("The {group} then stays unmerged while the game uses {mod}'s copy of {screen}, and the merger "
+                         "stops warning about it. You can turn merging on again here.")
+TURN_ON = "Turn merging on again"
+TURN_ON_NOTE = "If {mod} or Smooth UI Tools was updated since, it may merge now."
+TURNED_OFF = "Merging is turned off for: {screens}."
 REVERT = "Revert to the mod's own copy"
 REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate."
 # The same, for a file in a group (e.g. the HUD): reverting one leaves the whole group out
@@ -247,6 +259,7 @@ CAUSES = {
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
     "group left out": "The HUD only works if all of it is merged, so it is left out.",
     "setting": "The \"Merge the HUD too\" setting changed since the last merge.",
+    "by choice": "Your choice of screens not to merge changed since the last merge.",
 }
 # What a Smooth UI that can't be used costs, beyond the mods' screens (by installed.Status)
 RISKS = {
@@ -343,8 +356,8 @@ def _merging(stale, progress):
 
 def _merged(result: BuildResult, stale, cant_merge):
     """After a merge in the window (cant_merge: see _card)"""
-    known = _known_broken((file.path, file.group, file.mod) for file in result.files
-                          if file.status.value == "known broken")
+    known = _screens(KNOWN_BROKEN, ((file.path, file.group, file.mod) for file in result.files
+                                    if file.status.value == "known broken"))
     if result.clean:
         included = [(file.mod, file.path, file.group) for file in result.files if file.status.included]
         headline = (f"Merged: {_patched(included)}" if included
@@ -435,11 +448,13 @@ def _checked(found: Check, stale):
     # Up to date: what the merged patches hold, and what they can't
     causes = [(_cause(file), file.winner) for file in found.states
               if file.state == State.UNDETERMINED
-              or (file.state == State.NOT_HELD and file.cause not in ("unchanged", "turned off", "known broken"))
+              or (file.state == State.NOT_HELD and file.cause not in ("unchanged", "turned off", "known broken", "by choice"))
               or file.cause == "fixes"]
     patched = [(file.winner, file.path, file.group) for file in found.states if file.state == State.UP_TO_DATE]
-    known = _known_broken((file.path, file.group, file.winner) for file in found.states
-                          if file.state == State.NOT_HELD and file.cause == "known broken")
+    known = _screens(KNOWN_BROKEN, ((file.path, file.group, file.winner) for file in found.states
+                                    if file.state == State.NOT_HELD and file.cause == "known broken"))
+    known += _screens(TURNED_OFF, ((file.path, file.group, file.winner) for file in found.states
+                                   if file.state == State.NOT_HELD and file.cause == "by choice"))
     if causes:
         headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
                     else "Some screens can't be merged")
@@ -486,14 +501,16 @@ def row_status(file: FileState) -> tuple[str, str]:
         return OK, "Merged anyway" if cause == "forced" else "Merged"
     if state == State.NOT_HELD:
         return {"unchanged": (OK, "Already smooth"), "known broken": (INFO, "Known not to work"),
+                "by choice": (INFO, "Turned off"),
                 "failed": (ERROR, "Can't merge"),
                 "mod failed": (ERROR, "Mod left out"), "group left out": (WARNING, "Left out with its group"),
                 "turned off": (OK, "Turned off")}.get(cause, (ERROR, "Left out"))
     if state == State.CHANGED:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
                 "load order": (WARNING, "Load order changed"),
-                "setting": (WARNING, "Setting changed")}.get(cause, (WARNING, "Mod updated"))
-    if state == State.NOT_BUILT and cause == "setting":
+                "setting": (WARNING, "Setting changed"),
+                "by choice": (WARNING, "Setting changed")}.get(cause, (WARNING, "Mod updated"))
+    if state == State.NOT_BUILT and cause in ("setting", "by choice"):
         return WARNING, "Setting changed"
     return {State.NOTHING_TO_DO: (OK, "Smooth UI's own copy"), State.NOT_BUILT: (WARNING, "Not merged yet"),
             State.NO_LONGER_NEEDED: (WARNING, "Mod removed"), State.DAMAGED: (ERROR, "Damaged"),
@@ -576,10 +593,24 @@ def unchanged_screens(count) -> str:
     return f"{count} more screens use Smooth UI's own version, as no other mod changes them"
 
 
-def _known_broken(files) -> tuple[str, ...]:
-    """The KNOWN_BROKEN sentence (none if there are none), for files ((path, group, mod)); a group is named once"""
+def dont_merge(members: list[FileState], states: list[FileState]) -> list[tuple[str, str]]:
+    """What a row's "Don't merge" turns off, as (path, mod): its files that are left out and keep it out (for
+    its rescale's problems, or a failure; not known not to work, which doesn't warn), in mods' copies (not the
+    game's). For a mod that failed, every screen of it (all are left out); in a group's row (members: the row's
+    files), the files that keep the group out. None: the row has no such button."""
+    found = [file for file in members if file.state == State.NOT_HELD and file.cause in ("left out", "failed", "mod failed")
+             and file.winner not in (None, GAME_FILES)]
+    failed = {file.winner.lower() for file in found if file.cause in ("failed", "mod failed")}
+    found += [file for file in states if file.state == State.NOT_HELD and file.cause in ("failed", "mod failed")
+              and file.winner and file.winner.lower() in failed]
+    return sorted({(file.path, file.winner) for file in found})
+
+
+def _screens(sentence, files) -> tuple[str, ...]:
+    """A sentence naming screens (KNOWN_BROKEN, TURNED_OFF), none if there are none, for files ((path, group,
+    mod)); a group is named once"""
     names = sorted({f"{group_name(group) if group else screen_name(path)} ({mod})" for path, group, mod in files})
-    return (KNOWN_BROKEN.format(screens=_join(names)),) if names else ()
+    return (sentence.format(screens=_join(names)),) if names else ()
 
 
 def _cause(file: FileState) -> str:
