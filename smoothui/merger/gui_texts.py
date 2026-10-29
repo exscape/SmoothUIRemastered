@@ -85,6 +85,11 @@ PATCH_ALL_ANYWAY = "Merge all anyway"
 PATCH_ANYWAY_TITLE = "Merge anyway?"
 PATCH_ANYWAY_QUESTION = ("Smooth UI can't fully merge these screens:\n\n{screens}\n\nMerge them anyway? They may then "
                          "look or behave wrong in places. You can revert each one later, in its details in the list.")
+# The same, for screens left out only for code Smooth UI hasn't been checked with (see anyway_texts)
+PATCH_ANYWAY_CODE_NOTE = "This often works. If something then runs too fast or looks wrong, you can revert it here."
+PATCH_ANYWAY_CODE_QUESTION = ("These screens use code Smooth UI hasn't been checked with yet:\n\n{screens}\n\nMerge them "
+                              "anyway? This often works. If something then runs too fast or looks wrong, you can revert "
+                              "each one in its details in the list.")
 # The same, for a screen known not to work (in its details only, never on the card)
 KNOWN_BROKEN_ANYWAY_NOTE = "It is known not to work with Smooth UI, so it will most likely look or behave wrong."
 KNOWN_BROKEN_QUESTION = ("{mod}'s copy of {screen} is known not to work with Smooth UI.\n\n"
@@ -104,6 +109,9 @@ DONT_MERGE_GROUP_NOTE = ("The {group} then stays unmerged while the game uses {m
 TURN_ON = "Turn merging on again"
 TURN_ON_NOTE = "If {mod} or Smooth UI Tools was updated since, it may merge now."
 TURNED_OFF = "Merging is turned off for: {screens}."
+# The same, for those that a trial found would merge now (see turn_on_note)
+MERGES_NOW = "Turned off, but they merge now: {screens}."
+MERGES_NOW_NOTE = "It merges now: {what} {was} updated since."
 REVERT = "Revert to the mod's own copy"
 REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate."
 # The same, for a file in a group (e.g. the HUD): reverting one leaves the whole group out
@@ -285,14 +293,15 @@ NO_UPDATE = "No newer Smooth UI Tools is out yet."
 def status_card(found: Check | None, *, stale: bool, busy: str | None = None, scan_error: str | None = None,
                 merged: BuildResult | None = None, merge_error: str | None = None,
                 progress: tuple[int, int] | None = None, update: str | None = None, critical: bool = False,
-                update_search: str | None = None, critical_installed: bool = False) -> Card:
+                update_search: str | None = None, critical_installed: bool = False, merges_now=()) -> Card:
     """What the status card shows, from the window's state. found: the last check (None until one ends);
     stale: whether the launcher opened the window; busy: what runs in a thread ("scan", "build", "remove" or
     "update"); scan_error: why the last check failed; merged and merge_error: the result of the window's
     last merge, or why it failed; progress: the merge's or the update's download (done, total), once known;
     update: a newer Smooth UI Tools version, if one was found (critical: a critical one); update_search: in
     stale mode, LOOKING or NOTHING_FOUND while or after looking for one (None: not looked for, or the check
-    failed); critical_installed: a critical update was just installed, so a merge that is only recommended
+    failed); merges_now: the files the user chose not to merge that would merge now (see
+    builder.merges_now); critical_installed: a critical update was just installed, so a merge that is only recommended
     (the merger was updated) is strongly recommended.
 
     Outside stale mode, only the cards that are fine to play from have Play, first: up to date, or with
@@ -303,7 +312,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
     if busy == "update":
         fraction = progress[0] / progress[1] if progress and progress[1] else None
         return Card(NEUTRAL, DOWNLOADING_UPDATE.format(version=update), busy=True, progress=fraction)
-    card = _card(found, stale, busy, scan_error, merged, merge_error, progress)
+    card = _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_now)
     if critical_installed and not busy and card.headline == HEADLINES[Severity.LOW]:
         card = replace(card, tone=WARNING, headline=CRITICAL_INSTALLED_HEADLINE, sentences=(CRITICAL_INSTALLED,))
     if stale and not busy and found is not None and found.scan.installed.status == Status.UNKNOWN:
@@ -318,7 +327,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
     return card
 
 
-def _card(found, stale, busy, scan_error, merged, merge_error, progress) -> Card:
+def _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_now=()) -> Card:
     if busy == "build":
         return _merging(stale, progress)
     if busy == "remove":
@@ -345,7 +354,7 @@ def _card(found, stale, busy, scan_error, merged, merge_error, progress) -> Card
         return Card(ERROR, "Merging failed", sentences, buttons)
     if merged is not None:
         return _merged(merged, stale, cant_merge)
-    return _checked(found, stale)
+    return _checked(found, stale, merges_now)
 
 
 def _merging(stale, progress):
@@ -409,8 +418,16 @@ def anyway_button(count: int, stale: bool) -> tuple[tuple[str, str], ...]:
     return ((f"{label} and play", "merge_anyway_and_play") if stale else (label, "merge_anyway"),)
 
 
-def _checked(found: Check, stale):
-    """From the last check"""
+def anyway_texts(reasons) -> tuple[str, str]:
+    """(the note by a row's Merge anyway, the card's question) for screens left out, by their reasons (see
+    state.WHY): gentle if each one only uses code Smooth UI hasn't been checked with, which often works"""
+    if reasons and all(reason == "code" for reason in reasons):
+        return PATCH_ANYWAY_CODE_NOTE, PATCH_ANYWAY_CODE_QUESTION
+    return PATCH_ANYWAY_NOTE, PATCH_ANYWAY_QUESTION
+
+
+def _checked(found: Check, stale, merges_now=()):
+    """From the last check (merges_now: see status_card)"""
     installed = found.scan.installed
     if found.package_without_smoothui:
         if installed.status in (Status.NOT_INSTALLED, Status.DISABLED):
@@ -457,8 +474,11 @@ def _checked(found: Check, stale):
     patched = [(file.winner, file.path, file.group) for file in found.states if file.state == State.UP_TO_DATE]
     known = _screens(KNOWN_BROKEN, ((file.path, file.group, file.winner) for file in found.states
                                     if file.state == State.NOT_HELD and file.cause == "known broken"))
-    known += _screens(TURNED_OFF, ((file.path, file.group, file.winner) for file in found.states
-                                   if file.state == State.NOT_HELD and file.cause == "by choice"))
+    off = [file for file in found.states if file.state == State.NOT_HELD and file.cause == "by choice"]
+    now_groups = {file.group for file in off if file.path in merges_now and file.group}
+    now = [file for file in off if file.path in merges_now or file.group in now_groups]
+    known += _screens(TURNED_OFF, ((file.path, file.group, file.winner) for file in off if file not in now))
+    known += _screens(MERGES_NOW, ((file.path, file.group, file.winner) for file in now))
     if causes:
         headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
                     else "Some screens can't be merged")
@@ -611,6 +631,14 @@ def unchanged_screens(count) -> str:
     if count == 1:
         return "1 more screen uses Smooth UI's own version, as no other mod changes it"
     return f"{count} more screens use Smooth UI's own version, as no other mod changes them"
+
+
+def turn_on_note(mod: str, changed: list[str] | None) -> str:
+    """The note by Turn merging on again, for mod's copy; changed: what was updated since it was turned off,
+    if a trial found it would merge now (see state.changed_since_off), else None"""
+    if not changed:
+        return TURN_ON_NOTE.format(mod=mod)
+    return MERGES_NOW_NOTE.format(what=_join(changed), was="was" if len(changed) == 1 else "were")
 
 
 def dont_merge(members: list[FileState], states: list[FileState]) -> list[tuple[str, str]]:

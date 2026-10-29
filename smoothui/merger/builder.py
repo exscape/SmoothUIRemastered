@@ -8,7 +8,7 @@ decide again whenever the user changes a choice, and install when they are done.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from .. import mod_reviews
@@ -28,7 +28,7 @@ from ..paths import DATA_DIR
 from ..witcher3.mods_settings import read_mods_settings, write_entry
 from .game import MODS_SETTINGS_BACKUP
 from .package import Written, record_path, write_package
-from .policy import PackageFile, decide
+from .policy import FileStatus, PackageFile, decide
 from .scan import PACKAGE_FOLDER, Scan, entry_needed, is_package_folder, scan
 from .screens import screen_label
 
@@ -56,6 +56,24 @@ def patch_winners(result: Scan, *, reviews: ModReviews | None = None, pool=None,
              f"({e!r}): update them")
     return patch_as_release(sources, {source.path: profile[source.path] for source in sources}, manifest,
                             mod_reviews=reviews if reviews is not None else mod_reviews.load(), on_file=on_file, pool=pool)
+
+
+def merges_now(result: Scan, keys, *, reviews: ModReviews | None = None, pool=None) -> list[str]:
+    """Which of keys, files the user chose not to merge (see Scan.screens_off), would merge now: their copies
+    (Scan.off_copies) patched as a build would, as a trial (nothing is written), without anything that would
+    leave them out. Each one alone: the rest of its group is the build's to check, once it is turned on; and
+    another file of its mod that fails (left out as "mod failed") is one that stays turned off. pool: as for
+    patch_winners."""
+    keys = [key for key in keys if key in result.off_copies]
+    if not keys:
+        return []
+    trial = replace(result, files={key: replace(result.files[key], winner=result.off_copies[key]) for key in keys},
+                    group_of={key: result.group_of[key] for key in keys if key in result.group_of},
+                    screens_off={}, off_copies={})
+    patch = patch_winners(trial, reviews=reviews, pool=pool, on_file=lambda *args, **kwargs: None)
+    return [file.path for file in decide(trial, patch)
+            if file.status in (FileStatus.PATCHED, FileStatus.UNCHANGED)
+            or (file.status == FileStatus.MOD_FAILED and not any(issue.keeps_out for issue in file.issues))]
 
 
 @dataclass(slots=True)

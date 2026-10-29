@@ -36,7 +36,7 @@ from ..witcher3.source_file import GAME_FILES, SourceFile
 from .installed import is_smoothui_folder
 from .scan import COMPAT_PATCH, Scan
 from .screens import file_name, screen_label
-from .state import WHY, not_merged, original_frame_rate
+from .state import merged_anyway, not_merged, original_frame_rate
 
 
 class FileStatus(Enum):
@@ -126,10 +126,14 @@ class PackageFile:
 
     @property
     def reason(self) -> str | None:
-        """Why its rescale has problems, in a word for the user (see state.WHY): "code" (a warning that isn't
-        reviewed) or "changes" (a setting that wasn't followed, or no longer matches); None if neither"""
+        """Why its rescale has problems, in a word for the user (see state.WHY): "known broken" (a warning that
+        means its copy doesn't work), "code" (a warning that isn't reviewed) or "changes" (a setting that wasn't
+        followed, or no longer matches); None if none"""
         kinds = {issue.kind for issue in self.issues}
-        return "code" if IssueKind.WARNING in kinds else "changes" if IssueKind.RULE in kinds else None
+        for kind, reason in ((IssueKind.KNOWN_BROKEN, "known broken"), (IssueKind.WARNING, "code"), (IssueKind.RULE, "changes")):
+            if kind in kinds:
+                return reason
+        return None
 
     @property
     def to_report(self) -> bool:
@@ -147,8 +151,7 @@ class PackageFile:
         elif status == FileStatus.UNCHANGED:
             summary = f"{copy[0].upper() + copy[1:]} is already smooth: used as it is" + (", without some fixes:" if self.issues else "")
         elif status == FileStatus.FORCED:
-            summary = (f"merged anyway, as you chose: {copy} {WHY.get(self.reason) or WHY['left out']}, so it may look "
-                       "or behave wrong in places" + (". Without some fixes:" if self.fixes_not_applied else "."))
+            summary = merged_anyway(copy, self.reason) + (". Without some fixes:" if self.fixes_not_applied else ".")
         elif status == FileStatus.GROUP_LEFT_OUT:
             summary = f"{not_merged(status.value, copy, self.mod, group=self.group, kept_out_by=self.error)} {self._runs()}"
         else:

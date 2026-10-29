@@ -91,10 +91,25 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
         off = settings.get("not_merged", [])
         if not isinstance(off, list):
             raise TypeError(f"not_merged is {off!r}, not a list")
-        off = tuple(ScreenOff(str(choice["screen"]), str(choice["mod"]), str(choice.get("since", ""))) for choice in off)
+        off = tuple(_screen_off(choice) for choice in off)
         return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off)
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
+
+
+def _screen_off(choice: dict) -> ScreenOff:
+    """A not_merged entry of the settings file; what the choice was made with is left out if it can't be used
+    (it only tells when merging may work now)"""
+    def number(name):
+        value = choice.get(name)
+        return value if type(value) is int else None
+
+    def text(name):
+        value = choice.get(name)
+        return value if isinstance(value, str) else None
+
+    return ScreenOff(str(choice["screen"]), str(choice["mod"]), str(choice.get("since", "")), number("size"),
+                     number("crc32"), text("reviews_sha256"), text("tools_version"))
 
 
 def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
@@ -104,7 +119,10 @@ def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
     if settings.last_update_check is not None:
         fields["last_update_check"] = settings.last_update_check
     if settings.screens_off:
-        fields["not_merged"] = [{"screen": choice.path, "mod": choice.mod, "since": choice.since}
+        fields["not_merged"] = [{"screen": choice.path, "mod": choice.mod, "since": choice.since,
+                                 **({"size": choice.size, "crc32": choice.crc32} if choice.size is not None else {}),
+                                 **({"reviews_sha256": choice.reviews} if choice.reviews else {}),
+                                 **({"tools_version": choice.tools} if choice.tools else {})}
                                 for choice in settings.screens_off]
     text = json.dumps(fields, indent=1) + "\n"
     write_file(Path(data_dir) / SETTINGS_FILE, text.encode("utf-8"))

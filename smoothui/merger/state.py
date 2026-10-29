@@ -100,6 +100,8 @@ class FileState:
                                     # copy the last merge used
     fixes: tuple[str, ...] = ()     # UP_TO_DATE: the fixes the merged copy lacks (a fix that can't apply)
     group: str | None = None        # the group it is in, if any (see build/profile.py's Group)
+    reason: str | None = None       # NOT_HELD "left out", and UP_TO_DATE "forced": why its rescale has problems,
+                                    # in a word (see WHY), if the build recorded it
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +177,15 @@ def not_merged(status: str, copy: str, mod: str, *, reason: str | None = None, g
     return f"{copy} {WHY.get(reason) or WHY.get(status, status)}, so it isn't merged."
 
 
+def merged_anyway(copy: str, reason: str | None, since: str = "") -> str:
+    """What a copy (e.g. "modA's copy") merged anyway, as the user chose (since: e.g. " on <date>"), means,
+    by its reason (see WHY): code that isn't checked often works, so that is said gently"""
+    if reason == "code":
+        return (f"merged anyway, as you chose{since}: {copy} {WHY['code']}. If something runs too fast or looks wrong, "
+                "revert it")
+    return f"merged anyway, as you chose{since}: {copy} {WHY.get(reason) or WHY['left out']}, so it may look or behave wrong in places"
+
+
 def original_frame_rate(group: str | None = None) -> str:
     """What the game shows for a file that isn't merged, when that is its own copy (the game's or its mod's):
     said of the whole group for a group's file, so that its files say the same"""
@@ -232,10 +243,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         origin = winner.origin if winner else None
 
         def state(kind, message, severity=None, needs_build=None, cause=None, previous=None, fixes=(), key=key,
-                  origin=origin):
+                  origin=origin, reason=None):
             needs_build = kind.needs_build if needs_build is None else needs_build
             states.append(FileState(key, kind, message, origin, severity, needs_build, cause, previous, fixes,
-                                    groups.get(key)))
+                                    groups.get(key), reason))
 
         if file.undetermined:
             state(State.UNDETERMINED, "the load order doesn't decide which mod's copy the game uses (see the problems)")
@@ -291,12 +302,11 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                           "is missing or changed: merge again", Severity.MEDIUM, needs_build=True)
             elif record.get("forced"):
                 since = f" on {record['forced_since']}" if record.get("forced_since") else ""
-                why = WHY.get(record.get("reason")) or WHY["left out"]
-                text = f"merged anyway, as you chose{since}: {_copy_of(origin)} {why}, so it may look or behave wrong in places"
                 fixes = tuple(record.get("fixes_not_applied") or ())
                 # (The window adds a colon, then the fixes)
-                text += ", and without some fixes" if fixes else "."
-                state(State.UP_TO_DATE, text, cause="forced", fixes=fixes)
+                text = merged_anyway(_copy_of(origin), record.get("reason"), since) + (
+                    ". It is merged without some fixes" if fixes else ".")
+                state(State.UP_TO_DATE, text, cause="forced", fixes=fixes, reason=record.get("reason"))
             else:
                 fixes = tuple(record.get("fixes_not_applied") or ())
                 state(State.UP_TO_DATE, f"merged ({_copy_of(origin)})" + (", without some fixes" if fixes else ""),
@@ -330,7 +340,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                                   kept_out_by=kept_out_by)
                 # The same for each of a group's files left out with it, so that they are told as one
                 shows = _shows(file, origin, group if status == "group left out" else None)
-                state(State.NOT_HELD, f"{text} {shows}", cause=status)
+                state(State.NOT_HELD, f"{text} {shows}", cause=status, reason=record.get("reason"))
         elif manifest is None and manifest_problem is None:
             state(State.NOT_BUILT, f"{_copy_of(origin)} isn't merged yet", Severity.MEDIUM)
         elif key in screens_were_off:
@@ -363,6 +373,25 @@ def _whole_groups(result: Scan, states: list[FileState]) -> list[FileState]:
                            "its animations play at the wrong speeds)")
         result_states.append(file)
     return result_states
+
+
+def changed_since_off(result: Scan) -> dict[str, list[str]]:
+    """The files the user chose not to merge (see Scan.screens_off) for which something changed since that
+    may let them merge now: {profile key: what changed, e.g. ["modA", "Smooth UI Tools"]}. Only the chosen
+    files, not the rest of their groups, and only choices that recorded what they were made with."""
+    found = {}
+    for key, choice in sorted(result.screens_off.items()):
+        copy = result.off_copies.get(key)
+        if choice.path != key or copy is None or choice.size is None:
+            continue
+        changed = []
+        if (copy.size, copy.toc_entry.crc) != (choice.size, choice.crc32):
+            changed.append(choice.mod)
+        if choice.reviews != mod_reviews.sha256() or choice.tools != tools_version():
+            changed.append("Smooth UI Tools")
+        if changed:
+            found[key] = changed
+    return found
 
 
 def carried_force(result: Scan) -> tuple[list[str], list[str]]:

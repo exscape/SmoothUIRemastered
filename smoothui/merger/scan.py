@@ -90,10 +90,15 @@ class FileResult:
 
 
 class ScreenOff(NamedTuple):
-    """The user's choice not to merge a mod's copy of a screen (see game.Settings.screens_off)"""
+    """The user's choice not to merge a mod's copy of a screen (see game.Settings.screens_off), and what it
+    was made with, to tell when merging it may work now (see state.changed_since_off; None if not known)"""
     path: str       # profile key
     mod: str        # the mod's folder
     since: str      # the date it was chosen (ISO)
+    size: int | None = None         # the mod's copy: its size and CRC32 (as the package records copies)
+    crc32: int | None = None
+    reviews: str | None = None      # the reviews of mods' code then (mod_reviews.sha256)
+    tools: str | None = None        # the version of Smooth UI Tools then
 
 
 @dataclass(slots=True)
@@ -117,6 +122,8 @@ class Scan:
     # patched: {profile key: the choice}. They have no winner either. One of a group's files turns off the
     # whole group (it is merged whole or not at all), so those get its choice too.
     screens_off: dict[str, ScreenOff] = field(default_factory=dict)
+    # For each of those: the copy that would be patched, were it not off
+    off_copies: dict[str, SourceFile] = field(default_factory=dict)
 
     @property
     def compat_patches(self) -> list[str]:
@@ -214,10 +221,11 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
             result.winner = game.get(key)
     problems += modio_problems(keys, modio_root)
     off_now = _screens_off(files, group_of, screens_off)
+    off_copies = {key: files[key].winner for key in off_now if files[key].winner is not None}
     for key in off_now:
         files[key].winner = None
     return Scan(mods_dir, installed, order, files, problems, group_of=group_of, groups_off=frozenset(groups_off),
-                screens_off=off_now)
+                screens_off=off_now, off_copies=off_copies)
 
 
 def _screens_off(files, group_of, screens_off) -> dict[str, ScreenOff]:

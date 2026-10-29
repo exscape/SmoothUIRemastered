@@ -86,6 +86,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import mod_reviews
 from ..common import SmoothUIError, fail
 from ..files import stop_writes, write_file
 from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
@@ -179,8 +180,6 @@ from .gui_texts import (
     OPEN_LICENSES,
     OPEN_LOG_FOLDER,
     PATCH_ANYWAY,
-    PATCH_ANYWAY_NOTE,
-    PATCH_ANYWAY_QUESTION,
     PATCH_ANYWAY_TITLE,
     REMOVE_FAILED,
     REMOVE_QUESTION,
@@ -210,7 +209,6 @@ from .gui_texts import (
     TEST_MODE,
     TITLE,
     TURN_ON,
-    TURN_ON_NOTE,
     UNKNOWN_FILES,
     UPDATE,
     UPDATE_AVAILABLE,
@@ -229,6 +227,7 @@ from .gui_texts import (
     ZIP_NOTE,
     Card,
     also_changed,
+    anyway_texts,
     capitalized,
     dont_merge,
     left_out,
@@ -240,6 +239,7 @@ from .gui_texts import (
     row_status,
     screen_rows,
     status_card,
+    turn_on_note,
     unchanged_screens,
 )
 from .installed import Status
@@ -247,7 +247,7 @@ from .package import remove_package
 from .scan import PACKAGE_FOLDER, ScreenOff, is_package_folder, scan
 from .screens import group_name, screen_label, screen_name
 from .shortcut import create_shortcut, desktop_folder
-from .state import FileState, State, carried_force
+from .state import FileState, State, carried_force, changed_since_off
 
 log = logging.getLogger(__name__)
 
@@ -478,6 +478,9 @@ class MergerWindow:
         # What status_card shows (see there)
         self.found = None
         self.scan_error = None
+        self.merges_now = {}    # the files the user chose not to merge that would merge now: {path: what changed}
+        self.trying = False     # whether a trial for them runs (see try_merging)
+        self.pool_started = False   # whether start_first_pool ran
         self.merged = None
         self.merge_error = None
         self.progress = None        # the merge's or the update's download (done, total), once known
@@ -607,7 +610,7 @@ class MergerWindow:
         # What threads hand over is shown once the window shows (handling it first would delay that), or after
         # a while at the latest (e.g. started minimized)
         QTimer.singleShot(1000, self.start_polling)
-        QTimer.singleShot(300, self.start_pool)     # after the window shows
+        QTimer.singleShot(300, self.start_first_pool)   # after the window shows
 
     def center(self, width, height):
         """Size the window, and center it on the main screen"""
@@ -955,6 +958,12 @@ class MergerWindow:
             bar = self.log_view.verticalScrollBar()
             bar.setValue(bar.maximum())
 
+    def start_first_pool(self):
+        """start_pool, then the trial that the first scan may have left to it (see try_merging)"""
+        self.start_pool()
+        self.pool_started = True
+        self.try_merging()
+
     def start_pool(self):
         # Imported here, as in close and merge: they take a while to import, and the window shows first
         from ..parallel import MAX_WORKERS, make_pool, warm_up, worker_count
@@ -1033,7 +1042,7 @@ class MergerWindow:
                            merged=self.merged, merge_error=self.merge_error, progress=self.progress,
                            update=self.update.version if self.update else None,
                            critical=self.critical_update(), update_search=self.update_search,
-                           critical_installed=self.critical_installed)
+                           critical_installed=self.critical_installed, merges_now=self.merges_now)
         if card == self.card:
             self.enable_buttons(True)
             return
@@ -1264,7 +1273,7 @@ class MergerWindow:
             command = lambda: ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question, warning=True) and self.merge(
                 self.stale, patch_anyway=left)
         elif left and not failed:
-            text, note = PATCH_ANYWAY, PATCH_ANYWAY_NOTE
+            text, note = PATCH_ANYWAY, anyway_texts([file.reason for file in members if file.path in left])[0]
             command = lambda: self.merge(self.stale, patch_anyway=left)
         elif forced:
             text, note = ((REVERT_GROUP, REVERT_GROUP_NOTE.format(group=group_name(state.group))) if state.group
@@ -1288,7 +1297,8 @@ class MergerWindow:
         chosen = {self.found.scan.screens_off[file.path] for file in members
                   if file.cause == "by choice" and file.path in self.found.scan.screens_off}
         if chosen:
-            actions.append((TURN_ON, TURN_ON_NOTE.format(mod=state.winner), lambda: self.turn_on(chosen)))
+            changed = next((self.merges_now[file.path] for file in members if file.path in self.merges_now), None)
+            actions.append((TURN_ON, turn_on_note(state.winner, changed), lambda: self.turn_on(chosen)))
         widgets = []
         for text, note, command in actions:
             buttons = QHBoxLayout()
@@ -1363,6 +1373,8 @@ class MergerWindow:
                 log.warning(f"Smooth UI: {self.found.scan.installed.message}")
             for problem in self.found.scan.problems:
                 log.warning(problem.message)
+        self.merges_now = {}
+        self.try_merging()
         self.refresh()
         if self.play_when_scanned:
             self.play_when_scanned = False
@@ -1371,6 +1383,39 @@ class MergerWindow:
                 return
             log.warning("Not starting the game: the check found something to see first")
         self.look_for_updates()
+
+    def try_merging(self):
+        """For the screens the user chose not to merge, and whose copy, or Smooth UI Tools, changed since: whether
+        they would merge now, in a thread (see builder.merges_now); merges_now gets those that would"""
+        changed = changed_since_off(self.found.scan) if self.found and self.found.scan.installed.usable else {}
+        if not changed or not self.pool_started:     # start_first_pool tries then, with the merge's workers
+            return
+        found = self.found
+
+        def work():
+            from .builder import (
+                merges_now,  # imported here: the patcher takes a while to import
+            )
+            return merges_now(found.scan, list(changed), pool=self.pool)     # the merge's workers: already started
+
+        def done(result, error):
+            self.trying = False
+            # Scanned again meanwhile, or a merge or scan runs (a merge replaces the workers, which may have
+            # stopped this one): the scan after it tries again
+            if found is not self.found or self.busy:
+                return
+            if error is not None:
+                log.warning(f"Trying to merge the screens you turned off failed: {error_text(error)}")
+                return
+            self.merges_now = {key: changed[key] for key in result}
+            if result:
+                log.info(f"Turned off, but they merge now: {', '.join(map(screen_label, result))}")
+                self.refresh()
+
+        log.info(f"Trying to merge, as something changed since you turned them off: "
+                 f"{', '.join(map(screen_label, changed))}")
+        self.trying = True
+        in_thread(self.calls, work, done)
 
     def rescan(self, keep_result=False):
         """Scan again; the last merge's result (and the rows' places) stays only with keep_result (right after
@@ -1511,7 +1556,16 @@ class MergerWindow:
         chosen = screens_off(self.settings)
         known = {(choice.path, choice.mod.lower()) for choice in chosen}
         today = datetime.date.today().isoformat()
-        new = tuple(ScreenOff(path, mod, today) for path, mod in off if (path, mod.lower()) not in known)
+        copies = self.found.scan.files
+        reviews, tools = mod_reviews.sha256(), tools_version()
+
+        def choice(path, mod):      # with what it is made with (see state.changed_since_off)
+            copy = copies[path].winner if path in copies else None
+            if copy is None or copy.origin.lower() != mod.lower():
+                return ScreenOff(path, mod, today)
+            return ScreenOff(path, mod, today, copy.size, copy.toc_entry.crc, reviews, tools)
+
+        new = tuple(choice(path, mod) for path, mod in off if (path, mod.lower()) not in known)
         if self.save_screens_off((*chosen, *new)):
             log.info(f"Merging turned off for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in off)}")
             self.rescan()
@@ -1539,8 +1593,9 @@ class MergerWindow:
         """Merge every screen that was left out anyway (the card's button), once the user confirms"""
         paths = left_out(self.found, self.merged)
         screens = "\n".join(f"•  {screen_label(path)}" for path in paths)
-        if paths and ask_yes_no(self.root, PATCH_ANYWAY_TITLE, PATCH_ANYWAY_QUESTION.format(screens=screens),
-                                warning=True):
+        files = self.merged.files if self.merged is not None else self.found.states
+        question = anyway_texts([file.reason for file in files if file.path in paths])[1]
+        if paths and ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question.format(screens=screens), warning=True):
             self.merge(play, patch_anyway=paths)
 
     def merge(self, play=False, patch_anyway=(), revert=()):
