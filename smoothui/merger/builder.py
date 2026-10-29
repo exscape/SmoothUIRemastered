@@ -45,7 +45,7 @@ def patch_winners(result: Scan, *, reviews: ModReviews | None = None, pool=None,
         fail(installed.message)
     sources = [file.winner for file in result.files.values() if file.winner]
     if not sources:
-        return ReleasePatch([], [], [], WarningSummary({}, 0, [], 0), RuleIssues([], []))
+        return ReleasePatch([], [], [], WarningSummary({}, 0, [], 0), RuleIssues([], []), {})
     # The files that mods add to a group are patched as the release would have patched them
     manifest = with_unlisted_files(installed.manifest, {source.path: result.group_of[source.path] for source in sources
                                                         if source.path in result.group_of})

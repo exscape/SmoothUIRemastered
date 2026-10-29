@@ -169,6 +169,11 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
                 "status": file.status.value,
                 "reasons": [file.error] if file.error else [issue.message for issue in file.issues],
             }
+            if file.status.value == "known broken":
+                # Its other issues don't matter: it is left out anyway
+                not_held[file.path]["reasons"] = [issue.message for issue in file.issues if issue.review in file.known_broken]
+                # Whether it still is, once the reviews of mods' code change (see state.package_state)
+                not_held[file.path]["known_broken"] = file.known_broken
     return {
         "format": PACKAGE_MANIFEST_FORMAT,
         "tools_version": tools_version(),

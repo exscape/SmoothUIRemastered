@@ -21,6 +21,12 @@ code, for code that is harmless by design (so that the mod's updates need no new
 comment. A line that can't be read is logged and skipped, so that a file written for newer tools never
 stops older ones.
 
+"leave-out <kind> <Class.method> @<hash or any>" is the opposite of a review: that warning means the mod's
+copy doesn't work with Smooth UI, so the merger leaves the file out, as known not to work, instead of
+warning about it (see merger/policy.py). It applies while the warning does: if the mod drops that code, or
+changes it (unless "@any"), it no longer does. Tools from before these lines (v0.9.1 and older) skip them
+as lines they can't read.
+
 Light: the launch check reads which version of the file is used (sha256).
 """
 
@@ -42,16 +48,25 @@ MOD_REVIEWS = "reviewed_mod_warnings.txt"
 # A review's hash for any version of the code
 ANY = "any"
 REVIEW = re.compile(rf"\S+ \S+ @(?:[0-9a-f]{{8}}|{ANY})")
+LEAVE_OUT = "leave-out"
 
 
 @dataclass(frozen=True, slots=True)
 class ModReviews:
-    groups: tuple[tuple[re.Pattern, frozenset[str]], ...] = ()   # (the mods' pattern, their reviews)
+    # (the mods' pattern, their reviews, their leave-out lines without "leave-out ")
+    groups: tuple[tuple[re.Pattern, frozenset[str], frozenset[str]], ...] = ()
     sha256: str | None = None   # load(): of the file read (None: none), which a package records (see sha256())
 
     def for_mod(self, folder: str) -> set[str]:
         """The reviews for a mod's copies of files, by its folder name"""
-        return {review for pattern, reviews in self.groups if pattern.fullmatch(folder) for review in reviews}
+        return {review for pattern, reviews, _ in self.groups if pattern.fullmatch(folder) for review in reviews}
+
+    def leaves_out(self, folder: str, review: str) -> bool:
+        """Whether a warning in a mod's copy of a file means it is known not to work (review: the review that
+        would cover the warning, "<kind> <Class.method> @<hash>")"""
+        found = {review, f"{review.rsplit(' @', 1)[0]} @{ANY}"}
+        return any(pattern.fullmatch(folder) and not found.isdisjoint(leave_outs)
+                   for pattern, _, leave_outs in self.groups)
 
 
 def path() -> Path | None:
@@ -90,25 +105,27 @@ def load() -> ModReviews:
 def parse(text: str) -> tuple[ModReviews, list[str]]:
     """(the reviews in a file's text, a line for each problem)"""
     groups, problems = [], []
-    group = None    # [pattern, reviews] of the last header; its pattern is None if it isn't valid
+    group = None    # [pattern, reviews, leave-outs] of the last header; its pattern is None if it isn't valid
     for number, line in enumerate(text.splitlines(), 1):
         line = " ".join(re.split(r"(?:^|\s)#", line, maxsplit=1)[0].split())
         if not line:
             continue
         if line.endswith(":"):
             try:
-                group = [re.compile(line[:-1].strip(), re.IGNORECASE), set()]
+                group = [re.compile(line[:-1].strip(), re.IGNORECASE), set(), set()]
             except re.error as e:
                 problems.append(f"line {number}: '{line[:-1].strip()}' isn't a valid regular expression ({e}), so "
                                 "the reviews below it are skipped")
-                group = [None, set()]
+                group = [None, set(), set()]
             groups.append(group)
         elif group is None:
             problems.append(f"line {number}: a review before the first header ('<mod folder pattern>:'): skipped")
+        elif line.startswith(f"{LEAVE_OUT} ") and REVIEW.fullmatch(left := line.removeprefix(f"{LEAVE_OUT} ")):
+            group[2].add(left)
         elif not REVIEW.fullmatch(line):
-            problems.append(f"line {number}: '{line}' isn't a review ('<kind> <Class.method> @<hash or {ANY}>'): "
-                            "skipped")
+            problems.append(f"line {number}: '{line}' isn't a review ('[{LEAVE_OUT} ]<kind> <Class.method> "
+                            f"@<hash or {ANY}>'): skipped")
         else:
             group[1].add(line)
-    return ModReviews(tuple((pattern, frozenset(reviews)) for pattern, reviews in groups
-                            if pattern is not None and reviews)), problems
+    return ModReviews(tuple((pattern, frozenset(reviews), frozenset(leave_outs)) for pattern, reviews, leave_outs
+                            in groups if pattern is not None and (reviews or leave_outs))), problems

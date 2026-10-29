@@ -85,6 +85,13 @@ PATCH_ALL_ANYWAY = "Merge all anyway"
 PATCH_ANYWAY_TITLE = "Merge anyway?"
 PATCH_ANYWAY_QUESTION = ("Smooth UI can't fully merge these screens:\n\n{screens}\n\nMerge them anyway? They may then "
                          "look or behave wrong in places. You can revert each one later, in its details in the list.")
+# The same, for a screen known not to work (in its details only, never on the card)
+KNOWN_BROKEN_ANYWAY_NOTE = "It is known not to work with Smooth UI, so it will most likely look or behave wrong."
+KNOWN_BROKEN_QUESTION = ("{mod}'s copy of {screen} is known not to work with Smooth UI (its details say why).\n\n"
+                         "Merge it anyway? It will most likely look or behave wrong. You can revert it later, in "
+                         "its details in the list.")
+# On a card that is otherwise fine
+KNOWN_BROKEN = "Not merged, as known not to work with Smooth UI: {screens}."
 REVERT = "Revert to the mod's own copy"
 REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate."
 # The same, for a file in a group (e.g. the HUD): reverting one leaves the whole group out
@@ -336,10 +343,15 @@ def _merging(stale, progress):
 
 def _merged(result: BuildResult, stale, cant_merge):
     """After a merge in the window (cant_merge: see _card)"""
+    known = _known_broken((file.path, file.group, file.mod) for file in result.files
+                          if file.status.value == "known broken")
     if result.clean:
         included = [(file.mod, file.path, file.group) for file in result.files if file.status.included]
-        headline = f"Merged: {_patched(included)}" if included else "Merged: your mods' copies are already smooth"
-        return Card(OK, headline, (), (PLAY, DONT_START) if stale else (PLAY, RESCAN))
+        headline = (f"Merged: {_patched(included)}" if included
+                    else "Merged: your mods' copies are already smooth"
+                    if any(file.status.value == "unchanged" for file in result.files) or not known
+                    else "Nothing to merge")
+        return Card(OK, headline, known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     causes = []
     for file in result.files:
         status = file.status.value
@@ -361,7 +373,7 @@ def _merged(result: BuildResult, stale, cant_merge):
     play = (PLAY,) if not notes and not cant_merge else ()
     buttons = ((PLAY_ANYWAY, *anyway, DONT_START) if stale
                else (*play, RESCAN, *anyway, *([(WRITE_BUG_REPORT, "bug_report")] if causes else [])))
-    return Card(WARNING, headline, _sentences(causes, [*report, *notes]), buttons)
+    return Card(WARNING, headline, _sentences(causes, [*report, *notes, *known]), buttons)
 
 
 def left_out(found: Check | None, merged: BuildResult | None = None) -> list[str]:
@@ -423,20 +435,25 @@ def _checked(found: Check, stale):
     # Up to date: what the merged patches hold, and what they can't
     causes = [(_cause(file), file.winner) for file in found.states
               if file.state == State.UNDETERMINED
-              or (file.state == State.NOT_HELD and file.cause not in ("unchanged", "turned off")) or file.cause == "fixes"]
+              or (file.state == State.NOT_HELD and file.cause not in ("unchanged", "turned off", "known broken"))
+              or file.cause == "fixes"]
     patched = [(file.winner, file.path, file.group) for file in found.states if file.state == State.UP_TO_DATE]
+    known = _known_broken((file.path, file.group, file.winner) for file in found.states
+                          if file.state == State.NOT_HELD and file.cause == "known broken")
     if causes:
         headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
                     else "Some screens can't be merged")
         anyway = anyway_button(len(left_out(found)), stale)
         buttons = (PLAY, *anyway, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge"), *anyway)
-        return Card(WARNING, headline, _sentences(causes), buttons)
+        return Card(WARNING, headline, _sentences(causes, known), buttons)
     if patched:
-        return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.",),
+        return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.", *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
-    if any(file.state == State.NOT_HELD and file.cause != "turned off" for file in found.states):
-        return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens are already smooth.",),
+    if any(file.state == State.NOT_HELD and file.cause == "unchanged" for file in found.states):
+        return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens are already smooth.", *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN))
+    if known:
+        return Card(OK, "Nothing to merge", known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     return Card(OK, "Nothing to merge", ("No other mod changes Smooth UI's screens.",),
                 (PLAY, DONT_START) if stale else (PLAY, RESCAN))
 
@@ -468,7 +485,8 @@ def row_status(file: FileState) -> tuple[str, str]:
             return WARNING, "Merged, fixes missing"
         return OK, "Merged anyway" if cause == "forced" else "Merged"
     if state == State.NOT_HELD:
-        return {"unchanged": (OK, "Already smooth"), "failed": (ERROR, "Can't merge"),
+        return {"unchanged": (OK, "Already smooth"), "known broken": (INFO, "Known not to work"),
+                "failed": (ERROR, "Can't merge"),
                 "mod failed": (ERROR, "Mod left out"), "group left out": (WARNING, "Left out with its group"),
                 "turned off": (OK, "Turned off")}.get(cause, (ERROR, "Left out"))
     if state == State.CHANGED:
@@ -556,6 +574,12 @@ def unchanged_screens(count) -> str:
     if count == 1:
         return "1 more screen uses Smooth UI's own version, as no other mod changes it"
     return f"{count} more screens use Smooth UI's own version, as no other mod changes them"
+
+
+def _known_broken(files) -> tuple[str, ...]:
+    """The KNOWN_BROKEN sentence (none if there are none), for files ((path, group, mod)); a group is named once"""
+    names = sorted({f"{group_name(group) if group else screen_name(path)} ({mod})" for path, group, mod in files})
+    return (KNOWN_BROKEN.format(screens=_join(names)),) if names else ()
 
 
 def _cause(file: FileState) -> str:

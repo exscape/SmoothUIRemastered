@@ -127,6 +127,9 @@ class ReleasePatch(NamedTuple):
     failed: list
     warnings: WarningSummary    # the warnings, less those the release had too (see patch_as_release)
     rule_issues: RuleIssues
+    # {path, as patch_files names it: the reviews of its unreviewed warnings that mean its mod's copy is known
+    # not to work (see mod_reviews.py's leave-out lines)}
+    known_broken: dict[str, set[str]]
 
 
 def patch_as_release(inputs, profile, manifest, *, reviewed=(), mod_reviews: ModReviews | None = None, shared_settings=(),
@@ -137,8 +140,8 @@ def patch_as_release(inputs, profile, manifest, *, reviewed=(), mod_reviews: Mod
     The release's reports hold the warnings it had for each file; these were already there in the game's
     own version of the file, so they are hidden where the other mod's code is the same (see
     reviewed_warnings.py), along with the reviews in reviewed (for every file) and those mod_reviews has for
-    the mod each file comes from (see mod_reviews.py). Settings that the release's
-    reports say matched something, but no longer do, are warnings in rule_issues (see
+    the mod each file comes from (see mod_reviews.py), whose leave-out lines give known_broken. Settings
+    that the release's reports say matched something, but no longer do, are warnings in rule_issues (see
     patcher_core.find_rule_issues; shared_settings are a profile's "*" block). on_file is as for
     patch_files, and also gets is_reviewed (see shared.print_file_result).
 
@@ -157,4 +160,10 @@ def patch_as_release(inputs, profile, manifest, *, reviewed=(), mod_reviews: Mod
         fail(str(e))
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
     rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings, recorded)
-    return ReleasePatch(patched, kept, failed, warnings, rule_issues)
+    origins = {profile_key(source.path): source.origin for source in inputs}
+    known_broken = {}
+    for review, occurrences in warnings.unreviewed.items() if mod_reviews else ():
+        for occurrence in occurrences:
+            if mod_reviews.leaves_out(origins[profile_key(occurrence.path)], review):
+                known_broken.setdefault(occurrence.path, set()).add(review)
+    return ReleasePatch(patched, kept, failed, warnings, rule_issues, known_broken)

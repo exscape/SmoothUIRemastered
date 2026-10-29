@@ -7,6 +7,9 @@
   that means (the fix's CONSEQUENCE).
 - Other problems with a rescale (a setting that wasn't followed or no longer matches, an unreviewed
   warning) leave out that file only, unless the user forces it (force).
+- A warning that, for that mod, means its copy doesn't work with Smooth UI (mod_reviews.py's leave-out
+  lines) leaves out the file the same way, but as known not to work: what Smooth UI intends, not a problem
+  to report.
 - A group's files (files that only work together, e.g. the HUD) are all in the package, or none are: if one
   isn't (for any of the reasons above, or because there is no copy of it to patch), the whole group is left
   out. Releases don't ship such groups, so the game then shows its own (or the mods') unpatched copies of
@@ -40,6 +43,8 @@ class FileStatus(Enum):
     PATCHED = "patched"             # in the package
     FORCED = "forced"               # in the package although its rescale had problems, as the user asked
     LEFT_OUT = "left out"           # its rescale had problems, so it isn't in the package (it can be forced)
+    KNOWN_BROKEN = "known broken"   # its mod's copy is known not to work with Smooth UI, so it isn't in the
+                                    # package (it can be forced)
     UNCHANGED = "unchanged"         # nothing changed it: already at the target frame rate, and each of its
                                     # fixes wasn't needed (or can't apply): not needed in the package
     FAILED = "failed"               # couldn't be patched, so its mod is left out
@@ -55,6 +60,7 @@ class IssueKind(Enum):
     RULE = "rule"           # a setting that wasn't followed, or that matched in the release but matches nothing
                             # in this mod's copy (the mod changed what it was for)
     WARNING = "warning"     # a patcher warning that hasn't been reviewed
+    KNOWN_BROKEN = "known broken"   # a warning that means the mod's copy is known not to work
     FIX = "fix"             # a fix that can't apply to this mod's copy
 
 
@@ -63,6 +69,7 @@ class Issue:
     kind: IssueKind
     message: str
     fix: str | None = None      # for FIX: the fix's name
+    review: str | None = None   # for WARNING and KNOWN_BROKEN: the review that would cover the warning
 
     @property
     def keeps_out(self) -> bool:
@@ -96,13 +103,20 @@ class PackageFile:
         return self.result["entry"]
 
     @property
+    def known_broken(self) -> list[str]:
+        """The reviews of the warnings that mean its copy is known not to work"""
+        return [issue.review for issue in self.issues if issue.kind == IssueKind.KNOWN_BROKEN]
+
+    @property
     def fixes_not_applied(self) -> list[str]:
         return [issue.fix for issue in self.issues if issue.kind == IssueKind.FIX]
 
     @property
     def severity(self) -> str:
-        """"ok" (as Smooth UI would patch it, or patched anyway as the user chose); "warning" (without some
-        fixes); or "error" (not in the package, although it needs to be)"""
+        """"ok" (as Smooth UI would patch it, or patched anyway as the user chose, or known not to work);
+        "warning" (without some fixes); or "error" (not in the package, although it needs to be)"""
+        if self.status == FileStatus.KNOWN_BROKEN:
+            return "ok"
         if self.status in (FileStatus.PATCHED, FileStatus.UNCHANGED, FileStatus.FORCED) and not self.fixes_not_applied:
             return "ok"
         # A group left out whole is consistent (the file that keeps it out is the error)
@@ -124,6 +138,11 @@ class PackageFile:
             summary = (f"merged anyway ({copy}), as you chose, though Smooth UI can't fully merge it. It may "
                        "look or behave wrong in places:")
             details = [*self._issue_lines(), *self._fix_lines()]
+        elif status == FileStatus.KNOWN_BROKEN:
+            summary = f"not merged: {copy} is known not to work with Smooth UI. {self._fallback_text()}"
+            # Its other issues don't matter: it is left out anyway
+            details = ["Why:", *(f"- {issue.message}" for issue in self.issues if issue.kind == IssueKind.KNOWN_BROKEN),
+                       "You can merge it anyway, but it will most likely look or behave wrong."]
         elif status == FileStatus.MOD_FAILED:
             summary = (f"not merged: another of {mod}'s screens can't be merged, so none of them are. "
                        f"{self._fallback_text()}")
@@ -140,7 +159,7 @@ class PackageFile:
             summary = f"left out: Smooth UI can't fully merge {copy}. {self._fallback_text()}"
             details = ["Why:", *self._issue_lines(), *self._fix_lines(),
                        "You can merge it anyway (it may then look or behave wrong in places), or check for a newer merger."]
-        if self.issues and status != FileStatus.FAILED:
+        if self.issues and status not in (FileStatus.FAILED, FileStatus.KNOWN_BROKEN):
             details.append(self._report("a limitation"))
         return "\n  ".join([f"{screen_label(self.path)}: {summary}", *details])
 
@@ -204,7 +223,9 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
         if source.origin in failed_mods:
             status = FileStatus.MOD_FAILED
         elif status == FileStatus.PATCHED and any(issue.keeps_out for issue in file_issues):
-            status = FileStatus.FORCED if path in force else FileStatus.LEFT_OUT
+            known_broken = any(issue.kind == IssueKind.KNOWN_BROKEN for issue in file_issues)
+            status = (FileStatus.FORCED if path in force else
+                      FileStatus.KNOWN_BROKEN if known_broken else FileStatus.LEFT_OUT)
         files.append(PackageFile(path, source, status, file_issues, result, fallback=fallback))
     return _whole_groups(scan, files)
 
@@ -244,7 +265,9 @@ def _issues(patch: ReleasePatch) -> dict[str, list[Issue]]:
             issues[issue.path].append(Issue(IssueKind.RULE, issue.message))
     for review, occurrences in patch.warnings.unreviewed.items():
         for occurrence in occurrences:
-            issues[occurrence.path].append(Issue(IssueKind.WARNING, f"{occurrence.message} [{review}]"))
+            known_broken = review in patch.known_broken.get(occurrence.path, ())
+            issues[occurrence.path].append(Issue(IssueKind.KNOWN_BROKEN if known_broken else IssueKind.WARNING,
+                                                 f"{occurrence.message} [{review}]", review=review))
     for result in [*patch.patched, *patch.kept]:
         for fix in result["report"].get("fixes", []):
             if fix["result"] == CANT_APPLY:

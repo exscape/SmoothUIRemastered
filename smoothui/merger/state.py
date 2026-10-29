@@ -149,6 +149,7 @@ def _has_package(result: Scan) -> bool:
 NOT_HELD_TEXT = {
     "unchanged": "already smooth, nothing to merge",
     "left out": "left out, as Smooth UI can't fully merge it",
+    "known broken": "not merged, as it is known not to work with Smooth UI",
     "failed": "left out, as it can't be merged",
     "mod failed": "left out, as another of the mod's screens can't be merged",
     "group left out": "left out, as the {group} is merged whole or not at all",
@@ -179,6 +180,15 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     merger_only = rebuilt == "merger"
     # New reviews of mods' code (downloaded since the build) may let a screen that was left out be merged
     reviews_changed = (manifest or {}).get("mod_reviews_sha256") != mod_reviews.sha256()
+    reviews = None      # read once needed
+
+    def still_broken(record):
+        """Whether the reviews say a copy known not to work still is (see policy.FileStatus.KNOWN_BROKEN)"""
+        nonlocal reviews
+        if reviews is None:
+            reviews = mod_reviews.load()
+        return any(reviews.leaves_out(record["mod"], review) for review in record.get("known_broken", ()))
+
     # Whether the package's own mods.settings entry is as a build writes it (see mods_settings.write_entry)
     # (Priority 0, or any entry that a build wouldn't change because the package loads first anyway)
     own_entry = any(is_package_folder(mod.folder) and mod.settings is not None
@@ -271,7 +281,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             elif not same_copy(record, winner):
                 cause, text = _changed(record, winner)
                 state(State.CHANGED, f"{text}: merge again", Severity.MEDIUM, cause=cause, previous=record.get("mod"))
-            elif record["status"] == "left out" and reviews_changed:
+            elif reviews_changed and (record["status"] == "left out"
+                                      or (record["status"] == "known broken" and not still_broken(record))):
                 state(State.CHANGED, "the merger was updated since this screen was left out: merge again, as it may "
                       "merge it now", Severity.MEDIUM, cause="merger")
             else:
@@ -283,7 +294,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                     own = (shown.folder == origin) if shown else origin == GAME_FILES
                     text += (", so the game shows its own copy, at its original frame rate" if own
                              else f", so the game shows {_copy_name(shown.folder) if shown else 'no copy'}")
-                if record["status"] in ("left out", "failed", "group left out") and record.get("reasons"):
+                if record["status"] in ("left out", "known broken", "failed", "group left out") and record.get("reasons"):
                     text += f". Why: {'; '.join(record['reasons'])}"
                 state(State.NOT_HELD, f"{_copy_of(origin)}: {text}", cause=record["status"])
         elif manifest is None and manifest_problem is None:

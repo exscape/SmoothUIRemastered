@@ -5,8 +5,13 @@
 # <regular expression matching the mod's folder names in full, ignoring case>:
 #     <kind> <Class.method> @<hash>    as the merger's log shows it; the review stops applying when that code changes
 #     <kind> <Class.method> @any       any version of that code: only for code that is harmless by design
+#     leave-out <kind> <Class.method> @<hash or any>
+#                                      the opposite: that warning means the mod's copy doesn't work with Smooth UI,
+#                                      so the merger leaves it out as known not to work, instead of warning about it.
+#                                      Tools v0.9.1 and older skip these lines (with a line in their log).
 #
-# A note should say *why* each one is harmless. Warnings in the game's own code go in config/reviewed_warnings.txt.
+# A note should say *why* each one is harmless (or doesn't work). Warnings in the game's own code go in
+# config/reviewed_warnings.txt.
 
 # --- Ink and Iron: one folder, all screens in their own folders, or single-screen downloads
 # Its ENTER_FRAME handlers re-apply the mod's look each frame: hide vanilla elements, restyle text,
@@ -38,3 +43,14 @@ modExpandedBuffMenu:
 # No counters, so the result is the same at any frame rate. Checked 2026-10-29, against version 2.1.0.
 modCMFMinimapPanel:
     enter-frame-handler HudModuleWatermark.cmfOnFrame @ea3f9109      # hud_pickeditemsinfo: follows the minimap pins
+
+# --- Conjunction Map Framework: known not to work
+# It sets the map's frame rate itself (stage.frameRate: 60 by default, 24 to 60 by theme), and puts the old
+# one back when its motion is turned off. The merged map's timelines are retimed for 120 or 60 fps, so they
+# would play at the wrong speed. "@any": that is its design, whatever rate it sets. Checked 2026-10-29.
+# Its three ENTER_FRAME handlers (cmfOverviewFrame, cmfPinButtonFrame, cmfThemeFrame) are harmless, but
+# must NOT be reviewed while it sets the frame rate: tools v0.9.1 don't know these leave-out lines, and
+# would then merge the map.
+mod0000_ConjunctionMapFramework:
+    leave-out sets-frame-rate MapMenu.cmfApplyMotion @any           # panel_worldmap: sets the frame rate
+    leave-out sets-frame-rate MapMenu.cmfMotionRemoved @any         # panel_worldmap: puts the old one back

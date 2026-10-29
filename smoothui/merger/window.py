@@ -153,6 +153,8 @@ from .gui_texts import (
     HIDE_LOG,
     HUD_HEADING,
     INFO,
+    KNOWN_BROKEN_ANYWAY_NOTE,
+    KNOWN_BROKEN_QUESTION,
     LATER,
     LAUNCHER,
     LAUNCHER_HEADING,
@@ -1223,9 +1225,10 @@ class MergerWindow:
 
     def show_details(self, path):
         """Below a screen's row: its file name, the full message, the other mods that change it, and Patch
-        anyway (a screen left out for its rescale's problems, never for a failure) or its revert. For a
-        group's row, both take every file of it left out so (or forced): the group is merged whole or not at
-        all, so forcing or reverting only some of them would leave the others' choice to no effect."""
+        anyway (a screen left out for its rescale's problems or known not to work, never for a failure; the
+        latter asks first) or its revert. For a group's row, both take every file of it left out so (or
+        forced): the group is merged whole or not at all, so forcing or reverting only some of them would
+        leave the others' choice to no effect."""
         state, cells, row, members = self.rows[path]
         cells[4].setText("▾")
         frame = QFrame(objectName="details")
@@ -1239,11 +1242,17 @@ class MergerWindow:
         if not state.group and (also := also_changed(self.found.scan.files[path], state.winner)):
             layout.addWidget(label(also, wrap=True))
         widget = None
-        left = [file.path for file in members if file.state == State.NOT_HELD and file.cause == "left out"]
+        left = [file.path for file in members if file.state == State.NOT_HELD and file.cause in ("left out", "known broken")]
+        known_broken = any(file.state == State.NOT_HELD and file.cause == "known broken" for file in members)
         forced = [file.path for file in members if file.state == State.UP_TO_DATE and file.cause == "forced"]
         # A group with a file that can't be merged at all stays left out, forced or not
         failed = any(file.state == State.NOT_HELD and file.cause in ("failed", "mod failed") for file in members)
-        if left and not failed:
+        if left and not failed and known_broken:
+            text, note = PATCH_ANYWAY, KNOWN_BROKEN_ANYWAY_NOTE
+            question = KNOWN_BROKEN_QUESTION.format(mod=state.winner, screen=row_name(state))
+            command = lambda: ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question, warning=True) and self.merge(
+                self.stale, patch_anyway=left)
+        elif left and not failed:
             text, note = PATCH_ANYWAY, PATCH_ANYWAY_NOTE
             command = lambda: self.merge(self.stale, patch_anyway=left)
         elif forced:
