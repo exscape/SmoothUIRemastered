@@ -31,6 +31,7 @@ from .merger.game import (
     mods_settings,
     turned_off,
 )
+from .merger.screens import by_group
 from .merger.state import check
 from .paths import APP_DIR, DATA_DIR, FROZEN
 from .windows import MB_ICONERROR, ms_since_process_start, msg_box
@@ -153,9 +154,11 @@ def package_stale(game: Path, log: Log, off=None) -> bool:
         log("A package is installed, without a usable Smooth UI")
     if found.scan.conflicts:
         log(f"Other mods ship files of the Smooth UI that can't be used: {', '.join(found.scan.conflicts)}")
-    for state in found.states:
-        if state.severity is not None:
-            log(f"  {state.path}: {state.state.value} ({state.severity.name.lower()}): {state.message}")
+    def said(state):
+        return f"{state.state.value} ({state.severity.name.lower()}): {state.message}"
+
+    for label, state in by_group([state for state in found.states if state.severity is not None], said):
+        log(f"  {label}: {said(state)}")
     if not found.stale:
         log("Up to date")
         return False

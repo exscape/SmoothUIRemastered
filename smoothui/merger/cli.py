@@ -23,7 +23,7 @@ from .game import load_settings, turned_off
 from .installed import is_smoothui_folder
 from .load_order import Group
 from .scan import is_package_folder
-from .screens import screen_label
+from .screens import by_group
 from .state import State, check
 
 log = logging.getLogger(__name__)
@@ -100,19 +100,21 @@ def show_scan(game_path, mods_settings, data_dir):
             log.info(f"{position:4}. {mod.folder} ({_entry(mod)})")
 
     log.info("Screens: what the merged patches hold, and what merging would change", extra=HEADING)
-    for state in found.states:
+    def said(state):
         file = result.files[state.path]
         loaded = file.loaded.folder if file.loaded else None
         severity = f" ({state.severity.name.lower()})" if state.severity else ""
-        text = f"{screen_label(state.path)}: {state.state.value}{severity}: {state.message}"
+        text = f"{state.state.value}{severity}: {state.message}"
         if loaded and state.needs_build and loaded != state.winner:
             text += f"; loaded now: {loaded}"
         # Smooth UI ships every file
         others = [mod.folder for mod in file.shippers if mod.folder not in (loaded, state.winner)
                   and not is_smoothui_folder(mod.folder) and not is_package_folder(mod.folder)]
+        return text + (f"; also changed by {', '.join(others)}" if others else "")
+
+    for label, state in by_group(found.states, said):
         attention = state.severity is not None or state.state == State.UNDETERMINED
-        log.log(logging.WARNING if attention else logging.INFO,
-                text + (f"; also changed by {', '.join(others)}" if others else ""))
+        log.log(logging.WARNING if attention else logging.INFO, f"{label}: {said(state)}")
     to_build = len(found.needs_build)
     log.info(f"\nMerging is needed: it would change {to_build} screen(s)" if to_build else "\nNo merge is needed")
 
@@ -171,8 +173,8 @@ def show_build(result):
     log.info("Installed Smooth UI Remastered", extra=HEADING)
     log.info(result.scan.installed.message)
     log.info("Screens", extra=HEADING)
-    for file in result.files:
-        log.log(LEVELS[file.severity], file.explain())
+    for label, file in by_group(result.files, lambda file: (file.severity, file.explain(""))):
+        log.log(LEVELS[file.severity], file.explain(label))
     if not result.files:
         log.info("No other mod changes a screen Smooth UI patches")
     _show_problems(result.problems)

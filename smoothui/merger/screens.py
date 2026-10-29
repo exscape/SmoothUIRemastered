@@ -7,6 +7,8 @@ check's messages use it.
 
 from __future__ import annotations
 
+from collections import Counter
+
 from ..common import profile_key
 
 SWF_FOLDER = "gameplay/gui_new/swf/"
@@ -73,3 +75,26 @@ def screen_label(path: str) -> str:
     """The screen's name and its file name, for headings, e.g. Inventory (panel_inventory)"""
     name = screen_name(path)
     return name if name == file_name(path) else f"{name} ({file_name(path)})"
+
+
+def by_group(items: list, said) -> list[tuple[str, object]]:
+    """items (each with a path, and a group or None) as (a label, the item), to list them: a group's items that
+    say the same (said(item)) as one entry, e.g. ("HUD (25 other files)", the first of them), after the
+    group's other items; each other item by its screen_label. A group is merged whole or not at all, so its
+    files that are left out with it are one thing to tell, not one per file."""
+    same = Counter((item.group, said(item)) for item in items if item.group)
+    sizes = Counter(item.group for item in items if item.group)
+    last = {item.group: index for index, item in enumerate(items) if item.group}
+    listed, held = [], {}   # held: (group, what it says): its first item, until the group's last item is listed
+    for index, item in enumerate(items):
+        key = (item.group, said(item))
+        if item.group and same[key] > 1:
+            held.setdefault(key, item)
+        else:
+            listed.append((screen_label(item.path), item))
+        if item.group and last[item.group] == index:
+            for (group, _), first in [(key, first) for key, first in held.items() if key[0] == item.group]:
+                count = same[group, said(first)]
+                other = "other " if count < sizes[group] else ""
+                listed.append((f"{group_name(group)} ({count} {other}files)", first))
+    return listed

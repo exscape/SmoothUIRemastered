@@ -124,9 +124,11 @@ class PackageFile:
             return "warning"
         return "error"
 
-    def explain(self) -> str:
+    def explain(self, label: str | None = None) -> str:
         """What happened to the file, for the user: if it isn't patched as Smooth UI would, why, and what
-        they can do. The first line is the summary; the others are indented."""
+        they can do. The first line is the summary, after label (default: its screen_label); the others
+        are indented. A group's files left out with it say the same, so that they can be told as one (see
+        screens.by_group)."""
         status, mod, copy = self.status, self.mod, self._copy()
         if status == FileStatus.PATCHED:
             summary = f"merged ({copy})" + (", without some fixes:" if self.issues else "")
@@ -149,8 +151,9 @@ class PackageFile:
             details = []
         elif status == FileStatus.GROUP_LEFT_OUT:
             name = group_name(self.group)
-            summary = (f"not merged: the {name} is merged whole or not at all, and {self.error}. "
-                       f"{self._fallback_text()}")
+            shows = (f"The game shows the {name} unpatched, at its original frame rate." if self._own_fallback()
+                     else self._fallback_text())
+            summary = f"not merged: the {name} is merged whole or not at all, and {self.error}. {shows}"
             details = []
         elif status == FileStatus.FAILED:
             summary = f"not merged: {copy} can't be merged, so none of {mod}'s screens are. {self._fallback_text()}"
@@ -161,7 +164,7 @@ class PackageFile:
                        "You can merge it anyway (it may then look or behave wrong in places), or check for a newer merger."]
         if self.issues and status not in (FileStatus.FAILED, FileStatus.KNOWN_BROKEN):
             details.append(self._report("a limitation"))
-        return "\n  ".join([f"{screen_label(self.path)}: {summary}", *details])
+        return "\n  ".join([f"{screen_label(self.path) if label is None else label}: {summary}", *details])
 
     def _report(self, what):
         return (f"Most likely {what} of Smooth UI Tools, not of {self.mod}: please report it at {REPORT_URL}, with "
@@ -181,11 +184,15 @@ class PackageFile:
     def _fallback_text(self):
         return f"The game shows {self._fallback()}."
 
+    def _own_fallback(self):
+        """Whether the game shows the file's own copy (the game's or its mod's), unless the package holds it"""
+        return self.fallback is None or self.fallback == self.mod
+
     def _fallback(self):
         """The copy the game shows unless the package holds the file"""
         if self.mod == GAME_FILES and self.fallback is None:
             return "its own copy, at its original frame rate"
-        if self.fallback is None or self.fallback == self.mod:
+        if self._own_fallback():
             return f"{self.mod}'s own copy, at its original frame rate"
         if is_smoothui_folder(self.fallback):
             return f"Smooth UI's own copy, without {self.mod}'s changes (it comes first in the load order)"

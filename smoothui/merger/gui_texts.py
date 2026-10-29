@@ -109,6 +109,8 @@ REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate.
 # The same, for a file in a group (e.g. the HUD): reverting one leaves the whole group out
 REVERT_GROUP = "Leave it out again"
 REVERT_GROUP_NOTE = "The {group} is then left out whole: the game shows it unpatched, at its original frame rate."
+# A group's row: after the files that keep it out, instead of each file left out with them
+GROUP_LEFT_OUT = "So the rest of the {group} is left out too: it is merged whole or not at all."
 
 DELETE_FAILED = "The merged patches can't be deleted: {error}\n\nDelete the folder {folder} yourself before you play."
 FAILED = "Smooth UI Merger failed:\n\n{error}\n\nDetails are in data\\{log}."
@@ -544,7 +546,13 @@ def screen_rows(states: list[FileState]) -> list[tuple[FileState, tuple[FileStat
 
 
 def _group_message(members: list[FileState]) -> str:
-    """One message for a group's files: the one most of them have, and each other one by file"""
+    """One message for a group's files: the one most of them have, and each other one by file. But while
+    some keep it out, only theirs: the others are left out as the group is, which is what matters."""
+    keep_out = [file for file in members if file.cause != "group left out"]
+    if keep_out and len(keep_out) < len(members):
+        return "\n".join([*(f"•  {file_name(file.path)}: {file.message}"
+                            for file in sorted(keep_out, key=lambda file: (row_rank(file), file.path))),
+                          f"•  {GROUP_LEFT_OUT.format(group=group_name(members[0].group))}"])
     common = Counter(file.message for file in members).most_common(1)[0][0]
     others = sorted((file for file in members if file.message != common), key=lambda file: (row_rank(file), file.path))
     if not others:

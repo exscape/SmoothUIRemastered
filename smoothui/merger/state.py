@@ -223,7 +223,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         elif groups.get(key) in result.groups_off:
             name = group_name(groups[key])
             shown = file.loaded_without_package
-            shows = f"{_copy_name(shown.folder)}, unpatched" if shown else "its own copy, at its original frame rate"
+            shows = _group_shows(file, groups[key]) or f"{_copy_name(shown.folder)}, unpatched"
             if key in toc:
                 state(State.CHANGED, f"merging the {name} is turned off in the settings, but the merged patches hold "
                       f"it: merge again (the game then shows {shows})", Severity.MEDIUM, needs_build=True, cause="setting")
@@ -233,12 +233,14 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         elif key in result.screens_off:
             choice = result.screens_off[key]
             shown = file.loaded_without_package
-            shows = (f"{choice.mod}'s own copy, at its original frame rate" if shown and shown.folder == choice.mod
-                     else f"{_copy_name(shown.folder)}, unpatched" if shown else "its own copy, at its original frame rate")
+            shows = ((key in groups and _group_shows(file, groups[key]))
+                     or (f"{choice.mod}'s own copy, at its original frame rate" if shown and shown.folder == choice.mod
+                         else f"{_copy_name(shown.folder)}, unpatched" if shown else "its own copy, at its original frame rate"))
             since = f" (since {choice.since})" if choice.since else ""
-            what = (f"merging {choice.mod}'s copy is turned off{since}" if choice.path == key else
-                    f"merging the {group_name(groups[key])} is turned off, as merging {choice.mod}'s copy of "
-                    f"{screen_name(choice.path)} is{since}")
+            # The same for each of a group's files (the chosen one too), so that they are told as one
+            what = (f"merging the {group_name(groups[key])} is turned off, as merging {choice.mod}'s copy of "
+                    f"{screen_name(choice.path)} is{since}" if key in groups else
+                    f"merging {choice.mod}'s copy is turned off{since}")
             if key in toc:
                 state(State.CHANGED, f"{what}, but the merged patches hold it: merge again (the game then shows {shows})",
                       Severity.MEDIUM, needs_build=True, cause="by choice", origin=choice.mod)
@@ -306,16 +308,21 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                       "merge it now", Severity.MEDIUM, cause="merger")
             else:
                 text = NOT_HELD_TEXT.get(record["status"], record["status"])
+                group_shows = record["status"] == "group left out" and _group_shows(file, groups.get(key, ""))
                 if record["status"] == "group left out":
                     text = text.format(group=group_name(groups.get(key, "")))
-                if record["status"] != "unchanged":
+                if group_shows:
+                    # The same for each of the group's files left out with it, so that they are told as one
+                    text += f", so the game shows {group_shows}"
+                elif record["status"] != "unchanged":
                     shown = file.loaded_without_package
                     own = (shown.folder == origin) if shown else origin == GAME_FILES
                     text += (", so the game shows its own copy, at its original frame rate" if own
                              else f", so the game shows {_copy_name(shown.folder) if shown else 'no copy'}")
                 if record["status"] in ("left out", "known broken", "failed", "group left out") and record.get("reasons"):
                     text += f". Why: {'; '.join(record['reasons'])}"
-                state(State.NOT_HELD, f"{_copy_of(origin)}: {text}", cause=record["status"])
+                state(State.NOT_HELD, text if group_shows else f"{_copy_of(origin)}: {text}",
+                      cause=record["status"])
         elif manifest is None and manifest_problem is None:
             state(State.NOT_BUILT, f"{_copy_of(origin)} isn't merged yet", Severity.MEDIUM)
         elif key in screens_were_off:
@@ -414,6 +421,16 @@ def _changed(record, winner):
 def _copy_of(origin):
     """A copy, by where it came from (a mod's folder, or GAME_FILES), for messages"""
     return "the game's own copy" if origin == GAME_FILES else f"{origin}'s copy"
+
+
+def _group_shows(file, group):
+    """What the game shows for a group's file while the package doesn't hold it, said of the whole group
+    (e.g. "the HUD unpatched, ..."), so that each of its files says the same; None if the game shows a copy of
+    Smooth UI's or a compat patch's instead"""
+    shown = file.loaded_without_package
+    if shown and (is_smoothui_folder(shown.folder) or COMPAT_PATCH.fullmatch(shown.folder)):
+        return None
+    return f"the {group_name(group)} unpatched, at its original frame rate"
 
 
 def _copy_name(folder):
