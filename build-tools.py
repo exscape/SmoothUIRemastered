@@ -9,7 +9,8 @@
     --zip [ZIP]       zip the build as a release ships it (default dist/SmoothUITools-X.Y.Z.zip), instead of
                       mirroring it into dist/SmoothUIMerger/
     --out DIR         build into DIR instead (inside build/), and leave it there
-    --install         also mirror the build into the author's own install (GAME_INSTALL_DIR), keeping its data/
+    --install         also mirror the build into the tools' folder in the game folder (config.toml's game_path, see
+                      INSTALL_FOLDER), keeping its data/
 
 Each exe is built on its own, so the launcher holds only what it imports (no Qt), then both go into the build
 folder, which is deleted first. Nuitka puts the files the exes need next to them; the files both builds have
@@ -39,7 +40,8 @@ ZIP_FOLDER = "Smooth UI Tools"          # the folder at the root of a release zi
 WORK_DIR = ROOT / "build" / "nuitka"    # Nuitka's build folders and reports, and the version file
 COMPANY = "Aeluwas"
 PRODUCT = "Smooth UI Remastered"
-GAME_INSTALL_DIR = Path(r"d:\Games\The Witcher 3 Remastered\Smooth UI Tools")   # for --install
+INSTALL_FOLDER = "Smooth UI Tools"      # for --install: the tools' folder in the game folder
+CONFIG = ROOT / "config" / "config.toml"
 
 # The version file, at the path of smoothui/merger/, whose VERSION_FILE it is: a frozen tool has no config.toml
 VERSION_DEST = "smoothui/merger/tools_version.txt"
@@ -76,7 +78,8 @@ def parse_args():
     parser.add_argument("--out", type=Path, metavar="DIR",
                         help="build into DIR (inside build/, deleted first) and leave it there")
     parser.add_argument("--install", action="store_true",
-                        help="also replace everything in the author's install folder but its data\\ with the build")
+                        help="also replace everything in the tools' folder in the game folder (config.toml's game_path) "
+                             "but its data\\ with the build")
     # zip: None, "" (the default zip) or a path. No type=Path: argparse would also convert the "" to Path("."), the current folder
     return parser.parse_args()
 
@@ -128,11 +131,9 @@ def read_tools_version(version):
         if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
             raise SystemExit(f"ERROR: --version must be X.Y.Z, not {version!r}")
         return version
-    path = ROOT / "config" / "config.toml"
-    with open(path, "rb") as f:
-        version = tomllib.load(f).get("versions", {}).get("tools_version")
+    version = read_config().get("versions", {}).get("tools_version")
     if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
-        raise SystemExit(f"ERROR: [versions] tools_version in {path} must be X.Y.Z, not {version!r}")
+        raise SystemExit(f"ERROR: [versions] tools_version in {CONFIG} must be X.Y.Z, not {version!r}")
     return version
 
 
@@ -293,6 +294,22 @@ def write_zip(built, zip_path):
     print(f"Wrote {zip_path} ({zip_path.stat().st_size / 1024 / 1024:.1f} MiB, {len(files)} files)")
 
 
+def read_config():
+    with open(CONFIG, "rb") as f:
+        return tomllib.load(f)
+
+
+def install_dir():
+    """The tools' folder in the game folder (for --install), from [paths] game_path in config.toml"""
+    game = read_config().get("paths", {}).get("game_path")
+    if not isinstance(game, str):
+        raise SystemExit(f"ERROR: --install: no [paths] game_path in {CONFIG}")
+    folder = Path(game) / INSTALL_FOLDER
+    if not folder.is_dir():
+        raise SystemExit(f"ERROR: --install: no folder {folder}")
+    return folder
+
+
 def mirror(built, target):
     """Make target the same as built, except for its data\\ (robocopy: copies only what changed)"""
     # /XD with a full path: only that folder. Exit codes below 8 mean success. Its output (which lists each file
@@ -312,8 +329,7 @@ def main():
     if in_wsl():
         run_on_windows(args)
     check_python()
-    if args.install and not GAME_INSTALL_DIR.is_dir():
-        raise SystemExit(f"ERROR: --install: no folder {GAME_INSTALL_DIR}")
+    install = install_dir() if args.install else None     # before the build: it fails if there's none
     out_dir = (args.out or BUILD_DIR).resolve()
     if not out_dir.is_relative_to(ROOT / "build"):
         raise SystemExit(f"ERROR: --out must be inside {ROOT / 'build'} (it is deleted first), not {out_dir}")
@@ -370,8 +386,8 @@ def main():
         write_zip(out_dir, Path(args.zip) if args.zip else ROOT / "dist" / f"SmoothUITools-{version}-test.zip")
     elif args.out is None:
         mirror(out_dir, INSTALL_DIR)
-    if args.install:
-        mirror(out_dir, GAME_INSTALL_DIR)
+    if install is not None:
+        mirror(out_dir, install)
 
 
 if __name__ == "__main__":
