@@ -337,7 +337,8 @@ def make_patch(version, manifest, their_files, origin, patched_dir, args):
         shared_profile, shared_settings, reviewed = apply_overrides(shared_profile, args.overrides)
 
     log.info(f"Running FPS patcher ({version})", extra=HEADING)
-    patched, kept, failed, warnings, rule_issues = patch_as_release(
+    # (No mod_reviews: a compat patch is built for one known mod, so nothing is known broken here)
+    patched, kept, failed, warnings, rule_issues, _ = patch_as_release(
         inputs, shared_profile, manifest, reviewed=reviewed, shared_settings=shared_settings)
     log.info(f"\nDone ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
     write_patched_files(patched, patched_dir)
