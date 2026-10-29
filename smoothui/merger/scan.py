@@ -21,8 +21,9 @@ from enum import Enum
 from pathlib import Path
 from typing import NamedTuple
 
-from ..mod_reviews import ModReviews
+from .. import mod_reviews
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
+from ..mod_reviews import ModReviews
 from ..witcher3.bundle import read_toc
 from ..witcher3.game_files import game_files
 from ..witcher3.mod_bundles import read_bundle_tocs
@@ -128,6 +129,9 @@ class Scan:
     screens_off: dict[str, ScreenOff] = field(default_factory=dict)
     # For each of those: the copy that would be patched, were it not off
     off_copies: dict[str, SourceFile] = field(default_factory=dict)
+    # The reviews of mods' code (see mod_reviews.py) that the scan read: a build patches with these, and its
+    # package records them
+    reviews: ModReviews = field(default_factory=ModReviews)
 
     @property
     def compat_patches(self) -> list[str]:
@@ -168,7 +172,8 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
          modio_root: Path | None = None, manifests=None, reviews: ModReviews | None = None) -> Scan:
     """Scan the game's Mods\\ folder, with the load order from mods_settings (the path of mods.settings).
     groups_off: see Scan.groups_off; screens_off: the user's ScreenOffs (see Scan.screens_off); reviews:
-    the reviews of mods' code, for the dont-merge lines in them (none if None).
+    the reviews of mods' code, for the dont-merge lines in them (None: mod_reviews.load()'s), kept in
+    Scan.reviews.
 
     modio_root is the folder holding mod.io's mods (default: found from %PUBLIC%); manifests ({version:
     manifest}) replace the release manifests the merger has, for tests. Fails (SmoothUIError) only if
@@ -178,8 +183,11 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     mods = make_mods(folders, read_mods_settings(mods_settings))
     order = load_order(mods)
     installed = installed_build(mods_dir, folders, mods, manifests)
+    if reviews is None:
+        reviews = mod_reviews.load()
     if not installed.usable:
-        return Scan(mods_dir, installed, order, {}, [], _conflicts(mods_dir, order), groups_off=frozenset(groups_off))
+        return Scan(mods_dir, installed, order, {}, [], _conflicts(mods_dir, order), groups_off=frozenset(groups_off),
+                    reviews=reviews)
 
     records = {profile_key(key): record for key, record in installed.manifest["files"].items()}
     keys = set(records)
@@ -230,7 +238,7 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     for key in off_now:
         files[key].winner = None
     return Scan(mods_dir, installed, order, files, problems, group_of=group_of, groups_off=frozenset(groups_off),
-                screens_off=off_now, off_copies=off_copies)
+                screens_off=off_now, off_copies=off_copies, reviews=reviews)
 
 
 def _screens_off(files, group_of, screens_off, reviews) -> dict[str, ScreenOff]:

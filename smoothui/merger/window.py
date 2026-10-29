@@ -86,7 +86,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import mod_reviews
 from ..common import SmoothUIError, fail
 from ..files import stop_writes, write_file
 from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
@@ -476,7 +475,6 @@ class MergerWindow:
         self.found = None
         self.scan_error = None
         self.merges_now = {}    # the files the user chose not to merge that would merge now: {path: what changed}
-        self.trying = False     # whether a trial for them runs (see try_merging)
         self.pool_started = False   # whether start_first_pool ran
         self.merged = None
         self.merge_error = None
@@ -1388,7 +1386,6 @@ class MergerWindow:
             return merges_now(found.scan, list(changed), pool=self.pool)     # the merge's workers: already started
 
         def done(result, error):
-            self.trying = False
             # Scanned again meanwhile, or a merge or scan runs (a merge replaces the workers, which may have
             # stopped this one): the scan after it tries again
             if found is not self.found or self.busy:
@@ -1403,7 +1400,6 @@ class MergerWindow:
 
         log.info(f"Trying to merge, as something changed since you turned them off: "
                  f"{', '.join(map(screen_label, changed))}")
-        self.trying = True
         in_thread(self.calls, work, done)
 
     def rescan(self, keep_result=False):
@@ -1546,7 +1542,7 @@ class MergerWindow:
         known = {(choice.path, choice.mod.lower()) for choice in chosen}
         today = datetime.date.today().isoformat()
         copies = self.found.scan.files
-        reviews, tools = mod_reviews.sha256(), tools_version()
+        reviews, tools = self.found.scan.reviews.sha256, tools_version()
 
         def choice(path, mod):      # with what it is made with (see state.changed_since_off)
             copy = copies[path].winner if path in copies else None
@@ -1567,8 +1563,9 @@ class MergerWindow:
             self.merge(self.stale)
 
     def save_screens_off(self, chosen) -> bool:
-        """Save the settings with these screens not to merge; a failure is said in a message box"""
-        settings = replace(self.settings, screens_off=tuple(chosen))
+        """Save the settings with these screens not to merge; a failure is said in a message box. (No settings
+        yet: the game folder came from the test variable, and is saved with them.)"""
+        settings = replace(self.settings or Settings(self.game), screens_off=tuple(chosen))
         try:
             save_settings(settings, gui.DATA_DIR)
         except SmoothUIError as e:

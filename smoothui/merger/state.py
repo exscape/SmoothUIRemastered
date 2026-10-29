@@ -237,14 +237,11 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         rebuilt = rebuilt_text = None
     merger_only = rebuilt == "merger"
     # New reviews of mods' code (downloaded since the build) may let a screen that was left out be merged
-    reviews_changed = (manifest or {}).get("mod_reviews_sha256") != mod_reviews.sha256()
-    reviews = None      # read once needed
+    reviews = result.reviews
+    reviews_changed = (manifest or {}).get("mod_reviews_sha256") != reviews.sha256
 
     def still_broken(record):
         """Whether the reviews say a copy known not to work still is (see policy.FileStatus.KNOWN_BROKEN)"""
-        nonlocal reviews
-        if reviews is None:
-            reviews = mod_reviews.load()
         return any(reviews.leaves_out(record["mod"], review) for review in record.get("known_broken", ()))
 
     # Whether the package's own mods.settings entry is as a build writes it (see mods_settings.write_entry)
@@ -422,7 +419,7 @@ def changed_since_off(result: Scan) -> dict[str, list[str]]:
         changed = []
         if (copy.size, copy.toc_entry.crc) != (choice.size, choice.crc32):
             changed.append(choice.mod)
-        if choice.reviews != mod_reviews.sha256() or choice.tools != tools_version():
+        if choice.reviews != result.reviews.sha256 or choice.tools != tools_version():
             changed.append("Smooth UI Tools")
         if changed:
             found[key] = changed

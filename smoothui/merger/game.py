@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-from .. import mod_reviews
 from ..common import fail, to_native, to_windows
 from ..files import make_dirs, read_file, write_file
 from ..paths import APP_DIR, DATA_DIR
@@ -67,9 +66,9 @@ def screens_off(settings: Settings | None) -> tuple[ScreenOff, ...]:
 
 
 def turned_off(settings: Settings | None) -> dict:
-    """What the settings (None: their defaults) turn off, as scan.scan's options (groups_off, screens_off), and
-    the reviews in use, whose dont-merge lines turn off more (reviews)"""
-    return {"groups_off": groups_off(settings), "screens_off": screens_off(settings), "reviews": mod_reviews.load()}
+    """What the settings (None: their defaults) turn off, as scan.scan's options (groups_off, screens_off).
+    The scan also reads the reviews in use, whose dont-merge lines turn off more."""
+    return {"groups_off": groups_off(settings), "screens_off": screens_off(settings)}
 
 
 def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
@@ -93,15 +92,20 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
         off = settings.get("not_merged", [])
         if not isinstance(off, list):
             raise TypeError(f"not_merged is {off!r}, not a list")
-        off = tuple(_screen_off(choice) for choice in off)
+        off = tuple(choice for choice in map(_screen_off, off) if choice is not None)
         return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off)
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
 
 
-def _screen_off(choice: dict) -> ScreenOff:
+def _screen_off(choice: dict) -> ScreenOff | None:
     """A not_merged entry of the settings file; what the choice was made with is left out if it can't be used
-    (it only tells when merging may work now)"""
+    (it only tells when merging may work now). None (logged) for an entry without its screen and mod: one
+    bad entry mustn't make the whole file unreadable."""
+    if not isinstance(choice, dict) or not isinstance(choice.get("screen"), str) or not isinstance(choice.get("mod"), str):
+        log.warning(f"Skipped a screen not to merge that can't be read, in the merger's settings: {choice!r}")
+        return None
+
     def number(name):
         value = choice.get(name)
         return value if type(value) is int else None
@@ -110,7 +114,7 @@ def _screen_off(choice: dict) -> ScreenOff:
         value = choice.get(name)
         return value if isinstance(value, str) else None
 
-    return ScreenOff(str(choice["screen"]), str(choice["mod"]), str(choice.get("since", "")), number("size"),
+    return ScreenOff(choice["screen"], choice["mod"], text("since") or "", number("size"),
                      number("crc32"), text("reviews_sha256"), text("tools_version"))
 
 
