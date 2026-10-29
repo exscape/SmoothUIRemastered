@@ -64,6 +64,7 @@ class ArgKind(Enum):
 class FrameArg:
     kind: ArgKind
     value: int | None = None    # for NUMBER: the 1-based frame number
+    choices: tuple[int, ...] = ()   # for COMPUTED `condition ? 2 : 1`: the literal frame numbers
 
 
 class ReceiverKind(Enum):
@@ -172,9 +173,16 @@ class CodeAnalysis:
             code[receiver_start].offset < target <= ins.offset for target in targets)
         if branches_into_args:
             arms = self._ternary_arms(code, i, targets)
-            if arms and all(self._classify_frame_arg(method, code, *arm).kind == ArgKind.LABEL for arm in arms):
-                site.arg = FrameArg(ArgKind.LABEL)
-                return site
+            if arms:
+                kinds = [self._classify_frame_arg(method, code, *arm).kind for arm in arms]
+                if all(kind == ArgKind.LABEL for kind in kinds):
+                    site.arg = FrameArg(ArgKind.LABEL)
+                    return site
+                site.receiver = self._ternary_receiver(code, arms[0][0], targets)
+                choices = [self._literal_number(code, *arm) for arm in arms]
+                if None not in choices:
+                    site.arg = FrameArg(ArgKind.COMPUTED, choices=tuple(choices))
+                    return site
             # Something more complex: guess from the instructions just before the call
             window = _significant(code[max(0, i - 24):i])[-8:]
             has_number = any(w.name in (*INTEGER_PUSH_NAMES, "pushint", "pushuint") for w in window)
@@ -232,6 +240,28 @@ class CodeAnalysis:
                or code[b_start].offset < target <= code[b_last].offset for target in targets):
             return None
         return [(a_start, jump), (b_start, end)]
+
+    def _ternary_receiver(self, code, a_start, targets) -> Receiver:
+        """The receiver of a call whose argument is a ternary with first arm at a_start: the
+        expression before the condition, which the branch to the second arm consumes"""
+        branch = skip_no_ops_backwards(code, a_start - 1)
+        start = branch
+        for _ in range(1 if code[branch].name in ("iftrue", "iffalse") else 2):
+            start = expression_start(self.abc, code, start)     # the condition's operands
+            if start is None:
+                return UNRESOLVED
+        receiver_start = expression_start(self.abc, code, start)
+        if receiver_start is None or any(code[receiver_start].offset < target <= code[branch].offset
+                                         for target in targets):
+            return UNRESOLVED
+        return self._resolve_receiver(code, receiver_start, start)
+
+    def _literal_number(self, code, start, end) -> int | None:
+        """The value of code[start:end] if it is an integer literal (with the coercion a ternary arm may add)"""
+        span = _significant(code[start:end])
+        while span and span[-1].name in ("coerce", "coerce_a", "convert_i", "convert_u", "convert_d"):
+            span.pop()
+        return integer_constant(self.abc, span[0]) if len(span) == 1 else None
 
     def _resolve_receiver(self, code, start, end) -> Receiver:
         """Which object does the expression code[start:end] refer to?"""

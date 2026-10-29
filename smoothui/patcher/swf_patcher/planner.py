@@ -134,6 +134,15 @@ def short_owner(owner: str) -> str:
     return ".".join(owner.split(".")[-2:])
 
 
+def _describe_goto(call: GotoCall, unknown="...") -> str:
+    """"literal gotoAndStop(5)", "gotoAndStop(2 or 1)" (a choice between literals) or "computed gotoAndStop(...)\""""
+    if call.arg.kind == ArgKind.NUMBER:
+        return f"literal {call.call}({call.arg.value})"
+    if call.arg.choices:
+        return f"{call.call}({' or '.join(map(str, call.arg.choices))})"
+    return f"computed {call.call}({unknown})"
+
+
 def _comes_to_rest(frame_count, start, changes, stops, scripted) -> bool:
     """Does playback from frame start reach a stop() before anything else changes?"""
     for step in range(frame_count):
@@ -232,7 +241,7 @@ class Planner:
                 continue
             if call.arg.kind == ArgKind.COMPUTED:
                 for character_id in targets:
-                    self.reasons[character_id].append(f"computed {call.call}() in {short_owner(call.owner)}")
+                    self.reasons[character_id].append(f"{_describe_goto(call, '')} in {short_owner(call.owner)}")
             elif call.arg.value > 1:
                 literal_gotos.append((call, targets))
 
@@ -526,9 +535,7 @@ class Planner:
         for call in unresolved_gotos:
             if not self.movie.may_run(call.method):
                 continue    # nothing in this file can call it
-            kind = "literal" if call.arg.kind == ArgKind.NUMBER else "computed"
-            add("unresolved-goto", call.method, call.owner,
-                f"{kind} {call.call}({call.arg.value if kind == 'literal' else '...'})")
+            add("unresolved-goto", call.method, call.owner, _describe_goto(call))
 
         for use, targets in frame_property_uses:
             if targets is None and self.movie.may_run(use.method):
