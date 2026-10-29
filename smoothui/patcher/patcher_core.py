@@ -44,6 +44,10 @@ log = logging.getLogger(__name__)
 # (a plain ValueError too) may well be a bug, so its traceback goes into the failure message.
 EXPECTED_ERRORS = (SmoothUIError, RescaleError, RedSwfError)
 
+# The only movie that loads others into its ActionScript class space is hud.redswf, which loads the HUD
+# modules from this folder: elsewhere, the classes a file lacks are only Flash's own
+SHARED_CLASSES_FOLDER = "gameplay/gui_new/swf/hud/"
+
 @dataclass(frozen=True, slots=True)
 class PatchSettings:
     """How to patch one file; see config/profile_default.txt"""
@@ -139,7 +143,8 @@ def _patch_file(source, settings, body_hook=None):
                         f"{len(data)}; this is ignored")
         if redswf.version != CR2W_VERSION:
             log.info(f"The .redswf is CR2W version {redswf.version}: it is written as version {CR2W_VERSION}")
-        rescale_report, new_swf_bytes = process(redswf.swf, settings, body_hook)
+        shares_classes = source.path.startswith(SHARED_CLASSES_FOLDER)
+        rescale_report, new_swf_bytes = process(redswf.swf, settings, body_hook, shares_classes=shares_classes)
         del redswf
         if new_swf_bytes is None:
             return {**result, "status": "kept", "report": rescale_report}
@@ -222,9 +227,10 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
                if setting not in matched_anywhere]
     return RuleIssues(errors, warnings)
 
-def process(data, settings, body_hook=None):
+def process(data, settings, body_hook=None, *, shares_classes=True):
     """Find the SWF payload in data, apply its fixes and rescale it. data is normally the SWF taken from
     a .redswf (RedSwf(...).swf); a whole .redswf works too, but more slowly, as it is searched for the SWF.
+    shares_classes: whether other movies may share its ActionScript classes (see RescaleOptions).
 
     Returns (report, new_swf_bytes): the rescale report, and the new SWF (None if the file was left
     unchanged). Raises MalformedSwfError unless there is exactly one SWF it can read, and RescaleError
@@ -235,7 +241,7 @@ def process(data, settings, body_hook=None):
     for sig in SWF_SIGS:
         pos = data.find(sig)
         while pos != -1:
-            payload = read_and_patch_swf(data, pos, sig, settings, body_hook)
+            payload = read_and_patch_swf(data, pos, sig, settings, body_hook, shares_classes)
             if payload is None:
                 pos = data.find(sig, pos + len(sig))
                 continue
@@ -252,7 +258,7 @@ def process(data, settings, body_hook=None):
         raise MalformedSwfError("found 0 payloads (expected 1); corrupt file?")
     return result, new_swf_bytes
 
-def read_and_patch_swf(data, pos, sig, settings, body_hook=None):
+def read_and_patch_swf(data, pos, sig, settings, body_hook=None, shares_classes=True):
     """Check for an SWF header at data[pos] and patch the payload if found."""
     if pos + SWF_HEADER_SIZE > len(data):
         return None
@@ -261,9 +267,9 @@ def read_and_patch_swf(data, pos, sig, settings, body_hook=None):
 
     if sig not in SWF_COMPRESSED_SIGS:
         raise MalformedSwfError("SWF was not compressed: please contact me (GitHub/Nexus Mods) about this and I'll add support.")
-    return patch_fps(data, pos, settings, body_hook)
+    return patch_fps(data, pos, settings, body_hook, shares_classes)
 
-def patch_fps(data, pos, settings, body_hook=None):
+def patch_fps(data, pos, settings, body_hook=None, shares_classes=True):
     """Set the frame rate of the compressed SWF at data[pos] and interpolate animations,
     applying its fixes before or after that (see fixes/). body_hook (see dev_mode.py) runs on the result.
 
@@ -283,7 +289,7 @@ def patch_fps(data, pos, settings, body_hook=None):
         if settings.source_fps is not None and patch_fps_in_body(body, settings.source_fps) is None:
             raise MalformedSwfError("can't read the frame rate in its header")
         result = rescale_body(body, settings.target_fps, rules=settings.rules, include=settings.include,
-                              exclude=settings.exclude)
+                              exclude=settings.exclude, shares_classes=shares_classes)
         if result.new_fps is not None:
             body[:] = result.body
         fixed_after, records_after = apply_fixes(body, settings.fixes, AFTER_RESCALE)

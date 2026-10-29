@@ -33,6 +33,8 @@ INSTANCE_PROTECTED_NS = 0x08
 
 # Namespace kinds
 PACKAGE_NAMESPACE = 0x16    # a package's public namespace; "" is the top level ("public")
+PRIVATE_NAMESPACE = 0x05    # a class's private members
+PROTECTED_NAMESPACE = 0x18  # a class's protected members
 
 # Trait kinds, and the trait attribute bit for attached metadata
 TRAIT_SLOT, TRAIT_METHOD, TRAIT_GETTER, TRAIT_SETTER, TRAIT_CLASS, TRAIT_FUNCTION, TRAIT_CONST = range(7)
@@ -140,6 +142,7 @@ class Trait:
     slot_id: int = 0            # slots/consts
     type_name: int = 0          # slots/consts: multiname index of the declared type
     value_kind: int | None = None   # slots/consts: constant kind of the default value, if any
+    value_index: int = 0        # slots/consts: index of the default value in its constant pool
     method: int | None = None   # methods/getters/setters
 
 
@@ -350,7 +353,8 @@ def _read_traits(r: AbcReader) -> list[Trait]:
         if kind in VALUE_TRAIT_KINDS:
             trait.slot_id = r.u30()
             trait.type_name = r.u30()
-            if r.u30():     # default value index
+            trait.value_index = r.u30()
+            if trait.value_index:
                 trait.value_kind = r.u8()
         elif kind in (TRAIT_CLASS, TRAIT_FUNCTION):
             r.u30()     # slot id

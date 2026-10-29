@@ -158,7 +158,7 @@ class Planner:
     def __init__(self, movie: SwfMovie, options: RescaleOptions):
         self.movie = movie
         self.options = options
-        self.analysis = CodeAnalysis(movie)
+        self.analysis = CodeAnalysis(movie, options.shares_classes)
         self.plan = RescalePlan(movie.fps, options.target_fps,
                                 Retiming(fps_ratio(movie.fps, options.target_fps)))
         self.reasons = self.plan.reasons
@@ -194,15 +194,18 @@ class Planner:
         if receiver.kind == ReceiverKind.UNRESOLVED or not class_name:
             return None
         linked = self.movie.sprites_linked_to(class_name)
+        created = set().union(*(self.movie.sprites_linked_to(c) for c in receiver.created or ()))
         if not linked:
             if receiver.kind == ReceiverKind.NAMED and self.movie.may_run(method):
-                return None     # created by code, so its children can be anything added to it
+                # Created by code, so its children can be anything added to it; a field can only
+                # hold what code stores in it, where that is known
+                return created if receiver.created is not None else None
             self.plan.unlinked_classes.add(class_name)
             return set()
         if receiver.kind == ReceiverKind.THIS:
             return linked
         by_name = self.movie.descendants_by_instance_name(class_name)
-        return set().union(*(by_name.get(name, set()) for name in receiver.names))
+        return created.union(*(by_name.get(name, set()) for name in receiver.names))
 
     # --- Reasons not to stretch ---
 

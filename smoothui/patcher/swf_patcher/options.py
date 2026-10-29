@@ -111,6 +111,9 @@ class RescaleOptions:
     # these / stretch these despite the automatic exclusions
     exclude: tuple = ()
     include: tuple = ()
+    # Other movies may share its ActionScript classes: false for all but the HUD's, which hud.redswf
+    # loads into its own class space (see patcher_core.SHARED_CLASSES_FOLDER)
+    shares_classes: bool = True
 
     def __post_init__(self):
         object.__setattr__(self, "rules", make_rules(self.rules))

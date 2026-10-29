@@ -26,7 +26,15 @@ from .abc_bytecode import (
     skip_no_ops_backwards,
     stack_effect,
 )
-from .abc_file import TRAIT_METHOD, VALUE_TRAIT_KINDS
+from .abc_file import (
+    CONSTANT_UTF8,
+    PRIVATE_NAMESPACE,
+    PROTECTED_NAMESPACE,
+    QNAME,
+    TRAIT_CONST,
+    TRAIT_METHOD,
+    VALUE_TRAIT_KINDS,
+)
 from .movie import SwfMovie
 
 GOTO_METHODS = ("gotoAndStop", "gotoAndPlay")
@@ -77,6 +85,9 @@ class ReceiverKind(Enum):
 class Receiver:
     kind: ReceiverKind
     names: frozenset = frozenset()
+    # For a field of `this` that code only ever sets to new instances of these classes or null (see
+    # CodeAnalysis.field_classes): it holds one of those, or a child placed under that name
+    created: frozenset | None = None
 
 THIS = Receiver(ReceiverKind.THIS)
 UNRESOLVED = Receiver(ReceiverKind.UNRESOLVED)
@@ -133,14 +144,29 @@ def _significant(instructions):
     return [ins for ins in instructions if ins.name not in SKIPPABLE_NAMES]
 
 
+def _strip_casts(span):
+    """span without the casts at its end (coerce T, `as T`), which don't change which object it is"""
+    while True:
+        if span and span[-1].name in ("coerce", "coerce_a", "convert_o"):
+            span = span[:-1]
+        elif len(span) >= 2 and span[-1].name == "astypelate" and span[-2].name == "getlex":
+            span = span[:-2]
+        else:
+            return span
+
+
 class CodeAnalysis:
-    def __init__(self, movie: SwfMovie):
+    def __init__(self, movie: SwfMovie, shares_classes: bool = True):
+        """shares_classes: other movies may share its ActionScript classes, so a class it lacks may exist
+        (only the HUD's movies do; see RescaleOptions)"""
         self.movie = movie
         self.abc = movie.abc
+        self.shares_classes = shares_classes
         # A class with its own trace() would make `trace(x)` in its methods call that instead
         self._trace_is_overridden = any(self.abc.name_of(trait.name) == "trace"
                                         for instance, cls in zip(self.abc.instances, self.abc.classes)
                                         for trait in instance.traits + cls.traits)
+        self._field_classes_found = {}  # (class, field) -> field_classes()
 
     def name(self, ins: Instruction) -> str:
         """Name of the multiname operand of a property instruction"""
@@ -178,7 +204,7 @@ class CodeAnalysis:
                 if all(kind == ArgKind.LABEL for kind in kinds):
                     site.arg = FrameArg(ArgKind.LABEL)
                     return site
-                site.receiver = self._ternary_receiver(code, arms[0][0], targets)
+                site.receiver = self._ternary_receiver(method, code, arms[0][0], targets)
                 choices = [self._literal_number(code, *arm) for arm in arms]
                 if None not in choices:
                     site.arg = FrameArg(ArgKind.COMPUTED, choices=tuple(choices))
@@ -192,7 +218,7 @@ class CodeAnalysis:
             return site
 
         site.arg = self._classify_frame_arg(method, code, arg_start, i)
-        site.receiver = self._resolve_receiver(code, receiver_start, arg_start)
+        site.receiver = self._resolve_receiver(method, code, receiver_start, arg_start)
         if site.arg.kind == ArgKind.NUMBER:
             site.push_index = skip_no_ops_backwards(code, i - 1)
         return site
@@ -241,7 +267,7 @@ class CodeAnalysis:
             return None
         return [(a_start, jump), (b_start, end)]
 
-    def _ternary_receiver(self, code, a_start, targets) -> Receiver:
+    def _ternary_receiver(self, method, code, a_start, targets) -> Receiver:
         """The receiver of a call whose argument is a ternary with first arm at a_start: the
         expression before the condition, which the branch to the second arm consumes"""
         branch = skip_no_ops_backwards(code, a_start - 1)
@@ -254,7 +280,7 @@ class CodeAnalysis:
         if receiver_start is None or any(code[receiver_start].offset < target <= code[branch].offset
                                          for target in targets):
             return UNRESOLVED
-        return self._resolve_receiver(code, receiver_start, start)
+        return self._resolve_receiver(method, code, receiver_start, start)
 
     def _literal_number(self, code, start, end) -> int | None:
         """The value of code[start:end] if it is an integer literal (with the coercion a ternary arm may add)"""
@@ -263,7 +289,7 @@ class CodeAnalysis:
             span.pop()
         return integer_constant(self.abc, span[0]) if len(span) == 1 else None
 
-    def _resolve_receiver(self, code, start, end) -> Receiver:
+    def _resolve_receiver(self, method, code, start, end) -> Receiver:
         """Which object does the expression code[start:end] refer to?"""
         span = _significant(code[start:end])
         if not span:
@@ -271,12 +297,12 @@ class CodeAnalysis:
         if len(span) == 1 and span[0].name in ("getlocal0", "findpropstrict"):
             return THIS
         if len(span) == 1 and span[0].name.startswith("getlocal"):
-            return self._resolve_local(code, start, local_register(span[0]))
+            return self._resolve_local(method, code, start, local_register(span[0]))
         if any(ins.name in ("getscopeobject", "getslot") for ins in span):
             return UNRESOLVED
-        return self._named(self.instance_name(code, start, end))
+        return self._named_or_field(method, code, start, end)
 
-    def _resolve_local(self, code, before, register) -> Receiver:
+    def _resolve_local(self, method, code, before, register) -> Receiver:
         """The object stored in a local register by the nearest preceding assignment"""
         for j in range(before - 1, -1, -1):
             ins = code[j]
@@ -284,12 +310,201 @@ class CodeAnalysis:
                 start = expression_start(self.abc, code, j)
                 if start is None:
                     return UNRESOLVED
-                return self._named(self.instance_name(code, start, j))
+                return self._named_or_field(method, code, start, j)
         return UNRESOLVED
 
     @staticmethod
     def _named(name):
         return Receiver(ReceiverKind.NAMED, frozenset({name})) if name is not None else UNRESOLVED
+
+    def _named_or_field(self, method, code, start, end) -> Receiver:
+        """The child the expression code[start:end] names (see instance_name); for a field of `this`,
+        also what code stores in it (see field_classes)"""
+        receiver = self._named(self.instance_name(code, start, end))
+        span = _significant(code[start:end])
+        shape = [ins.name for ins in span]
+        body = self.abc.bodies.get(method)
+        # this.icon; or a bare `icon`, where no local variable can be named so
+        of_this = shape == ["getlocal0", "getproperty"] or not (body and body.traits) and (
+            shape == ["getlex"] or shape == ["findpropstrict", "getproperty"] and self.name(span[0]) == self.name(span[1]))
+        class_name = self.movie.class_of_method.get(method)
+        if receiver.kind != ReceiverKind.NAMED or not of_this or not class_name or method in self.movie.static_methods:
+            return receiver
+        created = self.field_classes(class_name, self.name(span[-1]))
+        return receiver if created is None else Receiver(ReceiverKind.NAMED, receiver.names, created)
+
+    # --- Fields ---
+
+    def field_classes(self, class_name, field) -> frozenset[str] | None:
+        """The classes whose new instances a private or protected field of class_name can hold, if
+        code in this file only ever sets it to those (`new C()`, or `new cls()` with cls from
+        getDefinitionByName("C")) or to null; None if unsure. Only the class (and for a protected
+        field its subclasses) can set it, by name, so every write is found: those by name anywhere
+        in the file, and every write by a name only known at runtime in that code is ruled out."""
+        key = (class_name, field)
+        if key not in self._field_classes_found:
+            self._field_classes_found[key] = self._find_field_classes(class_name, field)
+        return self._field_classes_found[key]
+
+    def _find_field_classes(self, class_name, field) -> frozenset[str] | None:
+        movie, abc = self.movie, self.abc
+        owner, trait = class_name, None     # the class declaring the field
+        while owner in movie.instance_of and trait is None:
+            trait = next((t for t in movie.instance_of[owner].traits if abc.name_of(t.name) == field), None)
+            owner = owner if trait else movie.superclass[owner]
+        if trait is None or trait.kind not in VALUE_TRAIT_KINDS or abc.multinames[trait.name].kind != QNAME:
+            return None
+        access = abc.namespaces[abc.multinames[trait.name].namespace][0]
+        if access == PRIVATE_NAMESPACE and owner == class_name:
+            writers = {owner}
+        elif access == PROTECTED_NAMESPACE:
+            writers = {c for c in movie.superclass if self._inherits(c, owner)}
+        else:
+            return None
+        writers.add(None)   # closures, which may be inside those classes
+
+        classes = set()
+        for method, code in movie.code.items():
+            writer = movie.class_of_method.get(method) in writers
+            for i, ins in enumerate(code):
+                if ins.name == "setslot" and writer and (trait.slot_id in (0, ins.args[0])) \
+                        and not self._sets_scope_slot(code, i):
+                    return None     # maybe a write by slot number
+                if ins.name not in ("setproperty", "initproperty"):
+                    continue
+                name = self.name(ins)
+                if name == field:
+                    start = expression_start(abc, code, i)
+                    created = self._created_classes(method, code, start, i) if start is not None else None
+                    if created is None:
+                        return None
+                    classes |= created
+                elif name.startswith("<") and writer and not self._names_other_than(method, code, i, field):
+                    return None
+        return frozenset(classes)
+
+    def _inherits(self, class_name, ancestor) -> bool:
+        while class_name:
+            if class_name == ancestor:
+                return True
+            class_name = self.movie.superclass.get(class_name)
+        return False
+
+    def _operand_starts(self, code, i) -> tuple[int | None, int | None]:
+        """(start of the value, start of the operand before it) of a two-operand instruction code[i]"""
+        value_start = expression_start(self.abc, code, i)
+        if value_start is None:
+            return None, None
+        return value_start, expression_start(self.abc, code, value_start)
+
+    def _sets_scope_slot(self, code, i) -> bool:
+        """Does the setslot code[i] set a slot of a scope object (an activation or the exception of a
+        catch), rather than of some object's field?"""
+        # A catch block storing its exception: newcatch; dup; setlocal N; dup; pushscope; swap; setslot
+        before = [ins.name for ins in _significant(code[max(0, i - 12):i])][-6:]
+        if len(before) == 6 and before[2].startswith("setlocal") \
+                and before[:2] + before[3:] == ["newcatch", "dup", "dup", "pushscope", "swap"]:
+            return True
+        value_start, object_start = self._operand_starts(code, i)
+        return object_start is not None \
+            and [ins.name for ins in _significant(code[object_start:value_start])] == ["getscopeobject"]
+
+    def _names_other_than(self, method, code, i, field) -> bool:
+        """Is the runtime name of the property that code[i] sets (obj[name] = value) surely not field:
+        a different string, or a number (an array index)?"""
+        if self.abc.runtime_name_operands(code[i].args[0]) != 1:
+            return False
+        value_start, name_start = self._operand_starts(code, i)
+        if name_start is None:
+            return False
+        span = _significant(code[name_start:value_start])
+        if len(span) == 1 and span[0].name == "pushstring":
+            return self.abc.strings[span[0].args[0]] != field
+        if len(span) == 1 and integer_constant(self.abc, span[0]) is not None:
+            return True
+        return self.static_type(method, code, name_start, value_start) in ("int", "uint", "Number")
+
+    def _created_classes(self, method, code, start, end) -> set[str] | None:
+        """{C} if the expression code[start:end] makes a new instance of class C of this file, set()
+        if it is null; None for anything else"""
+        span = _strip_casts(_significant(code[start:end]))
+        shape = [ins.name for ins in span]
+        if shape in (["pushnull"], ["pushundefined"]):
+            return set()
+        if not span:
+            return None
+        last = span[-1]
+        if last.name == "constructprop" and span[0].name in ("findpropstrict", "findproperty") \
+                and self.name(span[0]) == self.name(last):
+            name = self.name(last)  # new C(...)
+        elif last.name == "construct" and last.args[0] == 0:
+            name = self._class_value(method, code, span[:-1])   # new cls()
+        else:
+            return None
+        class_name = self._class_named(name) if name else None
+        if class_name == "" and not self.shares_classes:
+            return set()    # a built-in class (or, from getDefinitionByName, an error): none of the file's clips
+        return {class_name} if class_name else None
+
+    def _class_value(self, method, code, span) -> str | None:
+        """The name of the class that the expression span (instructions of code) evaluates to: C, or a
+        local variable or activation slot that its method only sets once, to getDefinitionByName("C")"""
+        shape = [ins.name for ins in span]
+        if shape == ["getlex"]:
+            return self.name(span[0])
+        if len(span) == 1 and shape[0].startswith("getlocal") and shape[0] != "getlocal0":
+            register = local_register(span[0])
+            if any(ins.name in REGISTER_CHANGING and register in ins.args for ins in code):
+                return None
+            stores = [j for j, ins in enumerate(code) if ins.name.startswith("setlocal") and local_register(ins) == register]
+        elif shape == ["getscopeobject", "getslot"] and span[0].args[0] == 1 \
+                and self.activation_slot_type(method, code, span[1].args[0]) is not None:
+            slot = span[1].args[0]
+            stores = [j for j, ins in enumerate(code) if ins.name == "setslot" and ins.args[0] == slot]
+            if not all(self._sets_scope_slot(code, j) for j in stores):
+                return None
+        else:
+            return None
+        values = []     # what each store stores, except null (a variable's initial value; `new` on it throws)
+        for j in stores:
+            start = expression_start(self.abc, code, j)
+            if start is None:
+                return None
+            value = _strip_casts(_significant(code[start:j]))
+            if [ins.name for ins in value] not in (["pushnull"], ["pushundefined"]):
+                values.append(value)
+        if len(values) != 1:
+            return None
+        call = values[0]
+        if [ins.name for ins in call[:1] + call[2:]] != ["findpropstrict", "callproperty"] \
+                or self.name(call[0]) != "getDefinitionByName" or self.name(call[2]) != "getDefinitionByName":
+            return None
+        name = call[1]
+        if name.name == "pushstring":
+            return self.abc.strings[name.args[0]]
+        if name.name == "getlex":
+            return self._static_string(self.movie.class_of_method.get(method), self.name(name))
+        return None
+
+    def _static_string(self, class_name, const) -> str | None:
+        """The value of a static string constant of class_name or a superclass"""
+        classes = dict(zip((self.abc.full_name_of(instance.name) for instance in self.abc.instances), self.abc.classes))
+        while class_name in classes:
+            for trait in classes[class_name].traits:
+                if self.abc.name_of(trait.name) == const:
+                    ok = trait.kind == TRAIT_CONST and trait.value_kind == CONSTANT_UTF8
+                    return self.abc.strings[trait.value_index] if ok else None
+            class_name = self.movie.superclass.get(class_name)
+        return None
+
+    def _class_named(self, name) -> str | None:
+        """The class of this file with this name ("pkg.Class", "pkg::Class" or "Class"); "" if it has none,
+        None if several have that unqualified name"""
+        name = name.replace("::", ".")
+        if name in self.movie.instance_of:
+            return name
+        found = [c for c in self.movie.instance_of if c.rsplit(".", 1)[-1] == name]
+        return found[0] if len(found) == 1 else "" if not found else None
 
     def instance_name(self, code, start, end) -> str | None:
         """The instance name the expression code[start:end] evaluates to (its last property name or
@@ -321,7 +536,7 @@ class CodeAnalysis:
             for i, ins in enumerate(code):
                 if ins.name in ("callproperty", "callpropvoid") and self.name(ins) == "play" and ins.args[1] == 0:
                     start = expression_start(self.abc, code, i)
-                    found.append((method, UNRESOLVED if start is None else self._resolve_receiver(code, start, i)))
+                    found.append((method, UNRESOLVED if start is None else self._resolve_receiver(method, code, start, i)))
         return found
 
     # --- addFrameScript ---
@@ -477,7 +692,7 @@ class CodeAnalysis:
                     continue
                 uses.append(FramePropertyUse(method, prop, self.movie.owner_name(method),
                                              self.movie.class_of_method.get(method),
-                                             self._frame_property_receiver(code, i)))
+                                             self._frame_property_receiver(method, code, i)))
         return uses
 
     def _only_traced(self, code, i) -> bool:
@@ -515,17 +730,16 @@ class CodeAnalysis:
         span = _significant(code[start:end])
         return len(span) == 1 and span[0].name == "findpropstrict" and self.name(span[0]) == "trace"
 
-    def _frame_property_receiver(self, code, i) -> Receiver:
+    def _frame_property_receiver(self, method, code, i) -> Receiver:
         if code[i].name == "getlex":    # a bare `currentFrame` in a class method
             return THIS
         start = expression_start(self.abc, code, i)
         if start is None:
             return UNRESOLVED
-        name = self.instance_name(code, start, i)
-        if name is not None:
-            return self._named(name)
-        if i - start == 1 and code[start].name == "getlocal0":
-            return THIS
+        if self.instance_name(code, start, i) is not None:
+            return self._named_or_field(method, code, start, i)
+        if [ins.name for ins in _significant(code[start:i])] in (["getlocal0"], ["findpropstrict"]):
+            return THIS     # this.nextFrame(), or a bare nextFrame()
         return UNRESOLVED
 
     # --- Static types ---

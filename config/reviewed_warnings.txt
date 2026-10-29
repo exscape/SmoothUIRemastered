@@ -6,19 +6,11 @@
 # the warning can be safely hidden.
 # Only used by main builds; see smoothui/build/reviewed_warnings.py.
 
-# --- GwintTutorial calls nextFrame() on itself; its only clip (GwintTutorials) is a selector clip that is not stretched
-unresolved-frame-property GwintTutorial.continueTutorial @09df7152
-unresolved-frame-property GwintTutorial.incrementTutorial @a343cc83    # deck_builder
-unresolved-frame-property GwintTutorial.incrementTutorial @ee636631    # gwint_game: the same, plus a trace() call
-
 # --- Goto with a number, but the target is a selector clip that is not stretched
 
 # bgArray = mcCurrentBg1..4 / mcAppearBg1..4, all McTransmogItemBg_50 (6 frames, every frame labeled)
 unresolved-goto ModuleTransmogVis.handleUpdateAppears @f8b4e799
 unresolved-goto ModuleTransmogVis.handleUpdateEquipped @736904c0
-
-# _actionIcon is SlotAvatarIconRef (selector clip, not stretched), or null where that class isn't in the file
-unresolved-goto SlotDragAvatar.setActionIcon @96b36850
 
 # --- hud.redswf: every HUD module runs this file's copy of the shared classes (they load into its
 # ApplicationDomain), so these are checked against the modules
