@@ -24,3 +24,17 @@ modInkAndIron.*:
     enter-frame-handler MenuCharacterDupe.inkPopFrame @3234ea0a      # panel_character_dupe: the apply/cancel popup
     enter-frame-handler SlotSkillGrid.inkHoldTick @113b3fe1          # panel_character_dupe: an arc mirroring the game's hold progress
     enter-frame-handler InventoryTabbedListModule.iaiClampTabs @268d2ba0  # panel_inventory: resets the tab icons' scale and color
+
+# --- Expanded Buff Menu
+# Its ENTER_FRAME handler lays out the cooldown icons each frame: places the layer at its anchor and the
+# icons in a grid, from the current state (no counters). Its timers use getTimer() and its fades are
+# GTweens, both time-based, so the result is the same at any frame rate. Checked 2026-10-28, against version 5.01Rev1.
+modExpandedBuffMenu:
+    enter-frame-handler HudModuleBuffs.onCooldownTick @2672af65      # hud_buffs: lays out the cooldown icons
+
+# --- CMF Minimap Panel (an add-on for Conjunction Map Framework)
+# Its ENTER_FRAME handler restyles the minimap's pins: each frame it copies every pin icon's position,
+# visibility and alpha onto its own overlay, and restyles a pin only when its icon or the styles change.
+# No counters, so the result is the same at any frame rate. Checked 2026-10-29, against version 2.1.0.
+modCMFMinimapPanel:
+    enter-frame-handler HudModuleWatermark.cmfOnFrame @ea3f9109      # hud_pickeditemsinfo: follows the minimap pins

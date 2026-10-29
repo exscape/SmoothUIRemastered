@@ -419,6 +419,14 @@ class CodeAnalysis:
                 found.append((push_index, value, self.name(get)))
         return found
 
+    # --- frame rate changes ---
+
+    def find_frame_rate_writes(self) -> list[int]:
+        """Methods that set a frameRate property (stage.frameRate = ...). The receiver's type isn't known,
+        but nothing else in the game's movies has a frameRate to set."""
+        return [method for method, code in self.movie.code.items()
+                if any(ins.name in ("setproperty", "initproperty") and self.name(ins) == "frameRate" for ins in code)]
+
     # --- totalFrames, currentFrame, ... ---
 
     def find_frame_property_uses(self) -> list[FramePropertyUse]:

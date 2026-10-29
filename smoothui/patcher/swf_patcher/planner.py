@@ -174,6 +174,7 @@ class Planner:
         self._patch_frame_scripts(frame_scripts)
         self._patch_literal_gotos(literal_gotos)
         self._patch_frame_handlers()
+        self._warn_frame_rate_writes()
         self._warn_unresolved(unresolved_gotos, frame_property_uses)
         self._plan_interpolation(frame_scripts, literal_gotos)
         return self.plan
@@ -494,6 +495,15 @@ class Planner:
                 self._warn(f"enter-frame-handler {name}",
                            f"persistent ENTER_FRAME handler {name} runs once per frame "
                            f"(now {float(ratio):.2f}x as often); check it for frame counting", [handler.method])
+
+    def _warn_frame_rate_writes(self):
+        """Code that sets the movie's frame rate (stage.frameRate) makes it play at that rate, not at the one
+        its timelines were retimed for"""
+        for method in self.analysis.find_frame_rate_writes():
+            name = short_owner(self.movie.owner_name(method))
+            self._warn(f"sets-frame-rate {name}",
+                       f"{name} sets the screen's frame rate (stage.frameRate) itself, so its animations "
+                       "would play at the wrong speed", [method])
 
     def _warn(self, key: str, message: str, methods):
         """methods: the code the warning is about"""
