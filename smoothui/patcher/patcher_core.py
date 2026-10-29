@@ -187,13 +187,16 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
 
     For compat builds, recorded maps profile keys to the reports the Smooth UI release recorded.
     A setting from there that matches nothing in the other mod's version of a file is only a
-    warning, and only if it matched something in the release (otherwise it is not reported)."""
+    warning, and only if it matched something in the release (otherwise it is not reported). A file that
+    wasn't rescaled (already at or above the target frame rate, so only fixed) has no use for the rescale's
+    settings (speed rules, include, exclude), so those are not reported for it: only its fixes are."""
     errors, warnings = [], []
     matched_anywhere = set()
     for entry in [*patched, *kept]:
         path, report = entry["path"], entry["report"]
         errors += [RuleIssue(path, format_unmet_rule(unmet)) for unmet in report["unmet_rules"]]
         unmet = {unmet["rule"] for unmet in report["unmet_rules"]}   # already reported
+        not_rescaled = "new_fps" in report and report["new_fps"] is None
         release = (recorded or {}).get(profile_key(path))
         inherited = dict(report_settings(release)) if release else {}
         # Why a fix changed nothing, in place of "matched no sprite"
@@ -206,7 +209,7 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
             elif setting in unmet:
                 continue
             elif setting in inherited:
-                if inherited[setting]:
+                if inherited[setting] and (fix or not not_rescaled):
                     detail = f" ({fix_details[setting]})" if setting in fix_details else ""
                     warnings.append(RuleIssue(path, f"{setting}: matched sprite(s) {inherited[setting]} in the "
                                               f"Smooth UI release, but nothing in this mod's version of the file{detail}",
