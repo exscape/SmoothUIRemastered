@@ -69,7 +69,7 @@ def write_package(package_dir: Path, installed: Installed, files: list[PackageFi
     that are to be included (see policy.FileStatus.included), and a manifest recording files (see
     package_manifest). installed: the Smooth UI build they were patched for; reviews_sha256: the reviews of
     mods' code they were patched with (see mod_reviews.py); groups_off and screens_off: the groups and
-    files turned off (see scan.Scan.groups_off and screens_off). If none is to be included, remove the
+    files turned off (see scan.Scan.groups_off and screens_off; the latter is a dict). If none is to be included, remove the
     package instead, and write the manifest to record (see above), if given; else delete record."""
     package_dir = Path(package_dir)
     content = package_dir / "content"
@@ -198,6 +198,8 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
         "groups_off": sorted(groups_off),
         # The files the user chose not to merge (see scan.Scan.screens_off): in neither either
         "screens_off": sorted(screens_off),
+        # Which of those our rules left out (a dont-merge line, see mod_reviews.py), and why: not the user's choice
+        "screens_off_by_rule": {key: choice.reason for key, choice in sorted(dict(screens_off).items()) if choice.reason},
     }
 
 

@@ -92,16 +92,18 @@ class FileState:
                                 # "load order" (another mod's copy wins now) or "setting" (its group was
                                 # turned off since the build); for NOT_BUILT, "setting" if its group was turned on
                                 # since the build; for NOT_HELD, the status the manifest records (see
-                                # WHY), "turned off" (its group is), or "by choice" (the user
+                                # WHY), "turned off" (its group is), "by choice" (the user
                                 # chose not to merge it, or a file of its group; also CHANGED's and
-                                # NOT_BUILT's cause once that changed since the build); for UP_TO_DATE, "forced" if
+                                # NOT_BUILT's cause once that changed since the build), or "by rule" (our
+                                # dont-merge line does, see mod_reviews.py: then reason is its reason; the
+                                # same causes for CHANGED and NOT_BUILT); for UP_TO_DATE, "forced" if
                                 # the user chose to patch it anyway
     previous: str | None = None     # CHANGED (but for "smoothui", "merger") and NO_LONGER_NEEDED: the mod whose
                                     # copy the last merge used
     fixes: tuple[str, ...] = ()     # UP_TO_DATE: the fixes the merged copy lacks (a fix that can't apply)
     group: str | None = None        # the group it is in, if any (see build/profile.py's Group)
     reason: str | None = None       # NOT_HELD "left out", and UP_TO_DATE "forced": why its rescale has problems,
-                                    # in a word (see WHY), if the build recorded it
+                                    # in a word (see WHY), if the build recorded it; "by rule": the rule's
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +179,26 @@ def not_merged(status: str, copy: str, mod: str, *, reason: str | None = None, g
     return f"{copy} {WHY.get(reason) or WHY.get(status, status)}, so it isn't merged."
 
 
+def left_out_by_rule(choice, group: str | None = None) -> str:
+    """Why a copy of a screen that our own rule leaves out (a dont-merge line; choice: its ScreenOff) isn't
+    merged, for the user: by the rule's reason. A group's file: said of the group, the same for each of its
+    files."""
+    copy = f"{choice.mod}'s copy"
+    if choice.reason == mod_reviews.ALREADY_SMOOTH:
+        clause = "already smooth"
+    elif choice.reason == mod_reviews.KNOWN_BROKEN:
+        clause = "known not to work with Smooth UI"
+    else:   # a reason from newer tools
+        clause = "left out by Smooth UI for this mod"
+    if group:
+        # (Not naming the file: each of the group's files that a rule leaves out says the same, so that they are told as one)
+        return (f"not merged, as the {group_name(group)} is merged whole or not at all, and {choice.mod}'s "
+                f"copy of it is {clause}.")
+    if choice.reason == mod_reviews.ALREADY_SMOOTH:
+        return f"{copy} is already smooth, so Smooth UI leaves it as it is."
+    return f"{copy} is {clause}, so it isn't merged."
+
+
 def merged_anyway(copy: str, reason: str | None, since: str = "") -> str:
     """What a copy (e.g. "modA's copy") merged anyway, as the user chose (since: e.g. " on <date>"), means,
     by its reason (see WHY): code that isn't checked often works, so that is said gently"""
@@ -235,6 +257,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     groups = result.group_of
     was_off = set((manifest or {}).get("groups_off", ()))
     screens_were_off = set((manifest or {}).get("screens_off", ()))
+    rules_were = (manifest or {}).get("screens_off_by_rule", {})     # {key: reason} of those our rules left out
 
     states = []
     for key in sorted(result.files):
@@ -260,6 +283,14 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                       f"it: merge again. {shows}", Severity.MEDIUM, needs_build=True, cause="setting")
             else:
                 state(State.NOT_HELD, f"merging the {name} is turned off in the settings. {shows}", cause="turned off")
+        elif key in result.screens_off and result.screens_off[key].reason is not None:
+            choice = result.screens_off[key]
+            text = left_out_by_rule(choice, groups.get(key))
+            shows = _shows(file, choice.mod, groups.get(key))
+            if key in toc:
+                state(State.CHANGED, f"{text} But the merged patches hold it: merge again. {shows}", Severity.MEDIUM, needs_build=True, cause="by rule", reason=choice.reason, origin=choice.mod)
+            else:
+                state(State.NOT_HELD, f"{text} {shows}", cause="by rule", reason=choice.reason, origin=choice.mod)
         elif key in result.screens_off:
             choice = result.screens_off[key]
             shows = _shows(file, choice.mod, groups.get(key))
@@ -343,6 +374,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.NOT_HELD, f"{text} {shows}", cause=status, reason=record.get("reason"))
         elif manifest is None and manifest_problem is None:
             state(State.NOT_BUILT, f"{_copy_of(origin)} isn't merged yet", Severity.MEDIUM)
+        elif key in rules_were:
+            what = f"the {group_name(groups[key])}" if key in groups else _copy_of(origin)
+            state(State.NOT_BUILT, f"Smooth UI no longer leaves {what} out: merge again", Severity.MEDIUM,
+                  cause="by rule")
         elif key in screens_were_off:
             what = f"the {group_name(groups[key])}" if key in groups else _copy_of(origin)
             state(State.NOT_BUILT, f"merging {what} was turned on again since the last merge: merge again",
@@ -367,7 +402,7 @@ def _whole_groups(result: Scan, states: list[FileState]) -> list[FileState]:
     for file in states:
         group = file.group
         # (Turned off or on, by the setting or the user's choice, is the whole group: not mixed)
-        if group in loaded_groups and file.severity == Severity.MEDIUM and file.cause not in ("setting", "by choice"):
+        if group in loaded_groups and file.severity == Severity.MEDIUM and file.cause not in ("setting", "by choice", "by rule"):
             file = replace(file, severity=Severity.HIGH,
                            message=f"{file.message} (until then, the {group_name(group)} is part patched, part not: "
                            "its animations play at the wrong speeds)")

@@ -21,6 +21,7 @@ from enum import Enum
 from pathlib import Path
 from typing import NamedTuple
 
+from ..mod_reviews import ModReviews
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
 from ..witcher3.bundle import read_toc
 from ..witcher3.game_files import game_files
@@ -29,7 +30,7 @@ from ..witcher3.mods_settings import ModSettings, read_mods_settings
 from ..witcher3.source_file import SourceFile
 from .installed import Installed, installed_build, is_smoothui_folder
 from .load_order import Mod, compare, load_order, make_mods, undetermined_for
-from .screens import screen_name
+from .screens import file_name, screen_name
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +92,8 @@ class FileResult:
 
 class ScreenOff(NamedTuple):
     """The user's choice not to merge a mod's copy of a screen (see game.Settings.screens_off), and what it
-    was made with, to tell when merging it may work now (see state.changed_since_off; None if not known)"""
+    was made with, to tell when merging it may work now (see state.changed_since_off; None if not known). Or
+    a rule of ours doing the same (a dont-merge line, see mod_reviews.py): then it has a reason, and no copy."""
     path: str       # profile key
     mod: str        # the mod's folder
     since: str      # the date it was chosen (ISO)
@@ -99,6 +101,7 @@ class ScreenOff(NamedTuple):
     crc32: int | None = None
     reviews: str | None = None      # the reviews of mods' code then (mod_reviews.sha256)
     tools: str | None = None        # the version of Smooth UI Tools then
+    reason: str | None = None       # None: the user's choice; else our rule's reason (mod_reviews.ALREADY_SMOOTH, ...)
 
 
 @dataclass(slots=True)
@@ -119,7 +122,8 @@ class Scan:
     # them out, and the game shows its own copies (or the mods')
     groups_off: frozenset[str] = frozenset()
     # The files the user chose not to merge, while the copy they chose that for is the one that would be
-    # patched: {profile key: the choice}. They have no winner either. One of a group's files turns off the
+    # patched, and those that a dont-merge line of ours (see mod_reviews.py) leaves out for the mod whose copy
+    # that is: {profile key: the choice or rule}. They have no winner either. One of a group's files turns off the
     # whole group (it is merged whole or not at all), so those get its choice too.
     screens_off: dict[str, ScreenOff] = field(default_factory=dict)
     # For each of those: the copy that would be patched, were it not off
@@ -161,9 +165,10 @@ def entry_needed(order: list[Mod], ours: ModSettings | None) -> bool:
 
 
 def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screens_off=(),
-         modio_root: Path | None = None, manifests=None) -> Scan:
+         modio_root: Path | None = None, manifests=None, reviews: ModReviews | None = None) -> Scan:
     """Scan the game's Mods\\ folder, with the load order from mods_settings (the path of mods.settings).
-    groups_off: see Scan.groups_off; screens_off: the user's ScreenOffs (see Scan.screens_off).
+    groups_off: see Scan.groups_off; screens_off: the user's ScreenOffs (see Scan.screens_off); reviews:
+    the reviews of mods' code, for the dont-merge lines in them (none if None).
 
     modio_root is the folder holding mod.io's mods (default: found from %PUBLIC%); manifests ({version:
     manifest}) replace the release manifests the merger has, for tests. Fails (SmoothUIError) only if
@@ -220,7 +225,7 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
         elif key in unshipped:
             result.winner = game.get(key)
     problems += modio_problems(keys, modio_root)
-    off_now = _screens_off(files, group_of, screens_off)
+    off_now = _screens_off(files, group_of, screens_off, reviews)
     off_copies = {key: files[key].winner for key in off_now if files[key].winner is not None}
     for key in off_now:
         files[key].winner = None
@@ -228,13 +233,20 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
                 screens_off=off_now, off_copies=off_copies)
 
 
-def _screens_off(files, group_of, screens_off) -> dict[str, ScreenOff]:
+def _screens_off(files, group_of, screens_off, reviews) -> dict[str, ScreenOff]:
     """See Scan.screens_off"""
     chosen = {(profile_key(choice.path), choice.mod.lower()): choice for choice in screens_off}
-    off = {key: chosen[key, result.winner.origin.lower()] for key, result in files.items()
-           if result.winner is not None and (key, result.winner.origin.lower()) in chosen}
+    off = {}
+    for key, result in files.items():
+        if result.winner is None:
+            continue
+        mod = result.winner.origin
+        if (key, mod.lower()) in chosen:    # the user's choice comes first: its text and date are the ones shown
+            off[key] = chosen[key, mod.lower()]
+        elif reviews and (reason := reviews.dont_merge(mod, file_name(key), group_of.get(key))):
+            off[key] = ScreenOff(key, mod, "", reason=reason)
     groups = {}
-    for key, choice in sorted(off.items()):
+    for key, choice in sorted(off.items(), key=lambda item: (item[1].reason is not None, item[0])):
         if key in group_of:
             groups.setdefault(group_of[key], choice)
     return off | {key: groups[group] for key, group in group_of.items() if group in groups and key not in off}

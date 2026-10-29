@@ -27,6 +27,13 @@ warning about it (see merger/policy.py). It applies while the warning does: if t
 changes it (unless "@any"), it no longer does. Tools from before these lines (v0.9.1 and older) skip them
 as lines they can't read.
 
+"dont-merge <reason> <screen> [<screen> ...]" leaves out those screens of the mod's, and
+"dont-merge <reason> all except <screen> [<screen> ...]" all of its screens but those, whatever the
+warnings (a screen is a file name as the merger's log shows it, e.g. gwint_game, or a group's name, e.g.
+hud, for all of the group's files). The reason, "already-smooth" (the mod's copy is already smooth in the
+120 fps build) or "known-broken", picks the text the user is shown. A reason this tools version doesn't
+know still leaves the screen out. Tools from before these lines skip them too.
+
 Light: the launch check reads which version of the file is used (sha256).
 """
 
@@ -49,12 +56,30 @@ MOD_REVIEWS = "reviewed_mod_warnings.txt"
 ANY = "any"
 REVIEW = re.compile(rf"\S+ \S+ @(?:[0-9a-f]{{8}}|{ANY})")
 LEAVE_OUT = "leave-out"
+DONT_MERGE = "dont-merge"
+ALREADY_SMOOTH = "already-smooth"
+KNOWN_BROKEN = "known-broken"
+DONT_MERGE_LINE = re.compile(rf"{DONT_MERGE} ([\w-]+) (?!all except$)(all except )?([\w-]+(?: [\w-]+)*)")
+
+
+@dataclass(frozen=True, slots=True)
+class DontMerge:
+    """One dont-merge line"""
+    reason: str                 # ALREADY_SMOOTH, KNOWN_BROKEN, or a word from newer tools
+    names: frozenset[str]       # screens (file names or groups' names), lowercase
+    all_except: bool            # leave out all screens but names, instead of names
+
+    def leaves_out(self, name: str, group: str | None) -> bool:
+        listed = name.lower() in self.names or (group is not None and group.lower() in self.names)
+        return listed != self.all_except
 
 
 @dataclass(frozen=True, slots=True)
 class ModReviews:
     # (the mods' pattern, their reviews, their leave-out lines without "leave-out ")
     groups: tuple[tuple[re.Pattern, frozenset[str], frozenset[str]], ...] = ()
+    # (the mods' pattern, their dont-merge lines)
+    dont_merges: tuple[tuple[re.Pattern, tuple[DontMerge, ...]], ...] = ()
     sha256: str | None = None   # load(): of the file read (None: none), which a package records (see sha256())
 
     def for_mod(self, folder: str) -> set[str]:
@@ -67,6 +92,12 @@ class ModReviews:
         found = {review, f"{review.rsplit(' @', 1)[0]} @{ANY}"}
         return any(pattern.fullmatch(folder) and not found.isdisjoint(leave_outs)
                    for pattern, _, leave_outs in self.groups)
+
+    def dont_merge(self, folder: str, name: str, group: str | None = None) -> str | None:
+        """The reason a dont-merge line leaves out a mod's copy of a screen (name: its file name, e.g.
+        panel_inventory; group: the group it is part of), or None if none does"""
+        return next((rule.reason for pattern, rules in self.dont_merges if pattern.fullmatch(folder)
+                     for rule in rules if rule.leaves_out(name, group)), None)
 
 
 def path() -> Path | None:
@@ -105,21 +136,28 @@ def load() -> ModReviews:
 def parse(text: str) -> tuple[ModReviews, list[str]]:
     """(the reviews in a file's text, a line for each problem)"""
     groups, problems = [], []
-    group = None    # [pattern, reviews, leave-outs] of the last header; its pattern is None if it isn't valid
+    group = None    # [pattern, reviews, leave-outs, dont-merges] of the last header; its pattern is None if it isn't valid
     for number, line in enumerate(text.splitlines(), 1):
         line = " ".join(re.split(r"(?:^|\s)#", line, maxsplit=1)[0].split())
         if not line:
             continue
         if line.endswith(":"):
             try:
-                group = [re.compile(line[:-1].strip(), re.IGNORECASE), set(), set()]
+                group = [re.compile(line[:-1].strip(), re.IGNORECASE), set(), set(), []]
             except re.error as e:
                 problems.append(f"line {number}: '{line[:-1].strip()}' isn't a valid regular expression ({e}), so "
                                 "the reviews below it are skipped")
-                group = [None, set(), set()]
+                group = [None, set(), set(), []]
             groups.append(group)
         elif group is None:
             problems.append(f"line {number}: a review before the first header ('<mod folder pattern>:'): skipped")
+        elif line.startswith(f"{DONT_MERGE} "):
+            found = DONT_MERGE_LINE.fullmatch(line)
+            if found:
+                group[3].append(DontMerge(found[1], frozenset(found[3].lower().split()), bool(found[2])))
+            else:
+                problems.append(f"line {number}: '{line}' isn't a review ('{DONT_MERGE} <reason> [all except ]"
+                                "<screen> [<screen> ...]'): skipped")
         elif line.startswith(f"{LEAVE_OUT} ") and REVIEW.fullmatch(left := line.removeprefix(f"{LEAVE_OUT} ")):
             group[2].add(left)
         elif not REVIEW.fullmatch(line):
@@ -127,5 +165,7 @@ def parse(text: str) -> tuple[ModReviews, list[str]]:
                             f"@<hash or {ANY}>'): skipped")
         else:
             group[1].add(line)
-    return ModReviews(tuple((pattern, frozenset(reviews), frozenset(leave_outs)) for pattern, reviews, leave_outs
-                            in groups if pattern is not None and (reviews or leave_outs))), problems
+    valid = [group for group in groups if group[0] is not None]
+    return ModReviews(tuple((pattern, frozenset(reviews), frozenset(leave_outs)) for pattern, reviews, leave_outs, _
+                            in valid if reviews or leave_outs),
+                      tuple((pattern, tuple(rules)) for pattern, _, _, rules in valid if rules)), problems

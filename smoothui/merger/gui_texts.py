@@ -11,6 +11,7 @@ from collections import Counter
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
+from .. import mod_reviews
 from ..witcher3.source_file import GAME_FILES
 from .installed import Status
 from .scan import FileResult, is_own_folder
@@ -107,6 +108,11 @@ DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files. You can turn m
 TURN_ON = "Turn merging on again"
 TURN_ON_NOTE = "If {mod} or Smooth UI Tools was updated since, it may merge now."
 TURNED_OFF = "Merging is turned off for: {screens}."
+# Screens that Smooth UI itself leaves out for a mod (a dont-merge line, see mod_reviews.py), by its reason; the
+# last, for a reason from newer tools. {screens}: the first few, then how many more
+ALREADY_SMOOTH = "Already smooth with {mod}, so not merged: {screens}."
+LEFT_OUT_FOR = "Not merged, as Smooth UI leaves them out for {mod}: {screens}."
+MAX_RULE_SCREENS = 3
 # The same, for those that a trial found would merge now (see turn_on_note)
 MERGES_NOW = "Turned off, but they merge now: {screens}."
 MERGES_NOW_NOTE = "It merges now: {what} {was} updated since."
@@ -269,6 +275,7 @@ CAUSES = {
     "group left out": "The HUD only works if all of it is merged, so it is left out.",
     "setting": "The \"Merge the HUD too\" setting changed since the last merge.",
     "by choice": "Your choice of screens not to merge changed since the last merge.",
+    "by rule": "Smooth UI's list of screens not to merge changed since the last merge.",
 }
 # What a Smooth UI that can't be used costs, beyond the mods' screens (by installed.Status)
 RISKS = {
@@ -467,11 +474,15 @@ def _checked(found: Check, stale, merges_now=()):
     # Up to date: what the merged patches hold, and what they can't
     causes = [(_cause(file), file.winner) for file in found.states
               if file.state == State.UNDETERMINED
-              or (file.state == State.NOT_HELD and file.cause not in ("unchanged", "turned off", "known broken", "by choice"))
+              or (file.state == State.NOT_HELD
+                  and file.cause not in ("unchanged", "turned off", "known broken", "by choice", "by rule"))
               or file.cause == "fixes"]
     patched = [(file.winner, file.path, file.group) for file in found.states if file.state == State.UP_TO_DATE]
     known = _screens(KNOWN_BROKEN, ((file.path, file.group, file.winner) for file in found.states
-                                    if file.state == State.NOT_HELD and file.cause == "known broken"))
+                                    if file.state == State.NOT_HELD and (file.cause == "known broken" or (
+                                        file.cause == "by rule" and file.reason == mod_reviews.KNOWN_BROKEN))))
+    known += _by_rule([file for file in found.states if file.state == State.NOT_HELD and file.cause == "by rule"
+                       and file.reason != mod_reviews.KNOWN_BROKEN])
     off = [file for file in found.states if file.state == State.NOT_HELD and file.cause == "by choice"]
     now_groups = {file.group for file in off if file.path in merges_now and file.group}
     now = [file for file in off if file.path in merges_now or file.group in now_groups]
@@ -533,6 +544,8 @@ def row_status(file: FileState) -> tuple[str, str]:
     if state == State.NOT_HELD:
         return {"unchanged": (OK, "Already smooth"), "known broken": (INFO, "Known not to work"),
                 "by choice": (INFO, "Turned off"),
+                "by rule": (INFO, "Already smooth" if file.reason == mod_reviews.ALREADY_SMOOTH else
+                            "Known not to work" if file.reason == mod_reviews.KNOWN_BROKEN else "Left out"),
                 "failed": (ERROR, "Can't merge"),
                 "mod failed": (ERROR, "Mod left out"), "group left out": (WARNING, "Left out with its group"),
                 "turned off": (OK, "Turned off")}.get(cause, (ERROR, "Left out"))
@@ -540,9 +553,9 @@ def row_status(file: FileState) -> tuple[str, str]:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
                 "load order": (WARNING, "Load order changed"),
                 "setting": (WARNING, "Setting changed"),
-                "by choice": (WARNING, "Setting changed")}.get(cause, (WARNING, "Mod updated"))
-    if state == State.NOT_BUILT and cause in ("setting", "by choice"):
-        return WARNING, "Setting changed"
+                "by choice": (WARNING, "Setting changed"), "by rule": (WARNING, "Rules changed")}.get(cause, (WARNING, "Mod updated"))
+    if state == State.NOT_BUILT and cause in ("setting", "by choice", "by rule"):
+        return WARNING, "Rules changed" if cause == "by rule" else "Setting changed"
     return {State.NOTHING_TO_DO: (OK, "Smooth UI's own copy"), State.NOT_BUILT: (WARNING, "Not merged yet"),
             State.NO_LONGER_NEEDED: (WARNING, "Mod removed"), State.DAMAGED: (ERROR, "Damaged"),
             State.OVERRIDDEN: (WARNING, "Another mod loads first"),
@@ -680,6 +693,23 @@ def _screens(sentence, files) -> tuple[str, ...]:
     mod)); a group is named once"""
     names = sorted({f"{group_name(group) if group else screen_name(path)} ({mod})" for path, group, mod in files})
     return (sentence.format(screens=_join(names)),) if names else ()
+
+
+def _by_rule(files) -> tuple[str, ...]:
+    """The sentences for screens that Smooth UI leaves out for mods, one per mod and reason (files: their
+    FileStates); a group is named once, and a long list is cut"""
+    found = {}
+    for file in files:
+        name = group_name(file.group) if file.group else screen_name(file.path)
+        found.setdefault((file.reason == mod_reviews.ALREADY_SMOOTH, file.winner), set()).add(name)
+    sentences = []
+    for (smooth, mod), names in sorted(found.items(), key=lambda item: (not item[0][0], str(item[0][1]).lower())):
+        names = sorted(names)
+        shown = names[:MAX_RULE_SCREENS]
+        more = len(names) - len(shown)
+        listed = _join(shown) if not more else f"{', '.join(shown)} and {more} more"
+        sentences.append((ALREADY_SMOOTH if smooth else LEFT_OUT_FOR).format(mod=mod, screens=listed))
+    return tuple(sentences)
 
 
 def _cause(file: FileState) -> str:

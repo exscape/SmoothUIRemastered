@@ -9,6 +9,21 @@
 #                                      the opposite: that warning means the mod's copy doesn't work with Smooth UI,
 #                                      so the merger leaves it out as known not to work, instead of warning about it.
 #                                      Tools v0.9.1 and older skip these lines (with a line in their log).
+#     dont-merge <reason> <screen> [<screen> ...]
+#     dont-merge <reason> all except <screen> [<screen> ...]
+#                                      leave out these screens of the mod's (or all but these), whatever the warnings.
+#                                      <screen> is a file name as the log shows it (panel_inventory, gwint_game) or a
+#                                      group's name (hud: all of its files, including ones a mod adds). <reason> picks
+#                                      the text the user is shown:
+#                                        already-smooth  the copy is already smooth in the 120 fps build (it runs at 120 fps
+#                                                        or more), but merging it only gives warnings or failures. Mind:
+#                                                        time-based tweens don't make a screen smooth.
+#                                        known-broken    merging it gives a wrong result, and it can't be made smooth. This
+#                                                        includes a 60 fps screen that can't be merged cleanly.
+#                                      A screen the merger can merge cleanly gets no line. Tools v0.9.1 and older skip these
+#                                      lines too (with a line in their log), so the mod is treated as before for them:
+#                                      NEVER add a review for a warning in a screen a dont-merge line leaves out, unless
+#                                      merging that screen would be fine, as v0.9.1 would then merge it.
 #
 # A note should say *why* each one is harmless (or doesn't work). Warnings in the game's own code go in
 # config/reviewed_warnings.txt.
@@ -54,3 +69,13 @@ modCMFMinimapPanel:
 mod0000_ConjunctionMapFramework:
     leave-out sets-frame-rate MapMenu.cmfApplyMotion @any           # panel_worldmap: sets the frame rate
     leave-out sets-frame-rate MapMenu.cmfMotionRemoved @any         # panel_worldmap: puts the old one back
+
+# --- UI Remastered: its HUD is left out
+# It doesn't ship hud.redswf, so its HUD modules run at the game's 24 fps (the 11 hud_* files' own rates are not used).
+# Merging would make them 120 fps, but two of its modules count fades per frame (quests: alpha += 0.16 / -= 0.24 and
+# an animation += 0.08 per frame; wolf head: 0.16 / 0.1, and 0.34 / 0.25 after the radial menu), so their fades would
+# run 5x too fast (about 50 ms: nearly instant). The rest of its HUD code is harmless. Checked 2026-10-29. Its other
+# screens need no line: they are at 120 fps or more, which the merger keeps by itself (gwint_game and panel_common get
+# our fixes only).
+mod0000_UIRemasteredEdition:
+    dont-merge known-broken hud

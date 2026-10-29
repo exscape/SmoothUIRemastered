@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
+from .. import mod_reviews
 from ..common import fail, to_native, to_windows
 from ..files import make_dirs, read_file, write_file
 from ..paths import APP_DIR, DATA_DIR
@@ -66,8 +67,9 @@ def screens_off(settings: Settings | None) -> tuple[ScreenOff, ...]:
 
 
 def turned_off(settings: Settings | None) -> dict:
-    """What the settings (None: their defaults) turn off, as scan.scan's options (groups_off, screens_off)"""
-    return {"groups_off": groups_off(settings), "screens_off": screens_off(settings)}
+    """What the settings (None: their defaults) turn off, as scan.scan's options (groups_off, screens_off), and
+    the reviews in use, whose dont-merge lines turn off more (reviews)"""
+    return {"groups_off": groups_off(settings), "screens_off": screens_off(settings), "reviews": mod_reviews.load()}
 
 
 def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
