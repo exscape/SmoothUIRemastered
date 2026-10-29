@@ -254,7 +254,7 @@ def _whole_groups(scan: Scan, files: list[PackageFile]) -> list[PackageFile]:
         found = ([f"{_join(cant)} can't be merged"] if cant else []) + \
                 ([f"{_join(no_copy)} {'has' if len(no_copy) == 1 else 'have'} no copy to merge"] if no_copy else [])
         if found:
-            causes[group] = " and ".join(found)
+            causes[group] = "; ".join(found)
     result = []
     for file in files:
         group = scan.group_of.get(file.path)

@@ -156,7 +156,6 @@ from .gui_texts import (
     HUD_HEADING,
     INFO,
     KNOWN_BROKEN_ANYWAY_NOTE,
-    KNOWN_BROKEN_QUESTION,
     LATER,
     LAUNCHER,
     LAUNCHER_HEADING,
@@ -225,6 +224,7 @@ from .gui_texts import (
     capitalized,
     dont_merge,
     dont_merge_texts,
+    known_broken_question,
     left_out,
     merging_status,
     release_notes,
@@ -1264,7 +1264,8 @@ class MergerWindow:
         failed = any(file.state == State.NOT_HELD and file.cause in ("failed", "mod failed") for file in members)
         if left and not failed and known_broken:
             text, note = PATCH_ANYWAY, KNOWN_BROKEN_ANYWAY_NOTE
-            question = KNOWN_BROKEN_QUESTION.format(mod=state.winner, screen=row_name(state))
+            question = known_broken_question(sorted({file.winner for file in members if file.state == State.NOT_HELD
+                                                     and file.cause == "known broken"}, key=str.lower), row_name(state))
             command = lambda: ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question, warning=True) and self.merge(
                 self.stale, patch_anyway=left)
         elif left and not failed:
@@ -1285,7 +1286,8 @@ class MergerWindow:
                   if file.cause == "by choice" and file.path in self.found.scan.screens_off}
         if chosen:
             changed = next((self.merges_now[file.path] for file in members if file.path in self.merges_now), None)
-            actions.append((TURN_ON, turn_on_note(state.winner, changed), lambda: self.turn_on(chosen)))
+            mods = sorted({choice.mod for choice in chosen}, key=str.lower)
+            actions.append((TURN_ON, turn_on_note(mods, changed), lambda: self.turn_on(chosen)))
         widgets = []
         for text, note, command in actions:
             buttons = QHBoxLayout()

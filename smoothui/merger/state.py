@@ -179,24 +179,27 @@ def not_merged(status: str, copy: str, mod: str, *, reason: str | None = None, g
     return f"{copy} {WHY.get(reason) or WHY.get(status, status)}, so it isn't merged."
 
 
-def left_out_by_rule(choice, group: str | None = None) -> str:
+def left_out_by_rule(choice, group: str | None = None, held: bool = False) -> str:
     """Why a copy of a screen that our own rule leaves out (a dont-merge line; choice: its ScreenOff) isn't
     merged, for the user: by the rule's reason. A group's file: said of the group, the same for each of its
-    files."""
+    files (not naming the file, so that they are told as one). held: the merged patches still hold it."""
     copy = f"{choice.mod}'s copy"
     if choice.reason == mod_reviews.ALREADY_SMOOTH:
         clause = "already smooth"
     elif choice.reason == mod_reviews.KNOWN_BROKEN:
         clause = "known not to work with Smooth UI"
     else:   # a reason from newer tools
-        clause = "left out by Smooth UI for this mod"
+        clause = None
+    name = group_name(group) if group else None
+    if held:
+        why = f" ({choice.mod}'s {name} is {clause})" if group and clause else f" ({clause})" if clause else ""
+        return (f"Smooth UI now leaves {f'the {name}' if group else copy} out{why}, but the merged patches still "
+                "hold it: merge again.")
     if group:
-        # (Not naming the file: each of the group's files that a rule leaves out says the same, so that they are told as one)
-        return (f"not merged, as the {group_name(group)} is merged whole or not at all, and {choice.mod}'s "
-                f"copy of it is {clause}.")
+        return f"{choice.mod}'s {name} is {clause or 'left out by Smooth UI for this mod'}, so the {name} isn't merged."
     if choice.reason == mod_reviews.ALREADY_SMOOTH:
         return f"{copy} is already smooth, so Smooth UI leaves it as it is."
-    return f"{copy} is {clause}, so it isn't merged."
+    return f"{copy} is {clause or 'left out by Smooth UI for this mod'}, so it isn't merged."
 
 
 def merged_anyway(copy: str, reason: str | None, since: str = "") -> str:
@@ -282,20 +285,21 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.NOT_HELD, f"merging the {name} is turned off in the settings. {shows}", cause="turned off")
         elif key in result.screens_off and result.screens_off[key].reason is not None:
             choice = result.screens_off[key]
-            text = left_out_by_rule(choice, groups.get(key))
+            text = left_out_by_rule(choice, groups.get(key), held=key in toc)
             shows = _shows(file, choice.mod, groups.get(key))
             if key in toc:
-                state(State.CHANGED, f"{text} But the merged patches hold it: merge again. {shows}", Severity.MEDIUM, needs_build=True, cause="by rule", reason=choice.reason, origin=choice.mod)
+                state(State.CHANGED, f"{text} {shows}", Severity.MEDIUM, needs_build=True, cause="by rule",
+                      reason=choice.reason, origin=choice.mod)
             else:
                 state(State.NOT_HELD, f"{text} {shows}", cause="by rule", reason=choice.reason, origin=choice.mod)
         elif key in result.screens_off:
             choice = result.screens_off[key]
             shows = _shows(file, choice.mod, groups.get(key))
-            since = f" (since {choice.since})" if choice.since else ""
             # The same for each of a group's files (the chosen one too), so that they are told as one
-            what = (f"merging the {group_name(groups[key])} is turned off, as merging {choice.mod}'s copy of "
-                    f"{screen_name(choice.path)} is{since}" if key in groups else
-                    f"merging {choice.mod}'s copy is turned off{since}")
+            what = (f"merging the {group_name(groups[key])} is turned off: you chose not to merge {choice.mod}'s "
+                    f"copy of {screen_name(choice.path)}{f' (on {choice.since})' if choice.since else ''}"
+                    if key in groups else
+                    f"merging {choice.mod}'s copy is turned off{f' (since {choice.since})' if choice.since else ''}")
             if key in toc:
                 state(State.CHANGED, f"{what}, but the merged patches hold it: merge again. {shows}",
                       Severity.MEDIUM, needs_build=True, cause="by choice", origin=choice.mod)
@@ -377,7 +381,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                   cause="by rule")
         elif key in screens_were_off:
             what = f"the {group_name(groups[key])}" if key in groups else _copy_of(origin)
-            state(State.NOT_BUILT, f"merging {what} was turned on again since the last merge: merge again",
+            state(State.NOT_BUILT, f"merging {what} is no longer turned off since the last merge: merge again",
                   Severity.MEDIUM, cause="by choice")
         elif groups.get(key) in was_off:
             state(State.NOT_BUILT, f"merging the {group_name(groups[key])} was turned on in the settings since the last "

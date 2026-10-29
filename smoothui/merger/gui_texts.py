@@ -93,11 +93,12 @@ PATCH_ANYWAY_CODE_QUESTION = ("These screens use code Smooth UI hasn't been chec
                               "each one in its details in the list.")
 # The same, for a screen known not to work (in its details only, never on the card)
 KNOWN_BROKEN_ANYWAY_NOTE = "It is known not to work with Smooth UI, so it will most likely look or behave wrong."
-KNOWN_BROKEN_QUESTION = ("{mod}'s copy of {screen} is known not to work with Smooth UI.\n\n"
+# {copies}: e.g. "modA's copy of Inventory is" (see known_broken_question)
+KNOWN_BROKEN_QUESTION = ("{copies} known not to work with Smooth UI.\n\n"
                          "Merge it anyway? It will most likely look or behave wrong. You can revert it later, in "
                          "its details in the list.")
 # On a card that is otherwise fine
-KNOWN_BROKEN = "Not merged, as known not to work with Smooth UI: {screens}."
+KNOWN_BROKEN = "Left as they are, as they don't work with Smooth UI: {screens}."
 # The user's choice not to merge a mod's copy (in the details of a screen left out), and its revert
 DONT_MERGE = "Don't merge it"
 DONT_MERGE_NOTE = "The game then uses {mod}'s own copy. You can turn merging on again here."
@@ -106,7 +107,7 @@ DONT_MERGE_MOD_NOTE = "The game then uses {mod}'s own copies. You can turn mergi
 # For a group's row (see dont_merge_texts)
 DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files. You can turn merging on again here."
 TURN_ON = "Turn merging on again"
-TURN_ON_NOTE = "If {mod} or Smooth UI Tools was updated since, it may merge now."
+TURN_ON_NOTE = "If {mods} or Smooth UI Tools was updated since, it may merge now."
 TURNED_OFF = "Merging is turned off for: {screens}."
 # Screens that Smooth UI itself leaves out for a mod (a dont-merge line, see mod_reviews.py), by its reason; the
 # last, for a reason from newer tools. {screens}: the first few, then how many more
@@ -114,8 +115,8 @@ ALREADY_SMOOTH = "Already smooth with {mod}, so not merged: {screens}."
 LEFT_OUT_FOR = "Not merged, as Smooth UI leaves them out for {mod}: {screens}."
 MAX_RULE_SCREENS = 3
 # The same, for those that a trial found would merge now (see turn_on_note)
-MERGES_NOW = "Turned off, but they merge now: {screens}."
-MERGES_NOW_NOTE = "It merges now: {what} {was} updated since."
+MERGES_NOW = "Turned off, but would now merge: {screens}. You can turn merging on again in its details."
+MERGES_NOW_NOTE = "It would merge now: {what} {was} updated since."
 REVERT = "Revert to the mod's own copy"
 REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate."
 # The same, for a file in a group (e.g. the HUD): reverting one leaves the whole group out
@@ -249,8 +250,8 @@ MODS = {
     "changed": ("{count} changed since the last merge: {mods}.", "{count} changed since the last merge: {mods}."),
     "not merged": ("{count} contains screens that aren't merged: {mods}.",
                  "{count} contain screens that aren't merged: {mods}."),
-    "left out": ("{count} has screens that can't be fully merged; see details below.",
-                 "{count} have screens that can't be fully merged; see details below."),
+    "left out": ("{count} has screens that can't be fully merged; see the list below.",
+                 "{count} have screens that can't be fully merged; see the list below."),
     "fixes": ("{count} has screens merged without some fixes: {mods}.",
               "{count} have screens merged without some fixes: {mods}."),
 }
@@ -262,7 +263,7 @@ GAME_COPIES = {
     "fixes": "The HUD is merged without some fixes.",
 }
 # Below the sentences about mods' copies (left out, or merged without some fixes)
-REPORT_MODS = "Please write a bug report, with each mod's version."
+REPORT_MODS = f"Please report this ({WRITE_BUG_REPORT}), with each mod's version."
 NUMBERS = ("No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten")
 # The other causes, one sentence each: one with {mod} once per mod, one without it once
 CAUSES = {
@@ -656,12 +657,21 @@ def unchanged_screens(count) -> str:
     return f"{count} more screens use Smooth UI's own version, as no other mod changes them"
 
 
-def turn_on_note(mod: str, changed: list[str] | None) -> str:
-    """The note by Turn merging on again, for mod's copy; changed: what was updated since it was turned off,
-    if a trial found it would merge now (see state.changed_since_off), else None"""
+def turn_on_note(mods: list[str], changed: list[str] | None) -> str:
+    """The note by Turn merging on again, for the copies of mods (those the user chose not to merge); changed:
+    what was updated since it was turned off, if a trial found it would merge now (see
+    state.changed_since_off), else None"""
     if not changed:
-        return TURN_ON_NOTE.format(mod=mod)
+        return TURN_ON_NOTE.format(mods=", ".join(mods))
     return MERGES_NOW_NOTE.format(what=_join(changed), was="was" if len(changed) == 1 else "were")
+
+
+def known_broken_question(mods: list[str], screen: str) -> str:
+    """The question before merging a screen known not to work anyway, for the copies of mods (a group's row
+    may have several)"""
+    copies = (f"{mods[0]}'s copy of {screen} is" if len(mods) == 1
+              else f"The copies of {screen} from {_join(mods)} are")
+    return KNOWN_BROKEN_QUESTION.format(copies=copies)
 
 
 def dont_merge_texts(off: list[tuple[str, str]], group: str | None) -> tuple[str, str]:
