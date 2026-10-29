@@ -143,11 +143,6 @@ from .gui_texts import (
     DATA,
     DATA_HEADING,
     DELETE_FAILED,
-    DONT_MERGE,
-    DONT_MERGE_GROUP_NOTE,
-    DONT_MERGE_MOD,
-    DONT_MERGE_MOD_NOTE,
-    DONT_MERGE_NOTE,
     DOWNLOAD_PAGE,
     ERROR,
     FAILED,
@@ -230,6 +225,7 @@ from .gui_texts import (
     anyway_texts,
     capitalized,
     dont_merge,
+    dont_merge_texts,
     left_out,
     merging_status,
     release_notes,
@@ -246,7 +242,7 @@ from .gui_texts import (
 from .installed import Status
 from .package import remove_package
 from .scan import PACKAGE_FOLDER, ScreenOff, is_package_folder, scan
-from .screens import group_name, screen_label, screen_name
+from .screens import group_name, screen_label
 from .shortcut import create_shortcut, desktop_folder
 from .state import FileState, State, carried_force, changed_since_off
 
@@ -1285,15 +1281,7 @@ class MergerWindow:
         if text:
             actions.append((text, note, command))
         if off := dont_merge(members, self.found.states):
-            mod = off[0][1]
-            if state.group:
-                choice = next(path for path, _ in off)
-                text, note = DONT_MERGE, DONT_MERGE_GROUP_NOTE.format(group=group_name(state.group), mod=mod,
-                                                                      screen=screen_name(choice))
-            elif len(off) > 1:
-                text, note = DONT_MERGE_MOD.format(mod=mod), DONT_MERGE_MOD_NOTE.format(mod=mod)
-            else:
-                text, note = DONT_MERGE, DONT_MERGE_NOTE.format(mod=mod)
+            text, note = dont_merge_texts(off, state.group)
             actions.append((text, note, lambda: self.turn_off(off)))
         chosen = {self.found.scan.screens_off[file.path] for file in members
                   if file.cause == "by choice" and file.path in self.found.scan.screens_off}

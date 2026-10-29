@@ -99,13 +99,11 @@ KNOWN_BROKEN_QUESTION = ("{mod}'s copy of {screen} is known not to work with Smo
 KNOWN_BROKEN = "Not merged, as known not to work with Smooth UI: {screens}."
 # The user's choice not to merge a mod's copy (in the details of a screen left out), and its revert
 DONT_MERGE = "Don't merge it"
-DONT_MERGE_NOTE = ("The game then keeps showing {mod}'s own copy, at its original frame rate, and the merger stops "
-                   "warning about it. You can turn merging on again here.")
+DONT_MERGE_NOTE = "The game then uses {mod}'s own copy. You can turn merging on again here."
 DONT_MERGE_MOD = "Don't merge {mod}'s screens"
-DONT_MERGE_MOD_NOTE = ("The game then keeps showing {mod}'s own copies, at their original frame rate, and the merger "
-                       "stops warning about them. You can turn merging on again here.")
-DONT_MERGE_GROUP_NOTE = ("The {group} then stays unmerged while the game uses {mod}'s copy of {screen}, and the merger "
-                         "stops warning about it. You can turn merging on again here.")
+DONT_MERGE_MOD_NOTE = "The game then uses {mod}'s own copies. You can turn merging on again here."
+# For a group's row (see dont_merge_texts)
+DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files. You can turn merging on again here."
 TURN_ON = "Turn merging on again"
 TURN_ON_NOTE = "If {mod} or Smooth UI Tools was updated since, it may merge now."
 TURNED_OFF = "Merging is turned off for: {screens}."
@@ -245,8 +243,8 @@ MODS = {
     "changed": ("{count} changed since the last merge: {mods}.", "{count} changed since the last merge: {mods}."),
     "not merged": ("{count} contains screens that aren't merged: {mods}.",
                  "{count} contain screens that aren't merged: {mods}."),
-    "left out": ("{count} has screens that can't be fully merged: {mods}.",
-                 "{count} have screens that can't be fully merged: {mods}."),
+    "left out": ("{count} has screens that can't be fully merged; see details below.",
+                 "{count} have screens that can't be fully merged; see details below."),
     "fixes": ("{count} has screens merged without some fixes: {mods}.",
               "{count} have screens merged without some fixes: {mods}."),
 }
@@ -258,10 +256,7 @@ GAME_COPIES = {
     "fixes": "The HUD is merged without some fixes.",
 }
 # Below the sentences about mods' copies (left out, or merged without some fixes)
-REPORT_MODS = ("Please write a bug report, with each mod's version. The screens can then be checked, and either "
-               "merged, or marked as not working with Smooth UI.")
-# The same, when the only problem is fixes that can't apply
-REPORT_FIXES = "Please write a bug report, with each mod's version, so that the missing fixes can be looked into."
+REPORT_MODS = "Please write a bug report, with each mod's version."
 NUMBERS = ("No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten")
 # The other causes, one sentence each: one with {mod} once per mod, one without it once
 CAUSES = {
@@ -401,7 +396,8 @@ def _merged(result: BuildResult, stale, cant_merge):
     play = (PLAY,) if not notes and not cant_merge else ()
     buttons = ((PLAY_ANYWAY, *anyway, DONT_START) if stale
                else (*play, RESCAN, *anyway, *([(WRITE_BUG_REPORT, "bug_report")] if causes else [])))
-    return Card(WARNING, headline, _sentences(causes, [*report, *notes, *known]), buttons)
+    # (Not what is known not to work, or turned off: that is fine, and the problems come first)
+    return Card(WARNING, headline, _sentences(causes, [*report, *notes]), buttons)
 
 
 def left_out(found: Check | None, merged: BuildResult | None = None) -> list[str]:
@@ -487,7 +483,8 @@ def _checked(found: Check, stale, merges_now=()):
         anyway = anyway_button(len(left_out(found)), stale)
         buttons = (PLAY, *anyway, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge"), *anyway)
         # (Not for missing fixes alone: that card shows whenever the window opens, and a merge asks once)
-        return Card(WARNING, headline, _sentences(causes, [*_report(causes, fixes=False), *known]), buttons)
+        # (Not what is known not to work, or turned off: that is fine, and the problems come first)
+        return Card(WARNING, headline, _sentences(causes, _report(causes, fixes=False)), buttons)
     if patched:
         return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.", *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
@@ -504,9 +501,7 @@ def _report(causes, fixes=True) -> list[str]:
     """The card's request for a bug report, for causes ((key, mod), see _sentences): for screens left out, or
     (fixes) merged without some fixes; not for a group left out alone (another cause keeps it out)"""
     keys = {key for key, _ in causes}
-    if keys & {"left out", "failed", "mod failed"}:
-        return [REPORT_MODS]
-    return [REPORT_FIXES] if fixes and "fixes" in keys else []
+    return [REPORT_MODS] if keys & {"left out", "failed", "mod failed"} or (fixes and "fixes" in keys) else []
 
 
 def _unusable(installed, stale):
@@ -584,15 +579,15 @@ def _group_message(members: list[FileState]) -> str:
     some keep it out, only theirs: the others are left out as the group is, which is what matters."""
     keep_out = [file for file in members if file.cause != "group left out"]
     if keep_out and len(keep_out) < len(members):
-        return "\n".join([*(f"•  {file_name(file.path)}: {file.message}"
-                            for file in sorted(keep_out, key=lambda file: (row_rank(file), file.path))),
-                          f"•  {GROUP_LEFT_OUT.format(group=group_name(members[0].group))}"])
+        return "\n\n".join([*(f"•  {file_name(file.path)}: {file.message}"
+                              for file in sorted(keep_out, key=lambda file: (row_rank(file), file.path))),
+                            f"•  {GROUP_LEFT_OUT.format(group=group_name(members[0].group))}"])
     common = Counter(file.message for file in members).most_common(1)[0][0]
     others = sorted((file for file in members if file.message != common), key=lambda file: (row_rank(file), file.path))
     if not others:
         return common
     rest = len(members) - len(others)
-    return "\n".join([*(f"•  {file_name(file.path)}: {file.message}" for file in others),
+    return "\n\n".join([*(f"•  {file_name(file.path)}: {file.message}" for file in others),
                       f"•  {'The other file' if rest == 1 else f'The other {rest} files'}: {common}"])
 
 
@@ -656,6 +651,17 @@ def turn_on_note(mod: str, changed: list[str] | None) -> str:
     return MERGES_NOW_NOTE.format(what=_join(changed), was="was" if len(changed) == 1 else "were")
 
 
+def dont_merge_texts(off: list[tuple[str, str]], group: str | None) -> tuple[str, str]:
+    """(the button, its note) for a row's Don't merge, which turns off off (see dont_merge); group: the row's"""
+    mods = sorted({mod for _, mod in off}, key=str.lower)
+    if group:
+        return DONT_MERGE, DONT_MERGE_GROUP_NOTE.format(mods=f"{mods[0]}'s" if len(mods) == 1 else "the mods'",
+                                                        group=group_name(group))
+    if len(off) > 1:
+        return DONT_MERGE_MOD.format(mod=mods[0]), DONT_MERGE_MOD_NOTE.format(mod=mods[0])
+    return DONT_MERGE, DONT_MERGE_NOTE.format(mod=mods[0])
+
+
 def dont_merge(members: list[FileState], states: list[FileState]) -> list[tuple[str, str]]:
     """What a row's "Don't merge" turns off, as (path, mod): its files that are left out and keep it out (for
     its rescale's problems, or a failure; not known not to work, which doesn't warn), in mods' copies (not the
@@ -716,7 +722,12 @@ def _sentences(causes, notes=()) -> tuple[str, ...]:
     for kind, mods in kinds.items():
         names = sorted(mods.values(), key=str.lower)
         count = f"{NUMBERS[len(names)] if len(names) < len(NUMBERS) else len(names)} {'mod' if len(names) == 1 else 'mods'}"
-        sentences.append(MODS[kind][len(names) > 1].format(count=count, mods=_join(names)))
+        sentence = MODS[kind][len(names) > 1].format(count=count, mods=_join(names))
+        # Screens left out first: the rest (e.g. the HUD left out with them) follows from them
+        if kind == "left out":
+            sentences.insert(0, sentence)
+        else:
+            sentences.append(sentence)
     if len(sentences) > MAX_CAUSES:
         sentences[MAX_CAUSES - 1:] = [MORE_CAUSES.format(count=len(sentences) - MAX_CAUSES + 1)]
     return (*sentences, *notes)
