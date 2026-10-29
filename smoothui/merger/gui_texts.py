@@ -117,6 +117,8 @@ REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate.
 # The same, for a file in a group (e.g. the HUD): reverting one leaves the whole group out
 REVERT_GROUP = "Leave it out again"
 REVERT_GROUP_NOTE = "The {group} is then left out whole: the game shows it unpatched, at its original frame rate."
+# A group's row names its mods (see row_mods) while they fit in this many characters, else counts them
+MAX_ROW_MODS = 30
 # A group's row: after the files that keep it out, instead of each file left out with them
 GROUP_LEFT_OUT = "The rest of the {group} is left out too, as it is merged whole or not at all."
 
@@ -600,8 +602,21 @@ def row_name(file: FileState) -> str:
 
 
 def row_label(file: FileState, members) -> str:
-    """A row's name and its files, atop its details, e.g. Inventory (panel_inventory), or HUD (26 files)"""
-    return f"{group_name(file.group)} ({_count(len(members), 'file')})" if file.group else screen_label(file.path)
+    """A row's name and its files, atop its details, e.g. Inventory (panel_inventory), or HUD (26 files); for
+    a group's row whose mods the list only counts (see row_mods), its mods too"""
+    if not file.group:
+        return screen_label(file.path)
+    text = f"{group_name(file.group)} ({_count(len(members), 'file')})"
+    return f"{text} · {file.winner}" if row_mods(file) != (file.winner or "") else text
+
+
+def row_mods(file: FileState) -> str:
+    """The mod a row names in the list (whose copy it uses, or used); for a group's row, its mods (see
+    screen_rows), or if they are too long for the list's column, their count (e.g. 3 HUD mods)"""
+    text = file.winner or file.previous or ""
+    if file.group and len(text) > MAX_ROW_MODS:
+        return f"{len(text.split(', '))} {group_name(file.group)} mods"
+    return text
 
 
 def merging_status(patched: str | None) -> tuple[str, str]:

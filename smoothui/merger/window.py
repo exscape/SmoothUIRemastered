@@ -234,6 +234,7 @@ from .gui_texts import (
     merging_status,
     release_notes,
     row_label,
+    row_mods,
     row_name,
     row_rank,
     row_status,
@@ -1212,7 +1213,7 @@ class MergerWindow:
         tone, status = row_status(state)
         toggle = lambda: self.toggle_row(state.path)
         cells = [glyph(tone, on_click=toggle), label(row_name(state), on_click=toggle),
-                 label(state.winner or state.previous or "", tone="muted", on_click=toggle), label(status, on_click=toggle),
+                 label(row_mods(state), tone="muted", on_click=toggle), label(status, on_click=toggle),
                  label("▸", 16, tone="muted", on_click=toggle, family=SYMBOL_FONT)]
         cells[0].setFixedWidth(24)
         for column, cell in enumerate(cells):
