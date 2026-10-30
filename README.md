@@ -96,7 +96,7 @@ Feel free to [contact me on Nexus Mods](https://www.nexusmods.com/profile/aeluwa
 | `smoothui/common.py` | Various shared logic |
 | `smoothui/build/` | The build process: implements `build-main.py` (`main.py`), `build-compat.py` (`compat.py`) and `version-tool.py`, and reads profiles, override files and reviewed warnings (see `config/`) |
 | `smoothui/merger/` | Smooth UI Merger implementation (see `README_tools.md`) |
-| `smoothui/patcher/` | Binary patcher; creates new, higher framerate `.redswf` files from a given list of files |
+| `smoothui/patcher/` | Binary patcher; creates new, higher frame rate `.redswf` files from a given list of files |
 | `smoothui/patcher/swf_patcher/` | Rescales a single SWF: retimes its animations for the new frame rate, and adjusts the ActionScript code that depends on frame numbers |
 | `smoothui/patcher/fixes/` | Pre- or post-FPS patch edits. Fixes for base game bugs, and non-FPS-related Smooth UI features are added here. |
 | `smoothui/witcher3/` | Support library for Witcher 3-specific files (.redswf, .bundle, metadata.store) |

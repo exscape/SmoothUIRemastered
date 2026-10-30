@@ -1,7 +1,7 @@
 <!-- nexus:skip -->
 # Smooth UI Tools
 
-These tools are a companion to [Smooth UI Remastered](https://www.nexusmods.com/witcher3/mods/13526), which is required to use them. They make other UI mods work together with Smooth UI, by creating high framerate versions of those mods.  
+These tools are a companion to [Smooth UI Remastered](https://www.nexusmods.com/witcher3/mods/13526), which is required to use them. They make other UI mods work together with Smooth UI, by creating high frame rate versions of those mods.  
 You only need these tools if you use other UI mods that conflict with Smooth UI.  
 Download them from [their Nexus Mods page](https://www.nexusmods.com/witcher3/mods/15202).
 <!-- /nexus:skip -->
@@ -115,13 +115,13 @@ The merger also has the option to make the HUD smooth ("Merge the HUD too", on t
 In general, the effect is small, but it's also cheap to patch using the merger, so I recommend using it unless it causes issues with your HUD mods. (If it does, please send a bug report!)
 
 Without the merger, i.e. using Smooth UI Remastered by itself, it would not be safe to do, so there's no Smooth UI HUD package to download.  
-This is because the HUD is made up of many parts that only work together, and in a case where a compatibility patch would be needed but is missing, the HUD would break, rather than just be at the standard framerate.  
+This is because the HUD is made up of many parts that only work together, and in a case where a compatibility patch would be needed but is missing, the HUD would break, rather than just be at the standard frame rate.  
 The merger can ensure that such breakage doesn't occur.
 
-## Screens only mods use
+## Screens that only mods use
 
 Some screens are in the game's files, but the game never shows them: cut content that mods bring back, such as the Glossary's Storybook (the "Events" tab of Community GUI fixes, or the "Restored Content - Storybook" mod).  
-Smooth UI Remastered doesn't ship these, so it never gets in those mods' way, but if you have such a mod, the merger makes its screen smooth like any other, assuming it's a file known to it. If you modify a file that isn't handled, please open a bug report, and I'll look at supporting patching it.
+Smooth UI Remastered doesn't ship these, so it never gets in those mods' way, but if you have such a mod, the merger makes its screen smooth like any other, assuming it's a file known to it. If you use (or create) a mod that changes a screen that isn't handled, please open a bug report, and I'll look at supporting patching it.
 
 ## Updates
 
@@ -136,7 +136,7 @@ If the update fails, the old version stays as it was; you can then download the 
 
 - **Your mods are never changed:** The tools only write to their own `mod0000_SmoothUI_MergedPatches` mod, which they give priority in `mods.settings`. Everything else is left alone; deleting the patches reverts every change. (The `mods.settings` entry is harmless by itself, and mod managers may remove it automatically.)
 - **What the merger fixes:** the game uses only one mod's copy of each UI file. When other mods change a file that Smooth UI also changes, the merger takes the copy the game would use anyway (from the mod that comes first in your load order) and adds Smooth UI's changes to it. So Smooth UI's own place in the load order doesn't matter.
-- **What the merger doesn't do** is combine two **other** mods that change the same file: as without Smooth UI, only the first one's changes show, unless you install a compatibility patch for those two mods and place it above the original mods in the load order. The merger then uses that patch's copy and makes it high framerate.
+- **What the merger doesn't do** is combine two **other** mods that change the same file: as without Smooth UI, only the first one's changes show, unless you install a compatibility patch for those two mods and place it above the original mods in the load order. The merger then uses that patch's copy and makes it high frame rate.
 - **Load order:** the merged patches must load before every other UI mod (Priority 0 in `mods.settings`, which the merger sets). If another mod that ships one of the patched files is put ahead of them, the launcher notices and offers to fix it.
 - **Script merger:** Script Merger may show conflicts involving `.redswf` files. **If `mod0000_SmoothUI_MergedPatches` is shown at the top of the conflict, you can ignore these warnings:** it doesn't know that we have resolved the issue already.
 - **Game updates** may need a new version of Smooth UI.

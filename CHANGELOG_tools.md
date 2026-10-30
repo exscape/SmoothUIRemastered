@@ -1,8 +1,8 @@
 # v0.9.3
-* Improved: reduce warnings (mod X not merged, with a question to "Merge anyway") by making the merger smarter
-* Improved: support rescaling mods that raise a screen's framerate only (e.g. Community GUI, HoodSlots), restoring the original animation speed but adding smoothness.
-* Improved: support rescaling mods that ship unused game files (e.g. Community GUI's "Events", "Restored Content - Storybook", "Barber Anywhere")
-* Improved: accept further mods with unusual formats (older .redswf versions, multiple DoABC tags)
+* Improved: fewer "not merged" warnings: the merger is smarter, and doesn't need to ask as often.
+* Improved: support rescaling mods that raise a screen's frame rate only (e.g. Community GUI, HoodSlots), restoring the original animation speed but adding smoothness.
+* Improved: support rescaling mods that ship unused game files (e.g. Community GUI's "Events", "Restored Content - Storybook", "Barber Anywhere").
+* Improved: accept further mods with unusual formats (older .redswf versions, multiple DoABC tags).
 
 These are fairly large changes behind the scenes.
 
@@ -32,7 +32,7 @@ These are fairly large changes behind the scenes.
 
 # v0.9.1
 
-* Added: support merging the HUD, making the entire HUD high framerate. Also tested together with a few of the top HUD mods (SAHUD, Friendly HUD).
+* Added: support merging the HUD, making the entire HUD high frame rate. Also tested together with a few of the top HUD mods (SAHUD, Friendly HUD).
 * Fixed: allow mods with empty .bundle CRC values. Will allow some mods that previously failed to merge properly.
 * Fixed: the merger could report "The game was updated" when in fact mods are what had changed.
 * Build process reworked (use Nuitka instead of PyInstaller).

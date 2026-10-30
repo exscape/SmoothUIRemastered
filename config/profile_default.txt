@@ -52,7 +52,7 @@
 #
 # Files that are not listed here are either:
 # 1. missed by me; contact me if you think something needs to be added here
-# 2. not relevant (framerate field is not used)
+# 2. not relevant (frame rate field is not used)
 # 3. possibly noticeable, but not enough to be patched and cause compatibility issues
 #
 # Currently mainmenu falls under #3, but that may change (perhaps with an optional mod,
