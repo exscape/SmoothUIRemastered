@@ -33,10 +33,9 @@ OP_GETLOCAL0, OP_GETPROPERTY, OP_CALLPROPERTY = 0xD0, 0x66, 0x46
 
 
 def apply(swf: SwfEdit) -> FixResult:
-    abc = swf.abc
-    instance = next((i for i in abc.instances if abc.full_name_of(i.name) == CLASS), None)
-    if instance is None:
-        raise CantApply(f"found no class {CLASS}")
+    unit = swf.unit_of_class(CLASS)
+    abc = unit.abc
+    instance = next(i for i in abc.instances if abc.full_name_of(i.name) == CLASS)
     method = next((t.method for t in instance.traits if t.method is not None and abc.name_of(t.name) == METHOD), None)
     if method is None or method not in abc.bodies:
         raise CantApply(f"{CLASS} has no method {METHOD}")
@@ -64,7 +63,7 @@ def apply(swf: SwfEdit) -> FixResult:
         raise CantApply(f"{METHOD} has a branch into the id comparison")
     edits = {first: replacement, **{i: b"" for i in range(first + 1, last + 1)}}
     code, exceptions = assemble(body.code, instructions, edits, body.exceptions)
-    swf.replace_method_code(method, code, exceptions)
+    unit.replace_method_code(method, code, exceptions)
     return FixResult(_sprites_using(swf, abc, instance.name),
                      f"{METHOD} now unlights the hovered tab unless it is the list's selected one, "
                      "not any tab with the selected id")

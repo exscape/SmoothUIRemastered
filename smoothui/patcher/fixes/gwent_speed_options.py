@@ -76,12 +76,16 @@ OP_GETLEX, OP_GETLOCAL0, OP_GETLOCAL, OP_GETPROPERTY, OP_CALLPROPVOID = 0x60, 0x
 
 
 def apply(swf: SwfEdit) -> FixResult:
-    abc = swf.abc
+    # The hooks' constants go into one ABC's pools, so all the hooked classes must be in that DoABC tag
+    unit = swf.unit_of_class(MENU_CLASS)
+    for class_name in (TWEEN_CLASS, AI_CLASS, FX_CLASS):
+        if swf.unit_of_class(class_name).tag_index != unit.tag_index:
+            raise CantApply(f"{class_name} is in another DoABC tag than {MENU_CLASS}")
+    abc = unit.abc
     script_frames, not_sped_up = _fx_script_frames(swf)
     our_abc = _with_string(_abc_bytes(), SCRIPT_FRAMES_PLACEHOLDER, script_frames)
     ours = parse_abc(our_abc)
-    defined = {abc.full_name_of(instance.name) for instance in abc.instances}
-    if clash := defined & {ours.full_name_of(instance.name) for instance in ours.instances}:
+    if clash := swf.class_names() & {ours.full_name_of(instance.name) for instance in ours.instances}:
         raise CantApply(f"the file already defines {', '.join(sorted(clash))}")
     banners = swf.sprites_of_class(BANNER_CLASS)
     if len(banners) != 1:
@@ -136,7 +140,7 @@ def apply(swf: SwfEdit) -> FixResult:
                                                lambda local: bytes([OP_GETLEX]) + encode_u30(speed_class)
                                                + _getlocal(local) + bytes([OP_CALLPROPVOID])
                                                + encode_u30(on_card_fx) + encode_u30(1))
-    swf.replace_methods(bodies, additions)
+    unit.replace_methods(bodies, additions)
     swf.insert_abc(Tag(TagCode.DO_ABC, struct.pack("<I", DO_ABC_LAZY) + PACKAGE.encode() + b"\0" + our_abc,
                        long_header=True))
     return FixResult(banners, f"added {PACKAGE}.{CLASS}; GwintGameMenu.configUI installs it, "

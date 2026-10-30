@@ -48,6 +48,34 @@ class FixResult(NamedTuple):
     detail: str         # what it did, or why there was nothing to do
 
 
+class AbcEdit:
+    """One of the file's own DoABC tags, whose methods fixes replace (see SwfEdit.unit_of_class). Valid
+    until SwfEdit.insert_abc, which moves the tags."""
+
+    def __init__(self, swf: SwfEdit, tag_index: int):
+        self._swf = swf
+        self.tag_index = tag_index  # index in SwfEdit.tags
+
+    @property
+    def abc(self) -> AbcFile:
+        return self._swf._own_abc(self.tag_index)
+
+    def replace_method_code(self, method: int, code: bytes, exceptions: list):
+        """Give a method (by its index in this ABC) new bytecode and exception table"""
+        self.replace_methods({method: (code, exceptions)})
+
+    def replace_methods(self, bodies: dict[int, tuple[bytes, list]], additions: PoolAdditions | None = None):
+        """Give methods (by their index in this ABC) new bytecode and exception tables, with the
+        constants their code names that the ABC didn't have (made with PoolAdditions(self.abc))"""
+        swf, index = self._swf, self.tag_index
+        old = swf.tags[index]
+        prefix, _ = split_do_abc(old)
+        swf.tags[index] = Tag(TagCode.DO_ABC, prefix + serialize_abc(self.abc, bodies, additions=additions),
+                              old.long_header)
+        del swf._parsed[index]
+        swf.changed = True
+
+
 class SwfEdit:
     """A decompressed SWF body (the data after the 8-byte header), whose sprites fixes replace"""
 
@@ -59,13 +87,13 @@ class SwfEdit:
         self.tags = parse_tags(body, first_tag)
         self.changed = False
         self._added_abc = []        # DoABC tags added by insert_abc (not the file's own ActionScript)
-        self._abc = None            # the parsed ActionScript, once asked for
         self._index_tags()
 
     def _index_tags(self):
         self._sprite_index = {}     # character id -> index in self.tags
         self._sprites_of_class = {}
         self._abc_indices = []      # indices in self.tags of the file's own DoABC tags
+        self._parsed = {}           # index in self.tags -> the parsed ABC of that tag, once asked for
         for index, tag in enumerate(self.tags):
             if tag.code == TagCode.DEFINE_SPRITE:
                 self._sprite_index[parse_sprite_header(tag)[0]] = index
@@ -114,40 +142,37 @@ class SwfEdit:
         self.tags[index] = build_sprite(character_id, frame_count - frames_removed, tags, long_header=old.long_header)
         self.changed = True
 
-    @property
-    def abc(self) -> AbcFile:
-        """The file's ActionScript; CantApply unless it has exactly one DoABC tag"""
-        if len(self._abc_indices) != 1:
-            raise CantApply(f"expected 1 DoABC tag, found {len(self._abc_indices)}")
-        if self._abc is None:
-            self._abc = parse_abc(split_do_abc(self.tags[self._abc_indices[0]])[1])
-        return self._abc
+    def _own_abc(self, index: int) -> AbcFile:
+        if index not in self._parsed:
+            self._parsed[index] = parse_abc(split_do_abc(self.tags[index])[1])
+        return self._parsed[index]
+
+    def class_names(self) -> set[str]:
+        """The classes the file's own ActionScript defines, in all its DoABC tags"""
+        return {abc.full_name_of(instance.name) for abc in map(self._own_abc, self._abc_indices)
+                for instance in abc.instances}
+
+    def unit_of_class(self, class_name: str) -> AbcEdit:
+        """The DoABC tag of the file's own that defines class_name; CantApply unless exactly one does"""
+        found = [index for index in self._abc_indices
+                 if any(self._own_abc(index).full_name_of(instance.name) == class_name
+                        for instance in self._own_abc(index).instances)]
+        if not found:
+            raise CantApply(f"found no class {class_name}")
+        if len(found) > 1:
+            raise CantApply(f"class {class_name} is defined in {len(found)} DoABC tags")
+        return AbcEdit(self, found[0])
 
     def sprites_of_class(self, class_name: str) -> list[int]:
         """Ids of the sprites linked to class_name (none if there are none)"""
         return [i for i in self._sprites_of_class.get(class_name, []) if i in self._sprite_index]
 
-    def replace_method_code(self, method: int, code: bytes, exceptions: list):
-        """Give a method (by its index in the ABC file) new bytecode and exception table"""
-        self.replace_methods({method: (code, exceptions)})
-
-    def replace_methods(self, bodies: dict[int, tuple[bytes, list]], additions: PoolAdditions | None = None):
-        """Give methods (by their index in the ABC file) new bytecode and exception tables, with the
-        constants their code names that the file didn't have (made with PoolAdditions(self.abc))"""
-        index = self._abc_indices[0]
-        old = self.tags[index]
-        prefix, _ = split_do_abc(old)
-        self.tags[index] = Tag(TagCode.DO_ABC, prefix + serialize_abc(self.abc, bodies, additions=additions),
-                               old.long_header)
-        self._abc = None
-        self.changed = True
-
     def insert_abc(self, tag: Tag):
         """Add a DoABC tag (classes of our own) right after the file's own, so that its classes are
-        defined before anything runs. It is not part of self.abc."""
-        if tag.code != TagCode.DO_ABC or len(self._abc_indices) != 1:
-            raise CantApply(f"expected 1 DoABC tag, found {len(self._abc_indices)}")
-        self.tags.insert(self._abc_indices[0] + 1, tag)
+        defined before anything runs. It is not one of the file's own tags (see unit_of_class)."""
+        if tag.code != TagCode.DO_ABC or not self._abc_indices:
+            raise CantApply("the file has no DoABC tag")
+        self.tags.insert(self._abc_indices[-1] + 1, tag)
         self._added_abc.append(tag)
         self._index_tags()
         self.changed = True
