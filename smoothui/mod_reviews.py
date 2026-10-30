@@ -32,7 +32,17 @@ as lines they can't read.
 warnings (a screen is a file name as the merger's log shows it, e.g. gwint_game, or a group's name, e.g.
 hud, for all of the group's files). The reason, "already-smooth" (the mod's copy is already smooth in the
 120 fps build) or "known-broken", picks the text the user is shown. A reason this tools version doesn't
-know still leaves the screen out. Tools from before these lines skip them too.
+know still leaves the screen out. Tools from before these lines skip them too. The reason "before-X-Y-Z"
+leaves the screens out for tools older than vX.Y.Z only, for a mod that needs newer tools to merge: older
+ones see a reason they don't know. (Dashes: tools v0.9.2 and v0.9.3 skip a reason with dots.)
+
+"dont-stretch <screen> <pattern> [<pattern> ...]" never stretches those sprites in the mod's copy of the
+screen (a screen as for dont-merge), as an exclude in a profile does (see config/profile_default.txt): a
+class name regex, or "Class/instanceName" for sprites without a class (not sprite ids: they change when the
+mod does). For a mod whose code addresses those clips by frame number in ways the patcher can't follow, while they never
+play: stretching them would break that code, and leaving them alone changes nothing. A pattern that
+matches nothing is a rule issue, as in a profile. Tools from before these lines (v0.9.3 and older) skip
+them.
 
 Light: the launch check reads which version of the file is used (sha256).
 """
@@ -60,6 +70,10 @@ DONT_MERGE = "dont-merge"
 ALREADY_SMOOTH = "already-smooth"
 KNOWN_BROKEN = "known-broken"
 DONT_MERGE_LINE = re.compile(rf"{DONT_MERGE} ([\w-]+) (?!all except$)(all except )?([\w-]+(?: [\w-]+)*)")
+# A dont-merge reason for tools older than a version only
+BEFORE = re.compile(r"before-([0-9]+)-([0-9]+)-([0-9]+)")
+DONT_STRETCH = "dont-stretch"
+DONT_STRETCH_LINE = re.compile(rf"{DONT_STRETCH} ([\w-]+)((?: \S+)+)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,11 +89,23 @@ class DontMerge:
 
 
 @dataclass(frozen=True, slots=True)
+class DontStretch:
+    """One dont-stretch line"""
+    name: str           # the screen (a file name or a group's name), lowercase
+    patterns: tuple     # as parse_sprite_pattern gives them
+
+    def applies_to(self, name: str, group: str | None) -> bool:
+        return self.name == name.lower() or (group is not None and self.name == group.lower())
+
+
+@dataclass(frozen=True, slots=True)
 class ModReviews:
     # (the mods' pattern, their reviews, their leave-out lines without "leave-out ")
     groups: tuple[tuple[re.Pattern, frozenset[str], frozenset[str]], ...] = ()
     # (the mods' pattern, their dont-merge lines)
     dont_merges: tuple[tuple[re.Pattern, tuple[DontMerge, ...]], ...] = ()
+    # (the mods' pattern, their dont-stretch lines)
+    dont_stretches: tuple[tuple[re.Pattern, tuple[DontStretch, ...]], ...] = ()
     sha256: str | None = None   # load(): of the file read (None: none), which a package records (see sha256())
 
     def for_mod(self, folder: str) -> set[str]:
@@ -98,6 +124,12 @@ class ModReviews:
         panel_inventory; group: the group it is part of), or None if none does"""
         return next((rule.reason for pattern, rules in self.dont_merges if pattern.fullmatch(folder)
                      for rule in rules if rule.leaves_out(name, group)), None)
+
+    def dont_stretch(self, folder: str, name: str, group: str | None = None) -> tuple:
+        """The patterns of the sprites never to stretch in a mod's copy of a screen (name, group: as for
+        dont_merge)"""
+        return tuple(pattern for mod, rules in self.dont_stretches if mod.fullmatch(folder)
+                     for rule in rules if rule.applies_to(name, group) for pattern in rule.patterns)
 
 
 def path() -> Path | None:
@@ -121,7 +153,9 @@ def sha256() -> str | None:
 
 
 def load() -> ModReviews:
-    """The reviews in the file in use (none if there is none). Lines that can't be read are logged."""
+    """The reviews in the file in use (none if there is none), for this tools version. Lines that can't be
+    read are logged."""
+    from .merger import tools_version   # (here: the build doesn't need it)
     found = path()
     try:
         data = read_file(found) if found else None
@@ -130,37 +164,57 @@ def load() -> ModReviews:
         return ModReviews()
     if data is None:
         return ModReviews()
-    reviews, problems = parse(data.decode("utf-8", errors="replace"))
+    reviews, problems = parse(data.decode("utf-8", errors="replace"), tools_version())
     for problem in problems:
         log.warning(f"{found}: {problem}")
     return replace(reviews, sha256=hashlib.sha256(data).hexdigest())
 
 
-def parse(text: str) -> tuple[ModReviews, list[str]]:
-    """(the reviews in a file's text, a line for each problem)"""
+def parse(text: str, tools: str | None = None) -> tuple[ModReviews, list[str]]:
+    """(the reviews in a file's text, a line for each problem). tools: the tools version (X.Y.Z), for the
+    dont-merge lines whose reason is "before-X-Y-Z" (None: they all apply)."""
+    from .patcher.swf_patcher.options import parse_sprite_pattern     # (here: the launcher doesn't have the patcher)
+    tools = tuple(map(int, tools.split("."))) if tools else None
     groups, problems = [], []
-    group = None    # [pattern, reviews, leave-outs, dont-merges] of the last header; its pattern is None if it isn't valid
+    # [pattern, reviews, leave-outs, dont-merges, dont-stretches] of the last header; its pattern is None if it
+    # isn't valid
+    group = None
     for number, line in enumerate(text.splitlines(), 1):
         line = " ".join(re.split(r"(?:^|\s)#", line, maxsplit=1)[0].split())
         if not line:
             continue
         if line.endswith(":"):
             try:
-                group = [re.compile(line[:-1].strip(), re.IGNORECASE), set(), set(), []]
+                group = [re.compile(line[:-1].strip(), re.IGNORECASE), set(), set(), [], []]
             except re.error as e:
                 problems.append(f"line {number}: '{line[:-1].strip()}' isn't a valid regular expression ({e}), so "
                                 "the reviews below it are skipped")
-                group = [None, set(), set(), []]
+                group = [None, set(), set(), [], []]
             groups.append(group)
         elif group is None:
             problems.append(f"line {number}: a review before the first header ('<mod folder pattern>:'): skipped")
         elif line.startswith(f"{DONT_MERGE} "):
             found = DONT_MERGE_LINE.fullmatch(line)
+            before = BEFORE.fullmatch(found[1]) if found else None
+            if before and tools and tools >= tuple(map(int, before.groups())):
+                continue    # for older tools only
             if found:
                 group[3].append(DontMerge(found[1], frozenset(found[3].lower().split()), bool(found[2])))
             else:
                 problems.append(f"line {number}: '{line}' isn't a review ('{DONT_MERGE} <reason> [all except ]"
                                 "<screen> [<screen> ...]'): skipped")
+        elif line.startswith(f"{DONT_STRETCH} "):
+            found = DONT_STRETCH_LINE.fullmatch(line)
+            try:
+                patterns = tuple(map(parse_sprite_pattern, found[2].split())) if found else None
+            except ValueError as e:
+                problems.append(f"line {number}: '{line}': {e}: skipped")
+                continue
+            if found:
+                group[4].append(DontStretch(found[1].lower(), patterns))
+            else:
+                problems.append(f"line {number}: '{line}' isn't a review ('{DONT_STRETCH} <screen> <pattern> "
+                                "[<pattern> ...]'): skipped")
         elif line.startswith(f"{LEAVE_OUT} ") and REVIEW.fullmatch(left := line.removeprefix(f"{LEAVE_OUT} ")):
             group[2].add(left)
         elif not REVIEW.fullmatch(line):
@@ -169,6 +223,7 @@ def parse(text: str) -> tuple[ModReviews, list[str]]:
         else:
             group[1].add(line)
     valid = [group for group in groups if group[0] is not None]
-    return ModReviews(tuple((pattern, frozenset(reviews), frozenset(leave_outs)) for pattern, reviews, leave_outs, _
+    return ModReviews(tuple((pattern, frozenset(reviews), frozenset(leave_outs)) for pattern, reviews, leave_outs, *_
                             in valid if reviews or leave_outs),
-                      tuple((pattern, tuple(rules)) for pattern, _, _, rules in valid if rules)), problems
+                      tuple((pattern, tuple(rules)) for pattern, _, _, rules, _ in valid if rules),
+                      tuple((pattern, tuple(rules)) for pattern, *_, rules in valid if rules)), problems

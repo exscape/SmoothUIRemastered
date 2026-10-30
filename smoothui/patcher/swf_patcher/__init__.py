@@ -44,6 +44,7 @@ Modules, roughly in the order the work happens:
 
 from .movie import RescaleError
 from .options import (
+    InstanceRef,
     SpeedRule,
     SpriteRef,
     format_speed,
@@ -54,6 +55,6 @@ from .options import (
 from .report import format_fix, format_unmet_rule, report_settings, report_to_text
 from .rescale import RescaleResult, rescale_body
 
-__all__ = ["RescaleError", "RescaleResult", "SpeedRule", "SpriteRef", "format_fix", "format_speed",
+__all__ = ["InstanceRef", "RescaleError", "RescaleResult", "SpeedRule", "SpriteRef", "format_fix", "format_speed",
            "format_unmet_rule", "make_rules", "parse_speed", "parse_sprite_pattern", "report_settings",
            "report_to_text", "rescale_body"]

@@ -33,7 +33,7 @@ from .interpolation import (
     tween_moves,
 )
 from .movie import SwfMovie
-from .options import RescaleOptions, SpriteRef, format_speed
+from .options import InstanceRef, RescaleOptions, SpriteRef, format_speed
 from .retiming import Retiming, fps_ratio
 from .swf_tags import Tag
 
@@ -328,9 +328,12 @@ class Planner:
                                           if reason.startswith("excluded by") or "unrecognised" in reason]
 
     def _matching_sprites(self, token) -> list[int]:
-        """The ids of the sprites an include/exclude token (a SpriteRef or class name regex) matches"""
+        """The ids of the sprites an include/exclude token (a SpriteRef, InstanceRef or class name regex) matches"""
         if isinstance(token, SpriteRef):
             return [token.id] if token.id in self.movie.sprites and token not in self.mismatched_refs else []
+        if isinstance(token, InstanceRef):
+            found = self.movie.descendants_by_instance_name(token.class_name).get(token.instance, set())
+            return sorted(found & self.movie.sprites.keys())
         return [character_id for character_id in sorted(self.movie.sprites)
                 if (class_name := self.movie.class_name(character_id)) and re.search(token, class_name)]
 

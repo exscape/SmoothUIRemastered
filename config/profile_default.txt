@@ -3,7 +3,8 @@
 # Every file listed is patched to the build's frame rate (build-main.py --fps: 120 or 60 for
 # releases). Indented lines are settings for the file (or *) above them. Patterns are case-sensitive
 # regexes matched against sprite class names, or "sprite N" for a character id (only for sprites
-# without a class; not allowed under *).
+# without a class; not allowed under *), or "Class/instanceName" for the sprites placed with that
+# instance name below the sprites of a class (at any depth; include/exclude only).
 # Note that sprite IDs are likely unstable, and so likely break on game updates.
 #
 # Settings applied for every file:

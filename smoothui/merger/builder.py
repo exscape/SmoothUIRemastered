@@ -28,15 +28,15 @@ from .game import MODS_SETTINGS_BACKUP
 from .package import Written, record_path, write_package
 from .policy import FileStatus, PackageFile, decide
 from .scan import PACKAGE_FOLDER, Scan, entry_needed, is_package_folder, scan
-from .screens import screen_label
+from .screens import file_name, screen_label
 
 log = logging.getLogger(__name__)
 
 
 def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> ReleasePatch:
     """Patch the winning copy of each file (see scan.FileResult.winner) with the installed Smooth UI
-    build's settings, hiding the warnings reviewed for its mod (in the scan's reviews). pool and on_file are
-    as for patch_as_release."""
+    build's settings, plus the dont-stretch lines for its mod, hiding the warnings reviewed for it (both in
+    the scan's reviews, see mod_reviews.py). pool and on_file are as for patch_as_release."""
     installed = result.installed
     if not installed.usable:
         fail(installed.message)
@@ -51,8 +51,13 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
     except (KeyError, TypeError, ValueError) as e:     # a release that should have raised manifest_format
         fail(f"this version of Smooth UI Tools can't read the manifest of Smooth UI Remastered {installed.version} "
              f"({e!r}): update them")
-    return patch_as_release(sources, {source.path: profile[source.path] for source in sources}, manifest,
-                            mod_reviews=result.reviews, on_file=on_file, pool=pool)
+    settings = {}
+    for source in sources:
+        settings[source.path] = profile[source.path]
+        if result.reviews and (extra := result.reviews.dont_stretch(source.origin, file_name(source.path),
+                                                                     result.group_of.get(source.path))):
+            settings[source.path] = replace(settings[source.path], exclude=settings[source.path].exclude + extra)
+    return patch_as_release(sources, settings, manifest, mod_reviews=result.reviews, on_file=on_file, pool=pool)
 
 
 def merges_now(result: Scan, keys, *, pool=None) -> list[str]:

@@ -22,10 +22,23 @@
 #                                                        time-based tweens don't make a screen smooth.
 #                                        known-broken    merging it gives a wrong result, and it can't be made smooth. This
 #                                                        includes a 60 fps screen that can't be merged cleanly.
+#                                        before-X-Y-Z    only tools older than vX.Y.Z leave it out (they show "Left out"):
+#                                                        for a screen that needs newer tools to merge (e.g. their
+#                                                        dont-stretch lines). Dashes, not dots: v0.9.2 and v0.9.3 skip a
+#                                                        reason with dots, and would then merge it.
 #                                      A screen the merger can merge cleanly gets no line. Tools v0.9.1 and older skip these
 #                                      lines too (with a line in their log), so the mod is treated as before for them:
 #                                      NEVER add a review for a warning in a screen a dont-merge line leaves out, unless
-#                                      merging that screen would be fine, as v0.9.1 would then merge it.
+#                                      merging that screen would be fine, as v0.9.1 would then merge it. (Map and Icons
+#                                      Remastered and its Smooth Map patch are the one exception: v0.9.1 is outdated.)
+#     dont-stretch <screen> <pattern> [<pattern> ...]
+#                                      never stretch these sprites in the mod's copy of the screen (<screen> as for
+#                                      dont-merge), as an exclude in config/profile_default.txt: a class name regex, or
+#                                      Class/instanceName for sprites without a class. Only for clips that never play
+#                                      (e.g. icon sets shown with gotoAndStop), whose frame numbers the mod's code relies
+#                                      on: unstretched, they look the same. A pattern that matches nothing is a rule
+#                                      issue. Tools v0.9.3 and older skip these lines: pair them with a "before-0-9-4"
+#                                      dont-merge line.
 #
 # A note should say *why* each one is harmless (or doesn't work). Warnings in the game's own code go in
 # config/reviewed_warnings.txt.
@@ -82,11 +95,29 @@ mod0000_ConjunctionMapFramework:
 mod0000_UIRemasteredEdition:
     dont-merge known-broken hud
 
-# Map and Icons Remastered
+# --- Map and Icons Remastered
+# Its icon clips hold its own icons and the game's, which its code picks between by frame number: on the map
+# (PinIcon_122, the mcAreaIcon_* clips) the game's are the second half of each clip, mapRedrawBase frames
+# later; SelectFrame adds that to a frame, and RefreshTree takes it from currentFrame when the style is
+# switched. On the minimap, ApplyRemastered shows frame 2 (its own) or 1 (the game's) of each icon (the
+# class* clips) and of the quest arrows. Stretched, those frame numbers would point elsewhere. The clips
+# never play (only gotoAndStop is used on them), so leaving them unstretched changes nothing. Its other
+# calls of SelectFrame pass labels, and numbers only for the radius circle (PinRadiusCircle_*, also left
+# unstretched). Checked 2026-10-30, against version 2.4.2.
+# Tools v0.9.3 and older don't know dont-stretch lines, so they leave its map and minimap out.
 modmapredraw:
-    dont-merge known-broken panel_worldmap hud_minimap2
+    dont-merge before-0-9-4 panel_worldmap hud_minimap2
+    dont-stretch panel_worldmap PinIcon_\d+$ mcAreaIcon_ PinRadiusCircle_
+    dont-stretch hud_minimap2 ^class QuestDirectionCurrentMain/mcHighlightedQuest QuestDirectionCurrentMain/mcRegularQuest
+    unresolved-goto PinIcon_122.SelectFrame @94e7ecc6                # panel_worldmap: frame + mapRedrawBase
+    unresolved-frame-property PinIcon_122.RefreshTree @bd6d7bd1      # panel_worldmap: currentFrame % mapRedrawBase
+    unresolved-goto MapPin.ApplyRemastered @5cc77c49                 # hud_minimap2: gotoAndStop(remastered ? 2 : 1)
 
-# Map and Icons Remastered + Smooth Map compat patch
-# Smooth Map by itself works without any warnings.
+# --- Map and Icons Remastered + Smooth Map compat patch
+# Smooth Map by itself works without any warnings. This is Map and Icons Remastered's panel_worldmap (see above) with
+# Smooth Map's changes, none of which touch the icons' frames, so the same applies. Checked 2026-10-30, against version 1.1.
 mod000SmoothMap_MapRemastered:
-    dont-merge known-broken panel_worldmap
+    dont-merge before-0-9-4 panel_worldmap
+    dont-stretch panel_worldmap PinIcon_\d+$ mcAreaIcon_ PinRadiusCircle_
+    unresolved-goto PinIcon_122.SelectFrame @94e7ecc6                # frame + mapRedrawBase
+    unresolved-frame-property PinIcon_122.RefreshTree @bd6d7bd1      # currentFrame % mapRedrawBase

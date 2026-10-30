@@ -121,8 +121,8 @@ def _add_setting(entry: Entry, text: str, where: str, is_override: bool):
 
     pattern = parse_sprite_pattern(value)
     if speed is not None:
-        if isinstance(pattern, SpriteRef):
-            raise ValueError("speed only takes class name regexes, not sprite ids")
+        if not isinstance(pattern, str):
+            raise ValueError("speed only takes class name regexes, not sprite ids or instance names")
         entry.rules.append(SpeedRule(pattern, parse_speed(speed)))
         return
     if where != FILE and isinstance(pattern, SpriteRef):
