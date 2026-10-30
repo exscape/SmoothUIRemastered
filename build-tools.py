@@ -149,11 +149,15 @@ def qt_dropped():
 
 def merger_data_files(version_file):
     """Files a module reads next to itself (Path(__file__)), at its path: the fixes' compiled ActionScript
-    (gwent_speed.abc), and the merger window's theme, fonts and icon. grep -rn __file__ smoothui finds the code
-    that does it."""
+    (gwent_speed.abc), the game's frame rates and timings (game_timings.txt), and the merger window's theme,
+    fonts and icon. grep -rn __file__ smoothui finds the code that does it."""
     files = [(p, p.relative_to(ROOT).as_posix()) for p in sorted((ROOT / "smoothui").rglob("*.abc"))]
     if not files:
         raise SystemExit("ERROR: no .abc files found in smoothui/")
+    timings = ROOT / "smoothui" / "patcher" / "game_timings.txt"
+    if not timings.is_file():
+        raise SystemExit(f"ERROR: {timings} is missing: build-main.py writes it")
+    files.append((timings, "smoothui/patcher/game_timings.txt"))
     merger = ROOT / "smoothui" / "merger"
     files.append((merger / "theme.json", "smoothui/merger/theme.json"))
     files.append((ROOT / "assets" / "Merger.ico", "smoothui/merger/Merger.ico"))   # the window's icon (window.py ICON_FILE)

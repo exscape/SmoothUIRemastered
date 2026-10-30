@@ -19,6 +19,7 @@ from ..witcher3.redswf import CR2W_VERSION, RedSwf, RedSwfError, replace_swf, sw
 from . import dev_mode
 from .dev_mode import dev_make_body_hook, resolve_dev_target
 from .fixes import AFTER_RESCALE, BEFORE_RESCALE, apply_fixes
+from .game_timing import game_fps, not_game_timed
 from .swf import (
     FPS_FIXED_POINT_SCALE,
     MAX_RAW_FPS,
@@ -144,7 +145,8 @@ def _patch_file(source, settings, body_hook=None):
         if redswf.version != CR2W_VERSION:
             log.info(f"The .redswf is CR2W version {redswf.version}: it is written as version {CR2W_VERSION}")
         shares_classes = source.path.startswith(SHARED_CLASSES_FOLDER)
-        rescale_report, new_swf_bytes = process(redswf.swf, settings, body_hook, shares_classes=shares_classes)
+        rescale_report, new_swf_bytes = process(redswf.swf, settings, body_hook, shares_classes=shares_classes,
+                                                game_rate=game_fps(source.path))
         del redswf
         if new_swf_bytes is None:
             return {**result, "status": "kept", "report": rescale_report}
@@ -227,10 +229,11 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
                if setting not in matched_anywhere]
     return RuleIssues(errors, warnings)
 
-def process(data, settings, body_hook=None, *, shares_classes=True):
+def process(data, settings, body_hook=None, *, shares_classes=True, game_rate=None):
     """Find the SWF payload in data, apply its fixes and rescale it. data is normally the SWF taken from
     a .redswf (RedSwf(...).swf); a whole .redswf works too, but more slowly, as it is searched for the SWF.
-    shares_classes: whether other movies may share its ActionScript classes (see RescaleOptions).
+    shares_classes: whether other movies may share its ActionScript classes (see RescaleOptions). game_rate:
+    the header frame rate of the game's own copy of the file, if known (see game_timing.py).
 
     Returns (report, new_swf_bytes): the rescale report, and the new SWF (None if the file was left
     unchanged). Raises MalformedSwfError unless there is exactly one SWF it can read, and RescaleError
@@ -241,7 +244,7 @@ def process(data, settings, body_hook=None, *, shares_classes=True):
     for sig in SWF_SIGS:
         pos = data.find(sig)
         while pos != -1:
-            payload = read_and_patch_swf(data, pos, sig, settings, body_hook, shares_classes)
+            payload = read_and_patch_swf(data, pos, sig, settings, body_hook, shares_classes, game_rate)
             if payload is None:
                 pos = data.find(sig, pos + len(sig))
                 continue
@@ -258,7 +261,7 @@ def process(data, settings, body_hook=None, *, shares_classes=True):
         raise MalformedSwfError("found 0 payloads (expected 1); corrupt file?")
     return result, new_swf_bytes
 
-def read_and_patch_swf(data, pos, sig, settings, body_hook=None, shares_classes=True):
+def read_and_patch_swf(data, pos, sig, settings, body_hook=None, shares_classes=True, game_rate=None):
     """Check for an SWF header at data[pos] and patch the payload if found."""
     if pos + SWF_HEADER_SIZE > len(data):
         return None
@@ -267,11 +270,13 @@ def read_and_patch_swf(data, pos, sig, settings, body_hook=None, shares_classes=
 
     if sig not in SWF_COMPRESSED_SIGS:
         raise MalformedSwfError("SWF was not compressed: please contact me (GitHub/Nexus Mods) about this and I'll add support.")
-    return patch_fps(data, pos, settings, body_hook, shares_classes)
+    return patch_fps(data, pos, settings, body_hook, shares_classes, game_rate)
 
-def patch_fps(data, pos, settings, body_hook=None, shares_classes=True):
+def patch_fps(data, pos, settings, body_hook=None, shares_classes=True, game_rate=None):
     """Set the frame rate of the compressed SWF at data[pos] and interpolate animations,
     applying its fixes before or after that (see fixes/). body_hook (see dev_mode.py) runs on the result.
+    game_rate: as for process; a mod's file that only raised its header's frame rate above it is rescaled
+    from it instead (see rescale_from_game_rate).
 
     Returns:
     None if there is no valid SWF stream at pos, or
@@ -285,11 +290,15 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True):
         fixed, fix_records = apply_fixes(body, settings.fixes, BEFORE_RESCALE)
         if fixed is not None:
             body[:] = fixed
-        # Rescale from the rate it really plays at, keeping its speed in game
-        if settings.source_fps is not None and patch_fps_in_body(body, settings.source_fps) is None:
-            raise MalformedSwfError("can't read the frame rate in its header")
-        result = rescale_body(body, settings.target_fps, rules=settings.rules, include=settings.include,
-                              exclude=settings.exclude, shares_classes=shares_classes)
+        result = None
+        if settings.source_fps is None and game_rate is not None:
+            result = rescale_from_game_rate(body, settings, game_rate, shares_classes)
+        if result is None:
+            # Rescale from the rate it really plays at, keeping its speed in game
+            if settings.source_fps is not None and patch_fps_in_body(body, settings.source_fps) is None:
+                raise MalformedSwfError("can't read the frame rate in its header")
+            result = rescale_body(body, settings.target_fps, rules=settings.rules, include=settings.include,
+                                  exclude=settings.exclude, shares_classes=shares_classes)
         if result.new_fps is not None:
             body[:] = result.body
         fixed_after, records_after = apply_fixes(body, settings.fixes, AFTER_RESCALE)
@@ -303,6 +312,36 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True):
         return changed, report
 
     return swf_patch(data, pos, patch, body_hook)
+
+def rescale_from_game_rate(body, settings, game_rate, shares_classes):
+    """The rescale of a file whose header's frame rate is above the game's (game_rate), from the game's
+    rate, if its plan shows that the file is the game's sped up (see game_timing.py); else None, to rescale
+    it from the header's rate. Its report then also holds the header's rate ("header_fps")."""
+    fps_offset, _ = swf_get_header_offsets(body)
+    if fps_offset is None:
+        return None
+    header_fps = struct.unpack_from("<H", body, fps_offset)[0] / FPS_FIXED_POINT_SCALE
+    if not game_rate < header_fps or game_rate >= settings.target_fps:
+        return None
+    from_game_rate = bytearray(body)
+    patch_fps_in_body(from_game_rate, game_rate)
+    problem = None
+
+    def accept_plan(movie, plan):
+        nonlocal problem
+        problem = not_game_timed(movie, plan)
+        return problem is None
+
+    result = rescale_body(from_game_rate, settings.target_fps, rules=settings.rules, include=settings.include,
+                          exclude=settings.exclude, shares_classes=shares_classes, accept_plan=accept_plan)
+    if result is None:
+        log.info(f"The mod raised the frame rate from the game's {game_rate:g} fps to {header_fps:g}, and has "
+                 f"{problem}: rescaled from {header_fps:g} fps, so it plays as fast as with the mod alone")
+        return None
+    log.info(f"The mod raised the frame rate from the game's {game_rate:g} fps to {header_fps:g}, but its "
+             f"animations are the game's: rescaled from {game_rate:g} fps, so they play at the game's speed")
+    result.report["header_fps"] = header_fps
+    return result
 
 def patch_fps_in_body(body, new_fps):
     """The method that actually patches the framerate bytes.

@@ -35,7 +35,7 @@ class RescaleResult:
 
 
 def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclude=(),
-                 shares_classes=True) -> RescaleResult:
+                 shares_classes=True, accept_plan=None) -> RescaleResult | None:
     """Raise the frame rate of an SWF to target_fps, retiming its animations to keep their speed.
 
     body is the decompressed SWF after the 8-byte signature/version/length header. The new body
@@ -43,7 +43,8 @@ def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclud
 
     rules is a sequence of SpeedRules or (class name regex, speed) pairs, to play matching sprites
     faster or slower than their original speed; see SpeedRule. For the other arguments, see
-    RescaleOptions.
+    RescaleOptions. accept_plan(movie, plan), if given, sees the plan before anything is built; if it
+    returns False, nothing is built and None is returned.
 
     Files already at or above target_fps are left unchanged (new_fps and body are None).
     Rules that can't be followed (e.g. a sprite matching a SpeedRule is not safe to stretch) don't
@@ -56,6 +57,8 @@ def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclud
         return RescaleResult(None, unchanged_report(movie.fps, options))
 
     plan = Planner(movie, options).make_plan()
+    if accept_plan is not None and not accept_plan(movie, plan):
+        return None
     new_body = build_body(movie, plan)
     problems = verify(movie, plan, new_body)
     if problems:

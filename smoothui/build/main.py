@@ -19,6 +19,7 @@ from ..requires import setting_requirement
 from ..witcher3.source_file import GAME_FILES, SourceFile
 from .compat_status import print_compat_status
 from .game_files import game_file_report
+from .game_timings import update_game_timings
 from .manifest_diff import print_changes_since_previous
 from .profile import load_profile
 from .release import group_record, release_requires
@@ -153,6 +154,10 @@ def main():
 
     if not paths['uncooked_files'].is_dir():
         fail(f"not a directory: {paths['uncooked_files']}")
+
+    # What the patcher needs to know of all the game's files, to patch other mods' copies (see game_timings.py)
+    log.info("Game frame rates and timings", extra=HEADING)
+    update_game_timings(paths['uncooked_files'], dry_run=args.dry_run)
 
     # Before building: a release build replaces the latest manifest with one made from these very files
     game_file_text, game_files_changed = "", 0
