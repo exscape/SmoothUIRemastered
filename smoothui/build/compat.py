@@ -25,7 +25,7 @@ import rarfile
 
 from ..common import fail, normalize_version, profile_key
 from ..log import HEADING
-from ..manifests import shipped_files
+from ..manifests import compat_files
 from ..patcher import dev_mode
 from ..witcher3 import mod_bundles
 from ..witcher3.mod_bundles import list_bundles
@@ -222,8 +222,9 @@ def check_not_outdated(smooth_version, force):
 
 def find_shared_files(theirs, manifest, smooth_version):
     """The .redswf files (their_swf_paths, in their spelling) that the other mod ships AND that the
-    Smooth UI Remastered release named by manifest patches and ships (the merger alone builds the others)"""
-    our_keys = {profile_key(rel) for rel in shipped_files(manifest)}
+    Smooth UI Remastered release named by manifest patches mods' copies of in compat patches (see
+    manifests.compat_files: the merger alone builds the others)"""
+    our_keys = {profile_key(rel) for rel in compat_files(manifest)}
     shared = [p for p in theirs if profile_key(p) in our_keys]
 
     log.info(f"The other mod has {len(theirs)} .redswf files, {len(shared)} of which "

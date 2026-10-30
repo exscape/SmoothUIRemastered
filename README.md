@@ -66,6 +66,8 @@ Make sure that Smooth UI Remastered and the target mod, both of the correct vers
 **The HUD isn't part of compat patches:** Smooth UI releases don't ship the HUD's files, so build-compat.py ignores a mod's HUD files, and a HUD mod needs no compat patch.  
 Smooth UI Tools can patch the HUD, but this should be transparent to HUD mod developers. See: [README_tools](README_tools.md#the-hud).
 
+**Screens the game never shows** (cut content that mods bring back, such as the Glossary's Storybook) aren't in Smooth UI releases either, but unlike the HUD, a mod's copy of one is patched like any other file: build-compat.py includes it in the compat patch.
+
 The conflicting files are patched with the same settings (and frame rate) as in the specified Smooth UI Remastered release (`--smooth-version`), which should work for most mods.
 If a mod changes identifiers in an incompatible way, or needs more control, `--overrides FILE` adds settings on top; see `config/compat_overrides_example.txt` for the format.
 

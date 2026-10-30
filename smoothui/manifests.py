@@ -89,10 +89,25 @@ def load_manifest(version_or_path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
+# What a release does with the game's own copy of a file (a record's "game_copy"; see the "game copy:" setting
+# in build/profile.py). Mods' copies are patched whatever it is.
+SHIPPED, MERGER_ONLY, UNUSED = "shipped", "merger-only", "unused"
+GAME_COPIES = (SHIPPED, MERGER_ONLY, UNUSED)
+
+def game_copy(record) -> str:
+    """A file record's game copy (see GAME_COPIES). Older manifests have no "game_copy", and none of them has
+    unused files: "shipped": false there means merger-only."""
+    return record.get("game_copy") or (SHIPPED if record.get("shipped", True) else MERGER_ONLY)
+
 def shipped_files(manifest) -> dict:
-    """The records of the files a release ships, by path as recorded. Its manifest also records the files of
-    groups it doesn't ship ("shipped": false), which only the merger builds (see build/profile.py's Group)."""
-    return {path: record for path, record in manifest["files"].items() if record.get("shipped", True)}
+    """The records of the files a release ships, by path as recorded. Its manifest also records files it
+    doesn't ship (see game_copy): those only the merger builds, and those only mods use."""
+    return {path: record for path, record in manifest["files"].items() if game_copy(record) == SHIPPED}
+
+def compat_files(manifest) -> dict:
+    """The records of the files that compat patches patch mods' copies of: all but the merger-only ones (a
+    group such as the HUD, which only the merger builds, as it must be patched whole)"""
+    return {path: record for path, record in manifest["files"].items() if game_copy(record) != MERGER_ONLY}
 
 # The format of the release manifests this code writes and can read (their "manifest_format"; one without
 # it is format 1). A merger that gets a manifest of a newer format (shipped with a newer Smooth UI, or

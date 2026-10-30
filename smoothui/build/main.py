@@ -14,6 +14,7 @@ from functools import partial
 
 from ..common import fail, profile_key
 from ..log import HEADING
+from ..manifests import SHIPPED
 from ..patcher import dev_mode, patcher_core
 from ..requires import setting_requirement
 from ..witcher3.source_file import GAME_FILES, SourceFile
@@ -203,7 +204,7 @@ def build(args, config, paths, version, fps):
     """Patch, check, pack and zip one build (and for a release, write its manifest). Returns a function
     that prints the build's warnings and rule issues."""
     log.info(f"Building {version}: every file patched to {fps} fps", extra=HEADING)
-    profile, shared_settings, group_of = load_profile(args.profile, fps)
+    profile, shared_settings, group_of, game_copy_of = load_profile(args.profile, fps)
     work_dir = paths['working_dir'] / f"main_{fps}fps"
     patched_dir = work_dir / "1_patched"
     output_dir = work_dir / "2_mod"     # laid out as the zip: mods/<the mod>/, bin/
@@ -249,9 +250,9 @@ def build(args, config, paths, version, fps):
 
     if args.dry_run:
         return print_issues
-    # Groups that aren't shipped are recorded in the manifest, but only the merger builds them
-    shipped = [entry for entry in patched
-               if (group := group_of.get(profile_key(entry["path"]))) is None or group.shipped]
+    # Files whose game copy isn't shipped are patched and recorded in the manifest (so their settings are
+    # checked, and compat checks see when their patching changes), but only the merger builds them
+    shipped = [entry for entry in patched if game_copy_of[profile_key(entry["path"])] == SHIPPED]
     if not shipped:
         fail("no patched files to ship were produced, aborting.")
 
@@ -275,8 +276,9 @@ def build(args, config, paths, version, fps):
         for path, record in records.items():
             if group := group_of.get(profile_key(path)):
                 record["group"] = group.name
-                if not group.shipped:
-                    record["shipped"] = False
+            record["game_copy"] = game_copy_of[profile_key(path)]
+            if record["game_copy"] != SHIPPED:
+                record["shipped"] = False   # for mergers from before "game_copy" (see manifests.game_copy)
         commit, uncommitted = patcher_commit()
         recorded = {profile_key(path) for path in records}
         requires = release_requires(settings for key, settings in profile.items() if profile_key(key) in recorded)

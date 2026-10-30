@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 
 from ..common import fail, normalize_version
 from ..log import HEADING
+from ..manifests import SHIPPED, game_copy
 from ..patcher.swf_patcher import format_unmet_rule, report_settings
 from .shared import (
     OLD_MANIFEST_FPS,
@@ -78,6 +79,8 @@ def diff_manifests(old: dict, new: dict) -> list[str]:
     unchanged = []
     for path in sorted(old_files.keys() & new_files.keys()):
         changes = file_changes(old_files[path], new_files[path], compare_reports)
+        if (copies := [game_copy(files[path]) for files in (old_files, new_files)])[0] != copies[1]:
+            changes.insert(0, f"Game copy: {copies[0]} -> {copies[1]}")
         if changes:
             lines += ["", path, *("  " + change for change in changes)]
         else:
@@ -140,9 +143,9 @@ def file_changes(old: dict, new: dict, compare_reports: bool) -> list[str]:
 
 
 def _added_line(path: str, record: dict) -> str:
-    """A file added, with its frame rate, and whether only the merger builds it"""
-    shipped = "" if record.get("shipped", True) else ", not shipped: merger only"
-    return f"  {path} ({record['fps']:g} fps{shipped})"
+    """A file added, with its frame rate, and its game copy if not shipped (see manifests.game_copy)"""
+    copy = "" if (value := game_copy(record)) == SHIPPED else f", game copy: {value}"
+    return f"  {path} ({record['fps']:g} fps{copy})"
 
 
 def _section(aspect: str, changes: list[str]) -> list[str]:

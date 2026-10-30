@@ -118,6 +118,11 @@ Without the merger, i.e. using Smooth UI Remastered by itself, it would not be s
 This is because the HUD is made up of many parts that only work together, and in a case where a compatibility patch would be needed but is missing, the HUD would break, rather than just be at the standard framerate.  
 The merger can ensure that such breakage doesn't occur.
 
+## Screens only mods use
+
+Some screens are in the game's files, but the game never shows them: cut content that mods bring back, such as the Glossary's Storybook (the "Events" tab of Community GUI fixes, or the "Restored Content - Storybook" mod).  
+Smooth UI Remastered doesn't ship these, so it never gets in those mods' way, but if you have such a mod, the merger makes its screen smooth like any other, assuming it's a file known to it. If you modify a file that isn't handled, please open a bug report, and I'll look at supporting patching it.
+
 ## Updates
 
 When the merger starts, it asks GitHub whether a newer version of Smooth UI Tools exists. If an update exists, the merger window says so: **What's new** shows the release notes, and **Update now** downloads and installs it.  

@@ -1,5 +1,6 @@
 """The game's own copies of files, read from its content bundles in place (only the tables of contents, until a
-file is patched): what the merger patches where no mod changes a file, for the files a release doesn't ship.
+file is patched): what the merger patches where no mod changes a file, for the files only the merger builds
+(game copy "merger-only", see manifests.game_copy).
 
 Light: the merger's launch check may use it (no patcher imports).
 

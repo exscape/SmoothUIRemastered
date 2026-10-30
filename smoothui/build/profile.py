@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..common import fail, profile_key
+from ..manifests import GAME_COPIES, SHIPPED
 from ..patcher.fixes import check_fix_name
 from ..patcher.patcher_core import PatchSettings
 from ..patcher.swf_patcher import (
@@ -33,7 +34,8 @@ from .shared import DEFAULT_PROFILE
 
 log = logging.getLogger(__name__)
 
-SETTING = re.compile(r"(include|exclude|fix|reviewed|source fps|shipped|speed (\S+)):\s*(.*)")
+# ("shipped:" only to say what replaced it)
+SETTING = re.compile(r"(include|exclude|fix|reviewed|source fps|game copy|shipped|speed (\S+)):\s*(.*)")
 # Where a setting is: under a file, under "*", or directly under a group (for every file of the group)
 FILE, STAR, GROUP = "file", "*", "group"
 
@@ -47,6 +49,8 @@ class Entry:
     fixes: list = field(default_factory=list)       # names (see patcher/fixes/); only under a file
     reviewed: list = field(default_factory=list)    # reviews; override files only, under *
     source_fps: float | None = None                 # not under *
+    game_copy: str | None = None                    # "game copy:" (see Group.game_copy); only for a file
+                                                    # outside groups
     group: str | None = None                        # a file's group (see Group)
 
     def descriptions(self) -> list[str]:
@@ -63,8 +67,11 @@ class Group:
     out the whole group if one can't be), with settings for every one of them"""
     name: str
     settings: Entry = field(default_factory=Entry)
-    shipped: bool = True        # "shipped: no": the release records the files but doesn't pack them, so
-                                # only the merger builds them (from the game's files)
+    # "game copy:", what happens to the game's own copies of the files (mods' copies are patched in every
+    # case): "shipped" (the release ships them patched), "merger-only" (the release records them but doesn't
+    # ship them: only the merger builds them, from the game's files) or "unused" (the game never shows them:
+    # nothing is built unless a mod has one). Also allowed under a file outside groups.
+    game_copy: str = SHIPPED
     # Set by load_profile: what a file of the group gets without settings of its own. The release records it,
     # and the merger patches the files that mods add to the group's folder with it (e.g. a mod's own module)
     file_settings: PatchSettings | None = None
@@ -84,7 +91,15 @@ def _add_setting(entry: Entry, text: str, where: str, is_override: bool):
         entry.reviewed.append(check_review(value))
         return
     if key == "shipped":
-        raise ValueError("shipped: only belongs directly under a group")
+        raise ValueError("shipped: is no longer a setting: 'shipped: no' is now 'game copy: merger-only'")
+    if key == "game copy":
+        if where != FILE or entry.group is not None or is_override:
+            raise ValueError("game copy: only belongs under a group or a file outside groups in a profile (a "
+                             "group's files share their group's)")
+        if entry.game_copy is not None:
+            raise ValueError("game copy: is given twice")
+        entry.game_copy = _game_copy(value)
+        return
     if key == "fix":
         if where != FILE:
             raise ValueError("fix: only belongs under a file, as each fix is for a specific file")
@@ -116,11 +131,17 @@ def _add_setting(entry: Entry, text: str, where: str, is_override: bool):
     getattr(entry, key).append(pattern)
 
 
-def _add_group_setting(group: Group, text: str):
-    if text.startswith("shipped:"):
-        if text.split(":", 1)[1].strip() != "no":
-            raise ValueError("shipped: only takes no (files are shipped unless a group says otherwise)")
-        group.shipped = False
+def _game_copy(value: str) -> str:
+    if value not in GAME_COPIES:
+        raise ValueError(f"game copy: {value!r} isn't one of {', '.join(GAME_COPIES)}")
+    return value
+
+
+def _add_group_setting(group: Group, text: str, game_copy_given: bool):
+    if text.startswith("game copy:"):
+        if game_copy_given:
+            raise ValueError("game copy: is given twice")
+        group.game_copy = _game_copy(text.split(":", 1)[1].strip())
         return
     _add_setting(group.settings, text, GROUP, False)
 
@@ -138,6 +159,7 @@ def parse_profile(path: Path, *, is_override: bool = False) -> tuple[dict[str, E
     entry = None        # what indented lines apply to (outside groups); the file whose settings follow (in one)
     group = None        # the group block the line is in
     group_indent = None     # the indentation of its settings and files
+    game_copy_given = False     # whether the group block has a "game copy:" line
 
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = re.split(r"(?:^|\s)#", line, maxsplit=1)[0].rstrip()
@@ -148,7 +170,8 @@ def parse_profile(path: Path, *, is_override: bool = False) -> tuple[dict[str, E
             if indent and group is not None:
                 group_indent = group_indent or indent
                 if indent == group_indent and SETTING.fullmatch(text):
-                    _add_group_setting(group, text)
+                    _add_group_setting(group, text, game_copy_given)
+                    game_copy_given = game_copy_given or text.startswith("game copy:")
                     entry = None
                 elif indent == group_indent:
                     entry = _add_file(files, text, group.name)
@@ -174,7 +197,7 @@ def parse_profile(path: Path, *, is_override: bool = False) -> tuple[dict[str, E
                     raise ValueError(f"group: {name!r} isn't a valid name (lowercase letters, digits, - and _)")
                 if name in groups:
                     raise ValueError(f"group {name} is given twice")
-                entry, group, group_indent = None, Group(name), None
+                entry, group, group_indent, game_copy_given = None, Group(name), None, False
                 groups[name] = group
             else:
                 entry, group = _add_file(files, text, None), None
@@ -198,10 +221,11 @@ def _unique(items) -> tuple:
     return tuple(dict.fromkeys(items))
 
 
-def load_profile(path, fps: int) -> tuple[dict[str, PatchSettings], list[str], dict[str, Group]]:
+def load_profile(path, fps: int) -> tuple[dict[str, PatchSettings], list[str], dict[str, Group], dict[str, str]]:
     """Read a profile (None: the default one), for a build at fps. Returns ({profile key:
     PatchSettings}, the settings shared by several files as written (under "*" and the groups), for
-    patcher_core.find_rule_issues, {profile key: its Group} for the files in one)"""
+    patcher_core.find_rule_issues, {profile key: its Group} for the files in one, {profile key: its game
+    copy} for every file (see Group.game_copy))"""
     path = Path(path) if path else DEFAULT_PROFILE
     files, star, groups = parse_profile(path)
 
@@ -211,20 +235,23 @@ def load_profile(path, fps: int) -> tuple[dict[str, PatchSettings], list[str], d
                              _unique(entry.exclude + shared.exclude + star.exclude),
                              _unique(entry.fixes), entry.source_fps if entry.source_fps is not None else shared.source_fps)
 
-    profile, group_of = {}, {}
+    profile, group_of, game_copy_of = {}, {}, {}
     for key, entry in files.items():
         group = groups.get(entry.group)
         if group:
             group_of[key] = group
         profile[key] = settings(entry, group.settings if group else Entry())
+        game_copy_of[key] = group.game_copy if group else entry.game_copy or SHIPPED
     for group in groups.values():
         group.file_settings = settings(Entry(), group.settings)
     counts = Counter(entry.group for entry in files.values())
+    others = Counter(entry.game_copy for entry in files.values() if entry.group is None and entry.game_copy not in (None, SHIPPED))
     log.info(f"Loaded {len(profile)} entries from {path}"
              + "".join(f"; group {name}: {counts[name]} files"
-                       + ("" if group.shipped else ", not shipped") for name, group in groups.items()))
+                       + ("" if group.game_copy == SHIPPED else f", game copy {group.game_copy}") for name, group in groups.items())
+             + "".join(f"; game copy {value}: {count} files" for value, count in sorted(others.items())))
     shared = _unique([*star.descriptions(), *(text for group in groups.values() for text in group.settings.descriptions())])
-    return profile, list(shared), group_of
+    return profile, list(shared), group_of, game_copy_of
 
 
 def apply_overrides(profile: dict[str, PatchSettings], path) -> tuple[dict[str, PatchSettings], list[str], set[str]]:

@@ -28,10 +28,18 @@
 #       source fps: 24                  The frame rate the file really plays at, where that isn't its
 #                                       header's (a movie loaded into another plays at the other's rate);
 #                                       it is rescaled from this rate. Not allowed under *
+#   gameplay/gui_new/swf/example/panel_d.redswf
+#       game copy: unused               What happens to the game's own copy of the file (mods' copies are
+#                                       always patched by the merger): shipped (the default: the release
+#                                       ships it patched), merger-only (not in the release: the merger
+#                                       builds it from the game's files) or unused (the game never shows
+#                                       it, e.g. cut content that mods bring back: not in the release, and
+#                                       the merger builds nothing unless a mod has the file). Not allowed
+#                                       under * or under a file in a group (see below)
 #
 # Groups: files that only work together, so they are patched all or none:
 #   group: example
-#       shipped: no                     Not in the release: only the merger builds them, from the game's files
+#       game copy: merger-only          For all of the group's files (a group is patched all or none)
 #       source fps: 24                  Settings directly under the group apply to all of its files
 #       gameplay/gui_new/swf/example/module_e.redswf
 #       gameplay/gui_new/swf/example/module_f.redswf
@@ -122,7 +130,7 @@ gameplay/gui_new/swf/repair/panel_enchanting.redswf
 # The merger builds them (from the game's files, or the copies of mods that change them); releases never ship
 # them, as a HUD with some of them patched and some not plays the others 5x too fast or slow.
 group: hud
-    shipped: no
+    game copy: merger-only
     source fps: 24      # the root HUD movie's (hud.redswf's header says 24 too)
     gameplay/gui_new/swf/hud/hud.redswf
     gameplay/gui_new/swf/hud/hud_anchors.redswf
@@ -151,8 +159,13 @@ group: hud
     gameplay/gui_new/swf/hud/hud_timeleft.redswf
     gameplay/gui_new/swf/hud/hud_wolfstatbars.redswf
 
+# Cut content: the game never shows these, so only mods' copies are patched (by the merger)
+gameplay/gui_new/swf/glossary/panel_glossary_storybook.redswf
+    game copy: unused       # CGUI's Events tab, the "Restored Content - Storybook" mod
+gameplay/gui_new/swf/mainmenu/panel_mainmenu_dbg_startquest.redswf
+    game copy: unused       # Debug screen: only mods use it
+
 # Verified as NOT required, even though they may appear relevant to patch
 # gameplay/gui_new/swf/meditation/panel_meditation.redswf
-# gameplay/gui_new/swf/glossary/panel_glossary_storybook.redswf # Cut content, see: "Restored Content - Storybook" mod (60 fps)
 # gameplay/gui_new/swf/character/panel_character_perks.redswf
 # gameplay/gui_new/swf/inventory/panel_inventorysockets.redswf

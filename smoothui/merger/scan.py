@@ -1,7 +1,8 @@
 """Scan the installed mods: for each file the installed Smooth UI build patches, which mod's copy the game
-loads (see load_order.py), and what keeps a mod or file from being patched. For the files the build doesn't
-ship (a group only the merger builds, see build/profile.py's Group), the game's own copy is the one to patch
-where no mod changes the file; a file a mod adds to a group's folder is the group's too (see Scan.group_of).
+loads (see load_order.py), and what keeps a mod or file from being patched. For the files only the merger
+builds (game copy "merger-only", see manifests.game_copy), the game's own copy is the one to patch where no
+mod changes the file; a file a mod adds to a group's folder is the group's too (see Scan.group_of). Files that
+only mods use (game copy "unused") are left out where no mod has them.
 
 Read-only, and reads only bundles' tables of contents (except to compare two copies of a file within one
 mod). It must work through MO2's virtual file system, where exists() and is_dir() often say no for files
@@ -23,6 +24,7 @@ from typing import NamedTuple
 
 from .. import mod_reviews
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
+from ..manifests import MERGER_ONLY, UNUSED, game_copy
 from ..mod_reviews import ModReviews
 from ..witcher3.bundle import read_toc
 from ..witcher3.game_files import game_files
@@ -74,10 +76,10 @@ class FileResult:
                                                 # order: the first one's copy is the one the game loads now
     winner: SourceFile | None = None            # the copy to patch: that of the first shipper that isn't ours
                                                 # (see is_own_folder; a compat patch is already patched), or for a
-                                                # file the build doesn't ship, the game's own copy if no other mod
+                                                # file only the merger builds, the game's own copy if no other mod
                                                 # ships it. None if no other mod ships a shipped file (Smooth UI's
-                                                # own copy covers it), if undetermined, or if the game's copy
-                                                # can't be read
+                                                # own copy covers it) or an unused one, if undetermined, or if the
+                                                # game's copy can't be read
     undetermined: list[Mod] = field(default_factory=list)   # see load_order.undetermined_for
 
     @property
@@ -191,7 +193,8 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
 
     records = {profile_key(key): record for key, record in installed.manifest["files"].items()}
     keys = set(records)
-    unshipped = {key for key, record in records.items() if not record.get("shipped", True)}
+    merger_only = {key for key, record in records.items() if game_copy(record) == MERGER_ONLY}
+    unused = {key for key, record in records.items() if game_copy(record) == UNUSED}
     off = {key for key, record in records.items() if record.get("group") in groups_off}
     # The folders of the groups' files, but those turned off: {folder: group}
     group_dirs = {posixpath.dirname(key): record["group"] for key, record in records.items()
@@ -208,11 +211,14 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     group_of = {key: record["group"] for key, record in records.items() if "group" in record}
     group_of |= {key: group_dirs[posixpath.dirname(key)] for mod, found in shipped.items() if not is_own_folder(mod.folder)
                  for key in found if key not in keys}
-    game = _game_copies(game_path, unshipped - off, problems)
+    game = _game_copies(game_path, merger_only - off, problems)
 
     files = {}
     for key in sorted(group_of.keys() | keys):
-        result = files[key] = FileResult(key, [mod for mod in order if key in shipped[mod]])
+        shippers = [mod for mod in order if key in shipped[mod]]
+        if key in unused and not shippers:
+            continue    # nothing to patch, and nothing to say
+        result = files[key] = FileResult(key, shippers)
         others = [mod for mod in result.shippers if not is_own_folder(mod.folder)]
         result.undetermined = undetermined_for(others) if key not in off else []
         if COMPAT_PATCH.fullmatch(result.loaded.folder if result.loaded else "") and not others:
@@ -230,7 +236,7 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
         elif others:
             winner = others[0]
             result.winner = SourceFile.in_bundle(key, winner.folder, *shipped[winner][key])
-        elif key in unshipped:
+        elif key in merger_only:
             result.winner = game.get(key)
     problems += modio_problems(keys, modio_root)
     off_now = _screens_off(files, group_of, screens_off, reviews)

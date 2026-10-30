@@ -18,7 +18,7 @@ import logging
 
 from ..common import fail, profile_key
 from ..log import HEADING
-from ..manifests import shipped_files
+from ..manifests import compat_files
 from .manifest_diff import describe_commit, file_changes
 from .shared import (
     COMPAT_MANIFEST_DIR,
@@ -59,7 +59,7 @@ def compat_patch_problems(patch: dict, release: dict) -> list[str]:
     """Why a compat patch (its manifest) needs a rebuild for a release (its manifest), as lines of text;
     none if it works with that release as it is"""
     version = release["created_mod_version"]
-    ours = {profile_key(path): record for path, record in shipped_files(release).items()}
+    ours = {profile_key(path): record for path, record in compat_files(release).items()}
     # The build the patch was made from, for the details; gone or rewritten if that release was rebuilt since
     built_from = load_manifest(patch["smooth_version"]) or {"files": {}}
     built_from_files = {profile_key(path): record for path, record in built_from["files"].items()}
