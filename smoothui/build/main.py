@@ -14,7 +14,7 @@ from functools import partial
 
 from ..common import fail, profile_key
 from ..log import HEADING
-from ..manifests import SHIPPED
+from ..manifests import SHIPPED, load_manifest, shipped_files
 from ..patcher import dev_mode, patcher_core
 from ..requires import setting_requirement
 from ..witcher3.source_file import GAME_FILES, SourceFile
@@ -91,6 +91,10 @@ def parse_args():
     ap.add_argument("--force", action="store_true",
                     help="with --make-release: release this version even though it already seems to exist "
                          "(overwrites its manifests)")
+    ap.add_argument("--reissue", metavar="VERSION",
+                    help="rebuild the manifests of a released version (e.g. v0.3.3) with this code and profile, "
+                         "for changes only the merger uses; no zip is made. Fails if a file the release ships "
+                         "would change")
 
     # Dev hooks; useful for exploring the data format, etc.
     g = ap.add_mutually_exclusive_group()
@@ -105,6 +109,8 @@ def parse_args():
                         "pause until you type 'continue', then use the edited file")
 
     args = ap.parse_args()
+    if args.reissue:
+        args.make_release = args.force = True
     if args.make_release:
         for option, given in (("--fps", args.fps is not None), ("--install", args.install), ("--launch", args.launch),
                               ("--dev-*", args.dev_dump or args.dev_insert or args.dev_pause)):
@@ -138,7 +144,7 @@ def main():
     config = load_config()
     paths = config_paths(config)
 
-    base_version = config['versions']['created_mod_version']
+    base_version = args.reissue or config['versions']['created_mod_version']
     if not base_version or not base_version.startswith("v"):
         fail("Invalid created_mod_version in [versions] section of config file")
     check_game_version(paths['uncooked_files'], config['versions'].get('targeted_game_version'))
@@ -256,17 +262,25 @@ def build(args, config, paths, version, fps):
     if not shipped:
         fail("no patched files to ship were produced, aborting.")
 
-    log.info(f"Removing the old output folder ({version})", extra=HEADING)
-    shutil.rmtree(output_dir, ignore_errors=True)
-    if output_dir.exists():
-        fail(f"could not remove the old output folder {output_dir}")
-    output_content_path.mkdir(parents=True)
+    if args.reissue:
+        # The release stays as it is, so its files must too: the merger identifies installs by them
+        outputs = lambda records: {profile_key(path): (record["output_size"], record["output_crc32"])
+                                   for path, record in records.items()}
+        released = shipped_files(load_manifest(manifest_path(version)) or fail(f"no manifest of {version} to reissue"))
+        if outputs(released) != outputs({entry["path"]: entry["hashes"] for entry in shipped}):
+            fail(f"{version} can't be reissued: the files it ships would change")
+    else:
+        log.info(f"Removing the old output folder ({version})", extra=HEADING)
+        shutil.rmtree(output_dir, ignore_errors=True)
+        if output_dir.exists():
+            fail(f"could not remove the old output folder {output_dir}")
+        output_content_path.mkdir(parents=True)
 
-    pack_content(shipped, output_content_path)
-    add_mod_files(output_dir, OUTPUT_MOD_NAME)
-    write_build_record(output_mod_dir, version, fps)
+        pack_content(shipped, output_content_path)
+        add_mod_files(output_dir, OUTPUT_MOD_NAME)
+        write_build_record(output_mod_dir, version, fps)
 
-    zip_tree(output_dir, zip_out)
+        zip_tree(output_dir, zip_out)
 
     if args.make_release:
         log.info(f"Writing mod manifest ({version})", extra=HEADING)
