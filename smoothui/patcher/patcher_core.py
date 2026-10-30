@@ -241,10 +241,17 @@ def process(data, settings, body_hook=None, *, shares_classes=True, game_rate=No
     """
     result = None
     new_swf_bytes = None
+    first_error = None
     for sig in SWF_SIGS:
         pos = data.find(sig)
         while pos != -1:
-            payload = read_and_patch_swf(data, pos, sig, settings, body_hook, shares_classes, game_rate)
+            try:
+                payload = read_and_patch_swf(data, pos, sig, settings, body_hook, shares_classes, game_rate)
+            except MalformedSwfError as e:
+                # Compressed data contains a signature and a valid-looking version byte by chance now and
+                # then (in about one big file in a few): keep looking, and only fail if there is nothing else
+                first_error = first_error or e
+                payload = None
             if payload is None:
                 pos = data.find(sig, pos + len(sig))
                 continue
@@ -258,7 +265,7 @@ def process(data, settings, body_hook=None, *, shares_classes=True, game_rate=No
             pos = data.find(sig, end)
 
     if result is None:
-        raise MalformedSwfError("found 0 payloads (expected 1); corrupt file?")
+        raise first_error or MalformedSwfError("found 0 payloads (expected 1); corrupt file?")
     return result, new_swf_bytes
 
 def read_and_patch_swf(data, pos, sig, settings, body_hook=None, shares_classes=True, game_rate=None):
