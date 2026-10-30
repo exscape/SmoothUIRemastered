@@ -1,5 +1,5 @@
 {
- "created_at": "2026-10-30T13:33:21+00:00",
+ "created_at": "2026-10-30T16:27:05+00:00",
  "created_mod_version": "v0.3.3-120fps",
  "files": {
   "gameplay/gui_new/swf/alchemy/panel_alchemy.redswf": {
@@ -4562,7 +4562,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "895f637505eb5c619d80c45fb44bfc19fbcb73e7885243f1d674f8f129836ed9",
    "source_size": 1207167,
    "source_swf_sha256": "38fef26742b465445549a2e9b5fb7c431a04bdb4f4eb0739b16b1e627f719467"
@@ -6801,7 +6800,6 @@
      }
     ]
    },
-   "shipped": false,
    "source_sha256": "c672c29f46778f73078cb3c3da8e5af6fc3377e71829544bd931bf7b211d97ab",
    "source_size": 841652,
    "source_swf_sha256": "4a6d617329bc11f59c699851d5547e3d8933ec9a374387a1b403f761cf9cf7bd"
@@ -6861,7 +6859,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "df0d43e1a6affcf110334feeeb55b097c981bb19aca2b6c3cb6d0fe2c90b3859",
    "source_size": 46598,
    "source_swf_sha256": "d4f8b3ecda422cdf7590e5cae53246107580d48b4bf04bb29c7bb2bb56ca2e94"
@@ -6921,7 +6918,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "84baf215a5a988769762ddcddf51f431658e850a5e92d0e2127e3441cc31b861",
    "source_size": 44238,
    "source_swf_sha256": "819541462abf8fe2a371de8bfe4bb2b3389f81f9789c3757520dab25e95294af"
@@ -7040,7 +7036,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "90ca53fe77124eeb15fcfdd20aabb0da7ab80c18fb9654347bacee8a0fce32df",
    "source_size": 71395,
    "source_swf_sha256": "ef99d32ce9976baddeffda3d191d73dd8cbd61bf3d12f8cb73db71405f7d2c03"
@@ -7111,7 +7106,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "8bdcaa8eb456cbdb0cea986f5905a4873b14f5e8031d4cea7502b03aede00108",
    "source_size": 63560,
    "source_swf_sha256": "4f436bde0e515eaf8a8c8ef42c4df01209ba5a66d663d1fb5065b6ce033133cd"
@@ -7228,7 +7222,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "1820eb768f7664276c53507c947011dafdc75fb538e9171b8cd878fda03ee55e",
    "source_size": 295801,
    "source_swf_sha256": "17c3fb83ae29ff758a4e45f0a9e638663ab1d7a6a12139d90d10eca7102dc3f5"
@@ -7299,7 +7292,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "14f7571e411728ed84852bb05ad577cc29a5b4f625aae2b848ce1eb6ced9963b",
    "source_size": 163462,
    "source_swf_sha256": "1235b4cbd1cb67e224365840ca245944cefcb8faa3a156489b0d69ae8a501261"
@@ -7415,7 +7407,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "8ca01a600841f17631983d491fd2a96522b1466ccd4e9626ece20fb4aa7f1e1e",
    "source_size": 648343,
    "source_swf_sha256": "be4b13092f9de3adc1ab4b2cbbb54a2738ae0f74ae99e4806e8094cfed3e81b7"
@@ -7480,7 +7471,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "f48d89f046832f3702783e3a0105a0c9e9d08b12b5dfeb9a951adf7af4f0e746",
    "source_size": 43821,
    "source_swf_sha256": "a695045e3245928228c3d240353a4fa113a8a76b153ac0281503b247970cc688"
@@ -7597,7 +7587,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "e3debe76a8a8011ac7dd877285be6b60b636604d8e9fe07f2c961f54e8454152",
    "source_size": 85817,
    "source_swf_sha256": "5bebeea7ebea124adf3b5e8a4a45e642680b68df760da2119cd67828f2e8ac85"
@@ -7789,7 +7778,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "369f02a3ac5b11ff16b04227b7187baa298f2d2040674dfb9c092847821e8e7e",
    "source_size": 920334,
    "source_swf_sha256": "e185e6fe909820766bc975ada33580c41bfd39fbcd9bdf5c22814350d9b5f1de"
@@ -7924,7 +7912,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "8b5c7cf0cb0e61fd005239689e096c9c5da9e3f1aa2182f9f88c71057903a76e",
    "source_size": 88805,
    "source_swf_sha256": "e787a79b818935a278d59e0276cdeb9004c8cd3694e44c2b353c54fb8350adfb"
@@ -7999,7 +7986,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "9c54f418c4d4be653f84770a332a0c353d35a690d7d28823cfe673690ab8e312",
    "source_size": 67321,
    "source_swf_sha256": "d2fe4c2ce749996767f4f96e472ff05cd6fea80214aa55ced625b1d27856165e"
@@ -8068,7 +8054,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "0b7dfad6345b72f855f592c547fa42918cd066d8953c26f1b33ea727f607bab8",
    "source_size": 61074,
    "source_swf_sha256": "357efb1fd17b51ab2c318d73af863f297062174a4ed63b36571673921d457aa5"
@@ -8219,7 +8204,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "5e1ce7d3be052cea8a0ea9d1d744a3fe059fd367bc4bd7ed951fa76d599780e9",
    "source_size": 683761,
    "source_swf_sha256": "a71fae7cbff5918877136c4c43ab0be364566a3675db3b674256a47bdb2c0434"
@@ -8351,7 +8335,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "a83eaafda5dc2f6b33b3d69c34962922bceef6b44f01650aa9afd5475cf77f00",
    "source_size": 666869,
    "source_swf_sha256": "e7454304f9c2085e8a2aece39fd13b7f30af87c8c05959a82c7df038056c4ae6"
@@ -8738,7 +8721,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "a84762cef295a639ccceff109508031b75ae8b75852222c4ada796b4a85430cc",
    "source_size": 1355636,
    "source_swf_sha256": "dfb9dd1781033703a24b169b00b9b985a354d894b5e8dd3207a0227fafc38238"
@@ -8857,7 +8839,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "50e3716a322cce1574bbe7ef6c069017b4868992c7ac0f34789d4d8b42986262",
    "source_size": 216195,
    "source_swf_sha256": "bb0f48c879f5b6a21a67ff3576becea01386cb124b6d58dd9782b02e73a6256e"
@@ -8917,7 +8898,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "b1b16f5170a22e18b1e3fa2ecc9c25a21cdc7522d8738427aff3b74c1600f6d8",
    "source_size": 69013,
    "source_swf_sha256": "aa219ff5e244bd81698a42f6b96b0d0040680ac75796507b3249b614de1f5e25"
@@ -9083,7 +9063,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "cd423233a1022e3c9ab1e16a68e00294ced3bf21ea3b39715edcb8db972fd51e",
    "source_size": 571210,
    "source_swf_sha256": "b1230e3b3b2fe91b811f852fa61052757ad2f6c296ec258127691b929fd7ba5a"
@@ -9143,7 +9122,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "410ece977ba843c547676bf76098ee924a6021d1fed416dab4435c35b6bda797",
    "source_size": 43415,
    "source_swf_sha256": "3f1c4bdd721cb8fe879ce5c65c79a60d5bdff7436744b19550e2767fe0985889"
@@ -9212,7 +9190,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "dbb7e58cc5c8214be056dfc26b565d411baeea3f02f4a0514b6d7b3dce6eef0a",
    "source_size": 67425,
    "source_swf_sha256": "5a7ef9eed5f7450cd30c5f93817fe8dc67d9b0dadb2e57d00ab5bb93feef85e5"
@@ -9306,7 +9283,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "800fabd213227b053fa0572b8cf6c9fcbb2e0f35e0709013908cc721d3b011d8",
    "source_size": 344107,
    "source_swf_sha256": "f2b8e52092946cf9c8dba7a7893458d7fd48221073501a96ed294d90c0ad2f0e"
@@ -9583,7 +9559,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "f24e5e465085b97fa0d5e1a9b73182e25cbf969df99ef7c62ec7eedfd4b0fbb0",
    "source_size": 1361180,
    "source_swf_sha256": "3e765ecadbb8a41147fb4938e8cee5edc08922c43c70b2196e4bb07266af8115"
@@ -9644,7 +9619,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "218b021942745ca4571e11e8faa4b4704ce069766bdd2b683d72a38cbdca7339",
    "source_size": 74264,
    "source_swf_sha256": "eef61a8b5e54ca3f376706ebdbd21a8cb48cd6cc41e51356ffdf8257c6539d87"
@@ -10022,7 +9996,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "925372f9e4c029a2d219732e445aee31b7a3b97e65fd1c6f6a089ec87752d7ad",
    "source_size": 252311,
    "source_swf_sha256": "7b81ff2f4f1d5bb913162f638b507b13b520f7e9465b5e823c2503cdf1300792"
@@ -11178,7 +11151,6 @@
     "unmet_rules": [],
     "warnings": []
    },
-   "shipped": false,
    "source_sha256": "8e375d6bd6ff14e146ae3554cfb5c966787779fa165c44edaa406d14a84f800c",
    "source_size": 319413,
    "source_swf_sha256": "01e5a8f00c7454caceced6e05fce5f136b44f6ec8e58f178fd7a70407285f567"
@@ -13657,7 +13629,7 @@
  },
  "manifest_format": 2,
  "output_zip": "SmoothUIRemastered_v0.3.3-120fps.zip",
- "patcher_commit": "d1864f4b3feefe212b930357d6857532e2f0fe66",
+ "patcher_commit": "0e7ec2a149327a8c3d177a7d1bb6525f283d907c",
  "patcher_uncommitted_changes": false,
  "requires": [
   "fix:gwent-3d-bug-fix",
