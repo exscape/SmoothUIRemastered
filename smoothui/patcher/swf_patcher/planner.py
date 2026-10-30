@@ -16,9 +16,9 @@ from .abc_bytecode import PushDouble
 from .code_analysis import (
     MOTION_PACKAGE,
     ArgKind,
-    CodeAnalysis,
     FrameScripts,
     GotoCall,
+    MovieAnalysis,
     Receiver,
     ReceiverKind,
 )
@@ -97,9 +97,10 @@ class RescalePlan:
     probably_safe: dict[int, list[str]] = field(default_factory=dict)
     # Classes with frame-number dependent code, that no clip in this file is linked to
     unlinked_classes: set[str] = field(default_factory=set)
-    # method index -> {instruction index: new int value or PushDouble}
+    # method (the movie's id, see AbcUnit) -> {instruction index: new int value or PushDouble}
     code_edits: defaultdict = field(default_factory=lambda: defaultdict(dict))
-    new_doubles: list[float] = field(default_factory=list)  # appended to the ABC double pool
+    # DoABC tag index -> the values appended to that tag's double pool
+    new_doubles: dict[int, list[float]] = field(default_factory=dict)
     frame_script_edits: int = 0
     goto_edits: int = 0
     increments: list[IncrementPatch] = field(default_factory=list)
@@ -158,7 +159,7 @@ class Planner:
     def __init__(self, movie: SwfMovie, options: RescaleOptions):
         self.movie = movie
         self.options = options
-        self.analysis = CodeAnalysis(movie, options.shares_classes)
+        self.analysis = MovieAnalysis(movie, options.shares_classes)
         self.plan = RescalePlan(movie.fps, options.target_fps,
                                 Retiming(fps_ratio(movie.fps, options.target_fps)))
         self.reasons = self.plan.reasons
@@ -488,19 +489,20 @@ class Planner:
         increments of animated properties to compensate; warn about the rest."""
         plan = self.plan
         ratio = plan.retiming.ratio
-        double_pool_size = len(self.movie.abc.doubles)
         for handler in self.analysis.find_frame_handlers():
             if handler.one_shot or handler.time_based or handler.owner.startswith(SAFE_HANDLER_PREFIXES):
                 continue
             name = short_owner(handler.owner)
+            unit = self.movie.unit_of(handler.method)
+            new_doubles = plan.new_doubles.setdefault(unit.tag_index, [])
             patched = False
             for push_index, step, prop in handler.increments:
                 if prop not in ANIMATED_PROPERTIES:
                     continue
                 new_step = step / float(ratio) if isinstance(step, float) \
                     else float(Fraction(step).limit_denominator(10**6) / ratio)
-                plan.code_edits[handler.method][push_index] = PushDouble(double_pool_size + len(plan.new_doubles))
-                plan.new_doubles.append(new_step)
+                plan.code_edits[handler.method][push_index] = PushDouble(len(unit.abc.doubles) + len(new_doubles))
+                new_doubles.append(new_step)
                 plan.increments.append(IncrementPatch(name, prop, float(step), new_step))
                 patched = True
             if not patched:

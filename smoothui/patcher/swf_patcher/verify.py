@@ -13,7 +13,7 @@ from .abc_bytecode import INTEGER_PUSH_NAMES, PushDouble, disassemble
 from .abc_file import parse_abc
 from .builder import raw_fps
 from .interpolation import change_magnitude, interpolate, simulate_timeline
-from .movie import Sprite, SwfMovie
+from .movie import AbcUnit, Sprite, SwfMovie
 from .place_object import PLACE_OBJECT_CODES, parse_place_object
 from .planner import RescalePlan, SpriteTweens
 from .retiming import Retiming
@@ -55,7 +55,8 @@ def verify(movie: SwfMovie, plan: RescalePlan, new_body: bytes) -> list[str]:
         problems.append("tag count changed")
         return problems
 
-    new_abc_tag = None
+    units = {unit.tag_index: unit for unit in movie.units}
+    edited = {movie.unit_of(method).tag_index for method in plan.code_edits}
     for i, (old, new) in enumerate(zip(movie.tags, new_tags)):
         if old.code != new.code:
             problems.append(f"tag {i} code changed")
@@ -67,13 +68,10 @@ def verify(movie: SwfMovie, plan: RescalePlan, new_body: bytes) -> list[str]:
                                                      plan.tweens.get(character_id))
             elif old.payload != new.payload:
                 problems.append(f"unstretched sprite {character_id} changed")
-        elif old.code == TagCode.DO_ABC:
-            new_abc_tag = new
+        elif old.code == TagCode.DO_ABC and i in edited:
+            problems += _verify_abc(movie, plan, units[i], new)
         elif old != new:
             problems.append(f"tag {i} ({old.code}) changed")
-
-    if new_abc_tag is not None:
-        problems += _verify_abc(movie, plan, new_abc_tag)
     return problems
 
 
@@ -146,12 +144,12 @@ def _verify_stretched_sprite(sprite: Sprite, new: Tag, retiming: Retiming, tween
     return problems
 
 
-def _verify_abc(movie: SwfMovie, plan: RescalePlan, new_tag: Tag) -> list[str]:
+def _verify_abc(movie: SwfMovie, plan: RescalePlan, unit: AbcUnit, new_tag: Tag) -> list[str]:
     """Only the planned constants may differ; branches, switches and exception ranges must still
     point at the same instructions"""
     problems = []
     prefix, abc_bytes = split_do_abc(new_tag)
-    if prefix != movie.abc_prefix:
+    if prefix != unit.prefix:
         problems.append("DoABC prefix changed")
     try:
         new_abc = parse_abc(abc_bytes)
@@ -159,25 +157,27 @@ def _verify_abc(movie: SwfMovie, plan: RescalePlan, new_tag: Tag) -> list[str]:
         problems.append(f"new ABC does not parse: {e}")
         return problems
 
-    old_abc = movie.abc
+    old_abc = unit.abc
     if (old_abc.strings, old_abc.multinames, old_abc.ints, len(old_abc.methods), len(old_abc.bodies)) != \
             (new_abc.strings, new_abc.multinames, new_abc.ints, len(new_abc.methods), len(new_abc.bodies)):
         problems.append("ABC constant pool / method table changed")
     as_bytes = lambda values: [struct.pack("<d", v) for v in values]   # bytewise, as the pool contains a NaN
-    if as_bytes(new_abc.doubles) != as_bytes(old_abc.doubles + plan.new_doubles):
+    new_doubles = plan.new_doubles.get(unit.tag_index, [])
+    if as_bytes(new_abc.doubles) != as_bytes(old_abc.doubles + new_doubles):
         problems.append("double constant pool is not old pool + new constants")
 
-    for method, old_body in old_abc.bodies.items():
-        new_body = new_abc.bodies[method]
+    for local, old_body in old_abc.bodies.items():
+        new_body = new_abc.bodies[local]
+        method = unit.method_base + local
         if method not in plan.code_edits:
             if (old_body.code, old_body.exceptions) != (new_body.code, new_body.exceptions):
                 problems.append(f"method {method} changed unexpectedly")
             continue
-        problems += _verify_method(movie, plan, method, new_abc, new_body)
+        problems += _verify_method(movie, plan, unit, method, new_abc, new_body)
     return problems
 
 
-def _verify_method(movie, plan, method, new_abc, new_body) -> list[str]:
+def _verify_method(movie, plan, unit, method, new_abc, new_body) -> list[str]:
     old_code, new_code = movie.code[method], disassemble(new_body.code)
     if len(old_code) != len(new_code):
         return [f"method {method} instruction count changed"]
@@ -190,7 +190,7 @@ def _verify_method(movie, plan, method, new_abc, new_body) -> list[str]:
         if k in edits:
             edit = edits[k]
             if isinstance(edit, PushDouble):
-                expected = plan.new_doubles[edit.pool_index - len(movie.abc.doubles)]
+                expected = plan.new_doubles[unit.tag_index][edit.pool_index - len(unit.abc.doubles)]
                 if new.name != "pushdouble" or new_abc.doubles[new.args[0]] != expected:
                     problems.append(f"method {method} ins {k}: patched double wrong")
             elif new.name not in INTEGER_PUSH_NAMES or new.args[0] != edit:
@@ -205,6 +205,6 @@ def _verify_method(movie, plan, method, new_abc, new_body) -> list[str]:
             problems.append(f"method {method} ins {k}: operands changed")
 
     remap = lambda exceptions, index: [[index[e[0]], index[e[1]], index[e[2]], e[3], e[4]] for e in exceptions]
-    if remap(movie.abc.bodies[method].exceptions, old_index) != remap(new_body.exceptions, new_index):
+    if remap(unit.abc.bodies[unit.local(method)].exceptions, old_index) != remap(new_body.exceptions, new_index):
         problems.append(f"method {method} exception table not equivalent")
     return problems

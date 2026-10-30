@@ -42,7 +42,7 @@ from ..swf_patcher.abc_file import (
     encode_u30,
     parse_abc,
 )
-from ..swf_patcher.code_analysis import CodeAnalysis
+from ..swf_patcher.code_analysis import MovieAnalysis
 from ..swf_patcher.movie import SwfMovie
 from ..swf_patcher.swf_tags import Tag, TagCode
 from .swf_edit import AFTER_RESCALE, CantApply, FixKind, FixResult, SwfEdit
@@ -164,7 +164,7 @@ def _fx_script_frames(swf: SwfEdit) -> tuple[str, list[str]]:
     with it, so an effect with a clip whose script does more than stop it (or scripts that can't be read) is
     left out: it isn't sped up. Also returns the classes of those."""
     movie = SwfMovie(swf.body())
-    scripts = CodeAnalysis(movie).find_frame_scripts()
+    scripts = MovieAnalysis(movie).find_frame_scripts()
     entries, left_out = {}, []
     for fx_class, ids in sorted(movie.sprites_of_class.items()):
         if (not fx_class.startswith(FX_PREFIX) or fx_class.startswith(FX_MANAGER_PREFIX)

@@ -35,7 +35,7 @@ from .abc_file import (
     TRAIT_METHOD,
     VALUE_TRAIT_KINDS,
 )
-from .movie import SwfMovie
+from .movie import AbcUnit, SwfMovie
 
 GOTO_METHODS = ("gotoAndStop", "gotoAndPlay")
 FRAME_PROPERTIES = ("totalFrames", "currentFrame", "nextFrame", "prevFrame", "framesLoaded")
@@ -155,16 +155,66 @@ def _strip_casts(span):
             return span
 
 
-class CodeAnalysis:
+class MovieAnalysis:
+    """The CodeAnalysis of each of the movie's DoABC tags, with their findings combined"""
+
     def __init__(self, movie: SwfMovie, shares_classes: bool = True):
+        self.analyses = [CodeAnalysis(movie, unit, shares_classes) for unit in movie.units]
+        for analysis in self.analyses:
+            analysis.peers = self.analyses
+        self.movie = movie
+
+    def _all(self, find) -> list:
+        return [found for analysis in self.analyses for found in find(analysis)]
+
+    def find_goto_calls(self) -> list[GotoCall]:
+        return self._all(CodeAnalysis.find_goto_calls)
+
+    def find_play_calls(self) -> list[tuple[int, Receiver]]:
+        return self._all(CodeAnalysis.find_play_calls)
+
+    def find_frame_scripts(self) -> dict[str, FrameScripts]:
+        return dict(self._all(lambda analysis: analysis.find_frame_scripts().items()))
+
+    def find_frame_handlers(self) -> list[FrameHandler]:
+        return self._all(CodeAnalysis.find_frame_handlers)
+
+    def find_frame_rate_writes(self) -> list[int]:
+        return self._all(CodeAnalysis.find_frame_rate_writes)
+
+    def find_frame_property_uses(self) -> list[FramePropertyUse]:
+        return self._all(CodeAnalysis.find_frame_property_uses)
+
+    def find_static_motion_hosts(self) -> set[str] | None:
+        hosts = [analysis.find_static_motion_hosts() for analysis in self.analyses]
+        return None if None in hosts else set().union(*hosts)
+
+    def code_hash(self, methods) -> str:
+        """A short hash (8 hex digits) of the methods' code, that only changes when the code does:
+        debug information is left out, and constants, names and branch targets are resolved"""
+        analysis_of = {analysis.unit: analysis for analysis in self.analyses}
+        text = "\n\n".join(sorted(analysis_of[self.movie.unit_of(method)]._normalized_code(method)
+                                   for method in set(methods)))
+        return f"{zlib.crc32(text.encode()):08x}"
+
+
+class CodeAnalysis:
+    """The analysis of one DoABC tag's code. Methods are the movie's ids (see AbcUnit); the
+    instructions' operands refer to this tag's constants (self.abc)."""
+
+    def __init__(self, movie: SwfMovie, unit: AbcUnit, shares_classes: bool = True):
         """shares_classes: other movies may share its ActionScript classes, so a class it lacks may exist
         (only the HUD's movies do; see RescaleOptions)"""
         self.movie = movie
-        self.abc = movie.abc
+        self.unit = unit
+        self.abc = unit.abc
+        self.code = {method: code for method, code in movie.code.items() if method in unit.methods}
+        self.peers = [self]     # the analyses of all the movie's tags (see MovieAnalysis)
         self.shares_classes = shares_classes
         # A class with its own trace() would make `trace(x)` in its methods call that instead
-        self._trace_is_overridden = any(self.abc.name_of(trait.name) == "trace"
-                                        for instance, cls in zip(self.abc.instances, self.abc.classes)
+        self._trace_is_overridden = any(abc.name_of(trait.name) == "trace"
+                                        for abc in (unit.abc for unit in movie.units)
+                                        for instance, cls in zip(abc.instances, abc.classes)
                                         for trait in instance.traits + cls.traits)
         self._field_classes_found = {}  # (class, field) -> field_classes()
 
@@ -176,7 +226,7 @@ class CodeAnalysis:
 
     def find_goto_calls(self) -> list[GotoCall]:
         calls = []
-        for method, code in self.movie.code.items():
+        for method, code in self.code.items():
             targets = None
             for i, ins in enumerate(code):
                 if ins.name not in ("callproperty", "callpropvoid") or self.name(ins) not in GOTO_METHODS:
@@ -323,7 +373,7 @@ class CodeAnalysis:
         receiver = self._named(self.instance_name(code, start, end))
         span = _significant(code[start:end])
         shape = [ins.name for ins in span]
-        body = self.abc.bodies.get(method)
+        body = self.abc.bodies.get(self.unit.local(method))
         # this.icon; or a bare `icon`, where no local variable can be named so
         of_this = shape == ["getlocal0", "getproperty"] or not (body and body.traits) and (
             shape == ["getlex"] or shape == ["findpropstrict", "getproperty"] and self.name(span[0]) == self.name(span[1]))
@@ -347,10 +397,12 @@ class CodeAnalysis:
         return self._field_classes_found[key]
 
     def _find_field_classes(self, class_name, field) -> frozenset[str] | None:
-        movie, abc = self.movie, self.abc
+        movie = self.movie
         owner, trait = class_name, None     # the class declaring the field
         while owner in movie.instance_of and trait is None:
-            trait = next((t for t in movie.instance_of[owner].traits if abc.name_of(t.name) == field), None)
+            unit, instance = movie.instance_of[owner]
+            abc = unit.abc
+            trait = next((t for t in instance.traits if abc.name_of(t.name) == field), None)
             owner = owner if trait else movie.superclass[owner]
         if trait is None or trait.kind not in VALUE_TRAIT_KINDS or abc.multinames[trait.name].kind != QNAME:
             return None
@@ -364,24 +416,35 @@ class CodeAnalysis:
         writers.add(None)   # closures, which may be inside those classes
 
         classes = set()
-        for method, code in movie.code.items():
-            writer = movie.class_of_method.get(method) in writers
+        for analysis in self.peers:
+            found = analysis._field_writes(field, trait.slot_id, writers)
+            if found is None:
+                return None
+            classes |= found
+        return frozenset(classes)
+
+    def _field_writes(self, field, slot_id, writers) -> set[str] | None:
+        """The classes whose new instances this tag's code stores in field (see field_classes), which
+        only the classes in writers can write by slot number or by a runtime name; None if unsure"""
+        classes = set()
+        for method, code in self.code.items():
+            writer = self.movie.class_of_method.get(method) in writers
             for i, ins in enumerate(code):
-                if ins.name == "setslot" and writer and (trait.slot_id in (0, ins.args[0])) \
+                if ins.name == "setslot" and writer and (slot_id in (0, ins.args[0])) \
                         and not self._sets_scope_slot(code, i):
                     return None     # maybe a write by slot number
                 if ins.name not in ("setproperty", "initproperty"):
                     continue
                 name = self.name(ins)
                 if name == field:
-                    start = expression_start(abc, code, i)
+                    start = expression_start(self.abc, code, i)
                     created = self._created_classes(method, code, start, i) if start is not None else None
                     if created is None:
                         return None
                     classes |= created
                 elif name.startswith("<") and writer and not self._names_other_than(method, code, i, field):
                     return None
-        return frozenset(classes)
+        return classes
 
     def _inherits(self, class_name, ancestor) -> bool:
         while class_name:
@@ -488,12 +551,13 @@ class CodeAnalysis:
 
     def _static_string(self, class_name, const) -> str | None:
         """The value of a static string constant of class_name or a superclass"""
-        classes = dict(zip((self.abc.full_name_of(instance.name) for instance in self.abc.instances), self.abc.classes))
-        while class_name in classes:
-            for trait in classes[class_name].traits:
-                if self.abc.name_of(trait.name) == const:
+        while class_name in self.movie.instance_of:
+            unit, instance = self.movie.instance_of[class_name]
+            abc = unit.abc
+            for trait in abc.classes[abc.instances.index(instance)].traits:
+                if abc.name_of(trait.name) == const:
                     ok = trait.kind == TRAIT_CONST and trait.value_kind == CONSTANT_UTF8
-                    return self.abc.strings[trait.value_index] if ok else None
+                    return abc.strings[trait.value_index] if ok else None
             class_name = self.movie.superclass.get(class_name)
         return None
 
@@ -532,7 +596,7 @@ class CodeAnalysis:
     def find_play_calls(self) -> list[tuple[int, Receiver]]:
         """play() calls: (method, receiver)"""
         found = []
-        for method, code in self.movie.code.items():
+        for method, code in self.code.items():
             for i, ins in enumerate(code):
                 if ins.name in ("callproperty", "callpropvoid") and self.name(ins) == "play" and ins.args[1] == 0:
                     start = expression_start(self.abc, code, i)
@@ -545,8 +609,8 @@ class CodeAnalysis:
         """Class name -> the addFrameScript calls in its constructor"""
         found = {}
         for instance in self.abc.instances:
-            method = instance.constructor
-            code = self.movie.code.get(method)
+            method = self.unit.method_base + instance.constructor
+            code = self.code.get(method)
             if not code:
                 continue
             class_name = self.abc.full_name_of(instance.name)
@@ -564,9 +628,10 @@ class CodeAnalysis:
 
     def _only_stops(self, class_name, function) -> bool:
         """Does the frame script `function` (a method of class_name) only call stop()?"""
-        methods = [trait.method for trait in self.movie.instance_of[class_name].traits
+        _, instance = self.movie.instance_of[class_name]     # a class of this tag
+        methods = [self.unit.method_base + trait.method for trait in instance.traits
                    if trait.kind == TRAIT_METHOD and self.abc.name_of(trait.name) == function]
-        code = _significant(self.movie.code.get(methods[0], [])) if len(methods) == 1 else []
+        code = _significant(self.code.get(methods[0], [])) if len(methods) == 1 else []
         return [(ins.name, self.name(ins) if ins.name in ("findpropstrict", "callpropvoid") else None)
                 for ins in code] == STOP_ONLY
 
@@ -611,15 +676,17 @@ class CodeAnalysis:
     def find_frame_handlers(self) -> list[FrameHandler]:
         """Methods passed to addEventListener(Event.ENTER_FRAME, handler)"""
         movie = self.movie
-        by_class_and_name = {}  # (class, method name) -> method
+        by_class_and_name = {}  # (class, method name) -> method, of this tag
         for method, owner in movie.method_owner.items():
+            if method not in self.unit.methods:
+                continue
             by_class_and_name.setdefault((movie.class_of_method.get(method), owner.split(".")[-1]), method)
         by_name = {}
         for (_, name), method in by_class_and_name.items():
             by_name.setdefault(name, method)
 
         handlers, seen = [], set()
-        for method, code in movie.code.items():
+        for method, code in self.code.items():
             for i, ins in enumerate(code):
                 if ins.name != "callpropvoid" or self.name(ins) != "addEventListener":
                     continue
@@ -639,7 +706,7 @@ class CodeAnalysis:
         return handlers
 
     def _frame_handler(self, method) -> FrameHandler:
-        code = self.movie.code.get(method, [])
+        code = self.code.get(method, [])
         calls = lambda name: any(ins.name == "callpropvoid" and self.name(ins) == name for ins in code)
         reads = lambda name, ops: any(ins.name in ops and self.name(ins) == name for ins in code)
         one_shot = calls("removeEventListener") and reads("ENTER_FRAME", ("getproperty", "getlex"))
@@ -669,7 +736,7 @@ class CodeAnalysis:
     def find_frame_rate_writes(self) -> list[int]:
         """Methods that set a frameRate property (stage.frameRate = ...). The receiver's type isn't known,
         but nothing else in the game's movies has a frameRate to set."""
-        return [method for method, code in self.movie.code.items()
+        return [method for method, code in self.code.items()
                 if any(ins.name in ("setproperty", "initproperty") and self.name(ins) == "frameRate" for ins in code)]
 
     # --- totalFrames, currentFrame, ... ---
@@ -679,7 +746,7 @@ class CodeAnalysis:
         arguments (MovieClip's take none, so these are some other class's methods), and reads whose
         value only ends up in a trace() call"""
         uses = []
-        for method, code in self.movie.code.items():
+        for method, code in self.code.items():
             for i, ins in enumerate(code):
                 if ins.name not in ("getproperty", "getlex", "callproperty", "callpropvoid"):
                     continue
@@ -785,7 +852,7 @@ class CodeAnalysis:
             if method in movie.static_methods:
                 return None     # the class itself
             types.add(movie.class_of_method.get(method))
-        param_types = abc.methods[method].param_types
+        param_types = abc.methods[self.unit.local(method)].param_types
         if 1 <= register <= len(param_types):
             param_type = param_types[register - 1]
             types.add(abc.full_name_of(param_type) if param_type else None)
@@ -819,11 +886,11 @@ class CodeAnalysis:
         handlers = pushes[2:]
         if pushes[:2] != ["this", "activation"] or handlers != ["this", "activation", "catch"] * (len(handlers) // 3):
             return None
-        body = self.abc.bodies.get(method)
+        body = self.abc.bodies.get(self.unit.local(method))
         slots = [trait for trait in (body.traits if body else ()) if trait.kind in VALUE_TRAIT_KINDS]
         if any(trait.slot_id == 0 for trait in slots):
             return None     # slot ids assigned by position, which this doesn't handle
-        types = {self.movie.value_type(trait) for trait in slots if trait.slot_id == slot}
+        types = {self.movie.value_type(trait, self.abc) for trait in slots if trait.slot_id == slot}
         return types.pop() if len(types) == 1 else None
 
     def _scope_pushes(self, code) -> list[str | None]:
@@ -855,7 +922,7 @@ class CodeAnalysis:
         motion_names.add("motion_internal")
 
         hosts = set()
-        for method, code in movie.code.items():
+        for method, code in self.code.items():
             if movie.owner_name(method, "").startswith(MOTION_PACKAGE) or any(ins.name == "newclass" for ins in code):
                 continue    # the library itself, and script initializers (which define the classes)
             if any(ins.name == "pushstring" and ("<Motion" in abc.strings[ins.args[0]] or "fl.motion" in abc.strings[ins.args[0]])
@@ -877,16 +944,10 @@ class CodeAnalysis:
             hosts.add(movie.class_of_method[method])
         return hosts
 
-    # --- Code identity ---
-
-    def code_hash(self, methods) -> str:
-        """A short hash (8 hex digits) of the methods' code, that only changes when the code does:
-        debug information is left out, and constants, names and branch targets are resolved"""
-        text = "\n\n".join(sorted(self._normalized_code(method) for method in set(methods)))
-        return f"{zlib.crc32(text.encode()):08x}"
+    # --- Code identity (see MovieAnalysis.code_hash) ---
 
     def _normalized_code(self, method) -> str:
-        code = self.movie.code.get(method, [])
+        code = self.code.get(method, [])
         kept = [ins for ins in code if ins.name not in SKIPPABLE_NAMES]
         position = {code[-1].end if code else 0: len(kept)}  # code offset -> index in kept
         index = len(kept)

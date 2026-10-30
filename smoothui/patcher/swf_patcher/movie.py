@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import struct
+from bisect import bisect_right
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -15,6 +16,8 @@ from .abc_file import (
     TRAIT_GETTER,
     TRAIT_METHOD,
     VALUE_TRAIT_KINDS,
+    AbcFile,
+    InstanceInfo,
     Trait,
     parse_abc,
 )
@@ -65,6 +68,28 @@ class Sprite:
             elif tag.code not in (TagCode.FRAME_LABEL, TagCode.END) and frame < self.frame_count:
                 frames.add(frame)
         return frames
+
+
+@dataclass(slots=True, eq=False)
+class AbcUnit:
+    """One DoABC tag. Its code only refers to its own constant pools and methods; what it shares with
+    the other tags is the class names (one class space for the whole movie).
+
+    The movie numbers the methods of all units in one sequence (see SwfMovie.unit_of): its method
+    method_base + i is method i of this ABC."""
+    tag_index: int      # index of its DoABC tag in SwfMovie.tags
+    prefix: bytes       # the tag's flags and name, before the ABC data
+    abc: AbcFile
+    method_base: int
+
+    @property
+    def methods(self) -> range:
+        """The movie's ids of this unit's methods"""
+        return range(self.method_base, self.method_base + len(self.abc.methods))
+
+    def local(self, method: int) -> int:
+        """The index in self.abc of the movie's method"""
+        return method - self.method_base
 
 
 class SwfMovie:
@@ -132,34 +157,49 @@ class SwfMovie:
     # --- ActionScript ---
 
     def _load_abc(self):
-        abc_indices = [i for i, tag in enumerate(self.tags) if tag.code == TagCode.DO_ABC]
-        if len(abc_indices) != 1:
-            raise RescaleError(f"expected exactly one DoABC tag, found {len(abc_indices)}")
-        self.abc_tag_index = abc_indices[0]
-        self.abc_prefix, abc_bytes = split_do_abc(self.tags[self.abc_tag_index])
-        abc = self.abc = parse_abc(abc_bytes)
+        self.units: list[AbcUnit] = []
+        method_base = 0
+        for index, tag in enumerate(self.tags):
+            if tag.code == TagCode.DO_ABC:
+                prefix, abc_bytes = split_do_abc(tag)
+                unit = AbcUnit(index, prefix, parse_abc(abc_bytes), method_base)
+                self.units.append(unit)
+                method_base += len(unit.abc.methods)
+        if not self.units:
+            raise RescaleError("found no DoABC tag")
+        self._method_bases = [unit.method_base for unit in self.units]
 
-        self.method_owner = {}      # method index -> "pkg.Class.method"
-        self.class_of_method = {}   # method index -> "pkg.Class"
+        # Methods are the movie's ids (see AbcUnit)
+        self.method_owner = {}      # method -> "pkg.Class.method"
+        self.class_of_method = {}   # method -> "pkg.Class"
         self.superclass = {}        # "pkg.Class" -> "pkg.Super" or None
-        self.instance_of = {}       # "pkg.Class" -> its InstanceInfo
-        self.static_methods = set()  # method indices of static methods and class initializers
+        self.instance_of: dict[str, tuple[AbcUnit, InstanceInfo]] = {}     # "pkg.Class" -> (its unit, its InstanceInfo)
+        self.static_methods = set()  # static methods and class initializers
+        self.code: dict[int, list[Instruction]] = {}
 
-        for instance, cls in zip(abc.instances, abc.classes):
-            class_name = abc.full_name_of(instance.name)
-            self.superclass[class_name] = abc.full_name_of(instance.super_name) if instance.super_name else None
-            self.instance_of[class_name] = instance
-            self._set_method_owner(instance.constructor, class_name, "<iinit>")
-            self._set_method_owner(cls.static_init, class_name, "<cinit>")
-            self.static_methods.add(cls.static_init)
-            for trait in instance.traits + cls.traits:
-                if trait.kind in METHOD_TRAIT_KINDS:
-                    self._set_method_owner(trait.method, class_name, abc.name_of(trait.name))
-            self.static_methods.update(trait.method for trait in cls.traits if trait.kind in METHOD_TRAIT_KINDS)
+        for unit in self.units:
+            abc, base = unit.abc, unit.method_base
+            for instance, cls in zip(abc.instances, abc.classes):
+                class_name = abc.full_name_of(instance.name)
+                if class_name in self.instance_of and self.instance_of[class_name][0] is not unit:
+                    raise RescaleError(f"class {class_name} is defined in more than one DoABC tag")
+                self.superclass[class_name] = abc.full_name_of(instance.super_name) if instance.super_name else None
+                self.instance_of[class_name] = (unit, instance)
+                self._set_method_owner(base + instance.constructor, class_name, "<iinit>")
+                self._set_method_owner(base + cls.static_init, class_name, "<cinit>")
+                self.static_methods.add(base + cls.static_init)
+                for trait in instance.traits + cls.traits:
+                    if trait.kind in METHOD_TRAIT_KINDS:
+                        self._set_method_owner(base + trait.method, class_name, abc.name_of(trait.name))
+                self.static_methods.update(base + trait.method for trait in cls.traits if trait.kind in METHOD_TRAIT_KINDS)
+            self.code.update((base + m, disassemble(body.code)) for m, body in abc.bodies.items())
 
         self._load_string_typing()
-        self.code: dict[int, list[Instruction]] = {m: disassemble(body.code) for m, body in abc.bodies.items()}
         self._load_live_code()
+
+    def unit_of(self, method: int) -> AbcUnit:
+        """The unit that holds the movie's method"""
+        return self.units[bisect_right(self._method_bases, method) - 1]
 
     def _set_method_owner(self, method, class_name, method_name):
         self.method_owner[method] = f"{class_name}.{method_name}"
@@ -172,27 +212,27 @@ class SwfMovie:
         This is a guess, for properties of objects of unknown type: a property of a dynamic object
         (such as data from the game) can hold anything. Only variables and constants count as
         evidence for a name, but a getter or method of another type rules it out."""
-        abc = self.abc
         property_types, return_types = defaultdict(set), defaultdict(set)
         variables = set()
-        for instance, cls in zip(abc.instances, abc.classes):
-            for trait in instance.traits + cls.traits:
-                name = abc.name_of(trait.name)
-                if trait.kind in READABLE_TRAIT_KINDS:
-                    property_types[name].add(self.value_type(trait))
-                if trait.kind in VALUE_TRAIT_KINDS:
-                    variables.add(name)
-                if trait.kind == TRAIT_METHOD:
-                    return_type = abc.methods[trait.method].return_type
-                    return_types[name].add(abc.full_name_of(return_type) if return_type else None)
+        for abc in (unit.abc for unit in self.units):
+            for instance, cls in zip(abc.instances, abc.classes):
+                for trait in instance.traits + cls.traits:
+                    name = abc.name_of(trait.name)
+                    if trait.kind in READABLE_TRAIT_KINDS:
+                        property_types[name].add(self.value_type(trait, abc))
+                    if trait.kind in VALUE_TRAIT_KINDS:
+                        variables.add(name)
+                    if trait.kind == TRAIT_METHOD:
+                        return_type = abc.methods[trait.method].return_type
+                        return_types[name].add(abc.full_name_of(return_type) if return_type else None)
         self.string_properties = {name for name, types in property_types.items()
                                   if types == {"String"} and name in variables}
         self.string_methods = {name for name, types in return_types.items() if types == {"String"}}
 
-    def value_type(self, trait: Trait) -> str | None:
-        """The declared type ("String", "pkg.Class", ...) of the value that reading a trait gives;
-        None if untyped or not readable"""
-        abc = self.abc
+    @staticmethod
+    def value_type(trait: Trait, abc: AbcFile) -> str | None:
+        """The declared type ("String", "pkg.Class", ...) of the value that reading a trait (of abc)
+        gives; None if untyped or not readable"""
         if trait.kind in VALUE_TRAIT_KINDS:
             if trait.type_name:
                 return abc.full_name_of(trait.type_name)
@@ -211,8 +251,9 @@ class SwfMovie:
         its superclasses in this file declares it, with a single type; None otherwise"""
         types = set()
         while class_name in self.instance_of:
-            types.update(self.value_type(trait) for trait in self.instance_of[class_name].traits
-                         if self.abc.name_of(trait.name) == prop and trait.kind in READABLE_TRAIT_KINDS)
+            unit, instance = self.instance_of[class_name]
+            types.update(self.value_type(trait, unit.abc) for trait in instance.traits
+                         if unit.abc.name_of(trait.name) == prop and trait.kind in READABLE_TRAIT_KINDS)
             class_name = self.superclass[class_name]
         return types.pop() if len(types) == 1 else None
 
@@ -222,7 +263,6 @@ class SwfMovie:
         creates an instance (a clip linked to it or a subclass, `new C()`, code that passes the
         class on, or a string naming it, for getDefinitionByName()), and its static methods only if
         running code names the class at all."""
-        abc = self.abc
         classes_named = defaultdict(set)    # full or unqualified name -> classes
         for class_name in self.superclass:
             classes_named[class_name].add(class_name)
@@ -235,6 +275,7 @@ class SwfMovie:
             if any(ins.name == "newclass" for ins in code):
                 continue    # a script initializer, which names each class's superclass to define it
             class_name, static = self.class_of_method.get(method), method in self.static_methods
+            abc = self.unit_of(method).abc
             used = uses[(class_name, static)]
             for k, ins in enumerate(code):
                 if ins.name == "construct" and static:
@@ -248,7 +289,7 @@ class SwfMovie:
                     continue
                 if name in classes_named:
                     used.add((name, ins.name in ("pushstring", "constructprop")
-                              or (ins.name == "getlex" and self._class_passed_on(code, k))))
+                              or (ins.name == "getlex" and self._class_passed_on(abc, code, k))))
 
         self.created, self.statics_used = set(), set()
         pending = [(None, True)] + [(class_name, True) for class_name in self.sprites_of_class]
@@ -263,7 +304,8 @@ class SwfMovie:
             for name, creates in uses.get((class_name, not create), ()):
                 pending.extend((used_class, creates) for used_class in classes_named.get(name, ()))
 
-    def _class_passed_on(self, code, index) -> bool:
+    @staticmethod
+    def _class_passed_on(abc, code, index) -> bool:
         """Is the value that code[index] pushes passed on, rather than just used to access a static
         member or as a type? True if unsure."""
         depth = 1   # the value's position on the stack, counted from the top
@@ -271,11 +313,11 @@ class SwfMovie:
             if ins.name in NO_OP_NAMES:
                 continue
             if ins.name in ("setproperty", "initproperty"):
-                effect = (2 + self.abc.runtime_name_operands(ins.args[0]), 0)
+                effect = (2 + abc.runtime_name_operands(ins.args[0]), 0)
             elif ins.name == "pop":
                 effect = (1, 0)
             else:
-                effect = stack_effect(self.abc, ins)
+                effect = stack_effect(abc, ins)
             if effect is None:
                 return True
             popped, pushed = effect

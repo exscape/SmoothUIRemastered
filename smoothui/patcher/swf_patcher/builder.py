@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import struct
+from collections import defaultdict
 
 from ..swf import FPS_FIXED_POINT_SCALE, MAX_RAW_FPS
 from .abc_bytecode import assemble
@@ -48,14 +49,16 @@ def build_body(movie: SwfMovie, plan: RescalePlan) -> bytes:
         tags[sprite.tag_index] = stretch_sprite(sprite, tags[sprite.tag_index], retiming,
                                                 tweens.moves if tweens else {})
 
-    if plan.code_edits:
-        new_bodies = {}
-        for method, edits in plan.code_edits.items():
-            body = movie.abc.bodies[method]
-            new_bodies[method] = assemble(body.code, movie.code[method], edits, body.exceptions)
-        abc_bytes = serialize_abc(movie.abc, new_bodies, plan.new_doubles)
-        old = tags[movie.abc_tag_index]
-        tags[movie.abc_tag_index] = Tag(TagCode.DO_ABC, movie.abc_prefix + abc_bytes, old.long_header)
+    new_bodies = defaultdict(dict)  # DoABC tag index -> {method index in its ABC: new body}
+    for method, edits in plan.code_edits.items():
+        unit = movie.unit_of(method)
+        body = unit.abc.bodies[unit.local(method)]
+        new_bodies[unit.tag_index][unit.local(method)] = assemble(body.code, movie.code[method], edits, body.exceptions)
+    for unit in movie.units:
+        if unit.tag_index in new_bodies:
+            abc_bytes = serialize_abc(unit.abc, new_bodies[unit.tag_index], plan.new_doubles.get(unit.tag_index, ()))
+            old = tags[unit.tag_index]
+            tags[unit.tag_index] = Tag(TagCode.DO_ABC, unit.prefix + abc_bytes, old.long_header)
 
     header = bytearray(movie.body[:movie.first_tag_offset])
     struct.pack_into("<H", header, movie.fps_offset, raw_fps(plan.target_fps))
