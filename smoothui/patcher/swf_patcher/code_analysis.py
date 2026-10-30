@@ -485,7 +485,32 @@ class CodeAnalysis:
             return self.abc.strings[span[0].args[0]] != field
         if len(span) == 1 and integer_constant(self.abc, span[0]) is not None:
             return True
-        return self.static_type(method, code, name_start, value_start) in ("int", "uint", "Number")
+        if span and span[-1].name == "getproperty" and self.name(span[-1]) == "length" \
+                and not self.abc.runtime_name_operands(span[-1].args[0]):
+            return True     # array[array.length] = value
+        if self.static_type(method, code, name_start, value_start) in ("int", "uint", "Number"):
+            return True
+        object_start = expression_start(self.abc, code, name_start)
+        return object_start is not None and self._holds_container(method, code, object_start, name_start)
+
+    def _holds_container(self, method, code, start, end) -> bool:
+        """Is the expression code[start:end] an Array, Vector or Dictionary (not an object of the file's
+        classes), by its declared type or, for a property, by the type that every field of that name in
+        the file declares?"""
+        def is_container(type_name):
+            return type_name is not None and (type_name in ("Array", "flash.utils.Dictionary", "Dictionary")
+                                              or type_name.startswith(("Vector", "__AS3__.vec.Vector")))
+
+        if is_container(self.static_type(method, code, start, end)):
+            return True
+        span = _significant(code[start:end])
+        if not span or span[-1].name != "getproperty" or self.abc.runtime_name_operands(span[-1].args[0]):
+            return False
+        prop = self.name(span[-1])
+        types = {self.movie.value_type(trait, unit.abc)
+                 for unit, instance in self.movie.instance_of.values()
+                 for trait in instance.traits if unit.abc.name_of(trait.name) == prop}
+        return bool(types) and all(is_container(t) for t in types)
 
     def _created_classes(self, method, code, start, end) -> set[str] | None:
         """{C} if the expression code[start:end] makes a new instance of class C of this file, set()
