@@ -95,7 +95,7 @@ mod0000_ConjunctionMapFramework:
 mod0000_UIRemasteredEdition:
     dont-merge known-broken hud
 
-# --- Map and Icons Remastered
+# --- Map and Icons Remastered, and mods based on its code
 # Its icon clips hold its own icons and the game's, which its code picks between by frame number: on the map
 # (PinIcon_122, the mcAreaIcon_* clips) the game's are the second half of each clip, mapRedrawBase frames
 # later; SelectFrame adds that to a frame, and RefreshTree takes it from currentFrame when the style is
@@ -105,19 +105,14 @@ mod0000_UIRemasteredEdition:
 # calls of SelectFrame pass labels, and numbers only for the radius circle (PinRadiusCircle_*, also left
 # unstretched). Checked 2026-10-30, against version 2.4.2.
 # Tools v0.9.3 and older don't know dont-stretch lines, so they leave its map and minimap out.
-modmapredraw:
+# Mods based on its code have the same code, so they share these lines (the reviews are by code hash, so a changed
+# method warns again):
+# * modMapModMerge: a map merge made from Map Remastered (World Map Merger). Checked 2026-10-30.
+# * mod000SmoothMap_MapRemastered: Smooth Map's Map and Icons Remastered version
+modmapredraw|modMapModMerge|mod000SmoothMap_MapRemastered:
     dont-merge before-0-9-4 panel_worldmap hud_minimap2
     dont-stretch panel_worldmap PinIcon_\d+$ mcAreaIcon_ PinRadiusCircle_
     dont-stretch hud_minimap2 ^class QuestDirectionCurrentMain/mcHighlightedQuest QuestDirectionCurrentMain/mcRegularQuest
     unresolved-goto PinIcon_122.SelectFrame @94e7ecc6                # panel_worldmap: frame + mapRedrawBase
     unresolved-frame-property PinIcon_122.RefreshTree @bd6d7bd1      # panel_worldmap: currentFrame % mapRedrawBase
     unresolved-goto MapPin.ApplyRemastered @5cc77c49                 # hud_minimap2: gotoAndStop(remastered ? 2 : 1)
-
-# --- Map and Icons Remastered + Smooth Map compat patch
-# Smooth Map by itself works without any warnings. This is Map and Icons Remastered's panel_worldmap (see above) with
-# Smooth Map's changes, none of which touch the icons' frames, so the same applies. Checked 2026-10-30, against version 1.1.
-mod000SmoothMap_MapRemastered:
-    dont-merge before-0-9-4 panel_worldmap
-    dont-stretch panel_worldmap PinIcon_\d+$ mcAreaIcon_ PinRadiusCircle_
-    unresolved-goto PinIcon_122.SelectFrame @94e7ecc6                # frame + mapRedrawBase
-    unresolved-frame-property PinIcon_122.RefreshTree @bd6d7bd1      # currentFrame % mapRedrawBase
