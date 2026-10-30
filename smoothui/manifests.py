@@ -126,7 +126,8 @@ BUILD_RECORD = "smoothui_build.json"
 
 def patcher_commit():
     """(commit, uncommitted) for the code doing the build: the git commit hash of this checkout, and
-    whether tracked files have uncommitted changes. (None, None) if git can't tell (e.g. no checkout)."""
+    whether tracked files have uncommitted changes, other than the manifests (a build writes them: the 60 fps
+    build would see the 120 fps one's). (None, None) if git can't tell (e.g. no checkout)."""
     if FROZEN:
         return None, None   # no checkout, and the tool's folder may be inside someone else's
     def git(*args):
@@ -134,6 +135,7 @@ def patcher_commit():
         return subprocess.run(["git", "--no-optional-locks", *args], cwd=REPO_ROOT,
                               capture_output=True, text=True, check=True).stdout.strip()
     try:
-        return git("rev-parse", "HEAD"), bool(git("status", "--porcelain", "--untracked-files=no"))
+        return git("rev-parse", "HEAD"), bool(git("status", "--porcelain", "--untracked-files=no", "--", ".",
+                                                  ":(exclude)manifests"))
     except (OSError, subprocess.CalledProcessError):
         return None, None

@@ -1,3 +1,20 @@
+# v0.9.3
+* Improved: reduce warnings (mod X not merged, with a question to "Merge anyway") by making the merger smarter
+* Improved: support rescaling mods that raise a screen's framerate only (e.g. Community GUI, HoodSlots), restoring the original animation speed but adding smoothness.
+* Improved: support rescaling mods that ship unused game files (e.g. Community GUI's "Events", "Restored Content - Storybook", "Barber Anywhere")
+* Improved: accept further mods with unusual formats (older .redswf versions, multiple DoABC tags)
+
+These are fairly large changes behind the scenes.
+
+**Resolves issues with:**
+* Spectre (Remastered Edition): previously failed entirely
+* Reforge and Transmog Overhaul: previously failed entirely
+* Community GUI: mod's animation speedup resolved, now works at 120 fps
+* Restored Content - Storybook: mod's animation speedup resolved, now works at 120 fps
+* Barber Anywhere: now works at 120 fps
+
+...and most likely many others I haven't tested.
+
 # v0.9.2
 * Added: support for me (the dev) marking screens/mods as "known not to work with Smooth UI", to avoid every user getting warnings about them, every time.
 * Added: support for the user saying "don't merge, and don't ask again" for a mod's screen, to handle cases similar to the above not yet handled by me; the screen is then shown as "Turned off" instead of as a warning.

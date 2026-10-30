@@ -1,9 +1,10 @@
 {
- "created_at": "2026-10-28T19:03:20+00:00",
+ "created_at": "2026-10-30T13:33:21+00:00",
  "created_mod_version": "v0.3.3-120fps",
  "files": {
   "gameplay/gui_new/swf/alchemy/panel_alchemy.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 1445014823,
    "output_sha256": "020dd8cf1d176895c83ea15ba1d976820152c7ea897cb6a08311f6a5722c3e48",
    "output_size": 2847712,
@@ -460,13 +461,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "5301cb789da4a61a1e79db08bfb3e4448fe6cb4a7cf5cddbe634310013752caa",
    "source_size": 2844765,
@@ -474,6 +469,7 @@
   },
   "gameplay/gui_new/swf/character/panel_character.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 2020844574,
    "output_sha256": "341bd0859b0e4bc4c0947d2e32817648da8d9bae555b6f2f2b1ba9e3864c7f0a",
    "output_size": 10765168,
@@ -538,6 +534,7 @@
       "id": 15,
       "reasons": [
        "selector clip: every frame has a label or frame script",
+       "computed gotoAndStop() in SlotDragAvatar.setActionIcon",
        "excluded by the exclude list"
       ],
       "stretched": false
@@ -1245,13 +1242,7 @@
      "red.game.witcher3.tooltips.TooltipStatistic"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "5375120bf957c55d3656f12caa68d9f5021acc5c9f65fc8324909759730bee4e",
    "source_size": 10762415,
@@ -1259,6 +1250,7 @@
   },
   "gameplay/gui_new/swf/character/panel_character_dupe.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 2074667079,
    "output_sha256": "05c7fa9c46715617e1b8c74231d78040559d906df44c4530cfd1a2dc78c6681b",
    "output_size": 21036817,
@@ -1323,6 +1315,7 @@
       "id": 15,
       "reasons": [
        "selector clip: every frame has a label or frame script",
+       "computed gotoAndStop() in SlotDragAvatar.setActionIcon",
        "excluded by the exclude list"
       ],
       "stretched": false
@@ -2081,13 +2074,7 @@
      "red.game.witcher3.tooltips.TooltipStatistic"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "5cd1a4a89d9f9c6d986558d3e57f5ccd38258c4d1c562e7baa1df89fc1047085",
    "source_size": 21029759,
@@ -2095,6 +2082,7 @@
   },
   "gameplay/gui_new/swf/common/panel_common.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 1699739784,
    "output_sha256": "ccf9f13e0300cb9f9b6dd090a060dceee8ce942ec4a69bb1a90bc940c63e27bf",
    "output_size": 2549384,
@@ -2409,13 +2397,7 @@
      "red.game.witcher3.tooltips.TooltipStatistic"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "cc37387549abd6c30403df33a93213490cadc8f85233f3102d1967e5459e29f4",
    "source_size": 2545396,
@@ -2423,6 +2405,7 @@
   },
   "gameplay/gui_new/swf/crafting/panel_crafting.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 1396067354,
    "output_sha256": "5fe7db0185e2c3d74e088588772c6bb0a3d5fa3bd9f8de061f89a23cd3408410",
    "output_size": 2622080,
@@ -2953,13 +2936,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "5ba43512a39a342da5e8415781f70a6051afdfdb9bf5f9d1371a315cca7df5fa",
    "source_size": 2617003,
@@ -2967,6 +2944,7 @@
   },
   "gameplay/gui_new/swf/glossary/panel_glossary_bestiary.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 4264804757,
    "output_sha256": "950dd833600a518250afe8a2a20bb996a1c9809836b9ab8007fb7a12b0c7929b",
    "output_size": 1963672,
@@ -3278,13 +3256,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "5504d971e06802cec015e235fe2cef6b0bff69a6680b56e118d8ef65364676cc",
    "source_size": 1959438,
@@ -3292,6 +3264,7 @@
   },
   "gameplay/gui_new/swf/glossary/panel_glossary_books.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 2595041795,
    "output_sha256": "2122321900dbf9fd8dcdede4b2ab3066d5a71840c337ff21f1ea28b2427c13f0",
    "output_size": 1072490,
@@ -3485,13 +3458,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "e5c007fc8858f0fbad6909faa4c302f0c9dbd8ab55d7acf9de32ba90694dad94",
    "source_size": 1071507,
@@ -3499,6 +3466,7 @@
   },
   "gameplay/gui_new/swf/glossary/panel_glossary_encyclopedia.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 1243645139,
    "output_sha256": "b46e5c6b63840f66744b9901882a2e33704d45ef920b53d7fad74245fd374d40",
    "output_size": 971528,
@@ -3683,13 +3651,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "b673fec50aca2fd9e3efcc891134125939815b936fef69de3b2151d1006d28bb",
    "source_size": 970618,
@@ -3697,6 +3659,7 @@
   },
   "gameplay/gui_new/swf/glossary/panel_glossary_main.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 2084179154,
    "output_sha256": "0632d8f3bfe2d065264a6d1750f566b858fc7ffa9c3deb97d114893ab2f3b5ce",
    "output_size": 2941017,
@@ -4287,20 +4250,326 @@
      "red.game.witcher3.tooltips.TooltipStatistic"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "42287472d648c328f1fcba2f3ec8239910d36eb279fb82ad1b17f63191f9dbb1",
    "source_size": 2934384,
    "source_swf_sha256": "cffa4eb459274450d6caad396cf85e0b706a98bdb1f97bc9bbb375a366278945"
   },
+  "gameplay/gui_new/swf/glossary/panel_glossary_storybook.redswf": {
+   "fps": 120.0,
+   "game_copy": "unused",
+   "output_crc32": 1655837856,
+   "output_sha256": "95458c4644413251bf5c5f9d75ccef73a31b34c08d2004822e7cb9c01eef6d90",
+   "output_size": 1209389,
+   "output_swf_sha256": "950eeb4b5a2a8ab4b8d33d2a7afec63f58ea907e3e9761072d2ab2a3dff23bc6",
+   "report": {
+    "exclude": [
+     {
+      "matched": [],
+      "pattern": "^SlotAvatarIconRef$"
+     },
+     {
+      "matched": [],
+      "pattern": "^panel_transmog_fla\\.McTransmogItemBg_50$"
+     },
+     {
+      "matched": [],
+      "pattern": "^GwintTutorials$"
+     }
+    ],
+    "fixes": [],
+    "holds": [
+     4
+    ],
+    "include": [],
+    "increments": [],
+    "new_fps": 120.0,
+    "old_fps": 30.0,
+    "patched": {
+     "frame_scripts": 154,
+     "gotos": 0,
+     "increments": 0
+    },
+    "ratio": "4",
+    "rules": [],
+    "sprites": [
+     {
+      "class": "panel_glossary_storybook_fla.MC_IMG_FeedbackIconQuest_56",
+      "frames": 57,
+      "id": 15,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": null,
+      "frames": 27,
+      "id": 21,
+      "interpolation": {
+       "bytes": 858,
+       "motion": 139.84,
+       "snapped": 0,
+       "steps": 26
+      },
+      "new_frames": 108,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "SubListItem",
+      "frames": 80,
+      "id": 22,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "s_ScrollBar_arrow",
+      "frames": 40,
+      "id": 27,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "panel_glossary_storybook_fla.DropDownArrows_45",
+      "frames": 3,
+      "id": 43,
+      "reasons": [
+       "selector clip: every frame has a label or frame script",
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "panel_glossary_storybook_fla.MC_IMG_FeedbackIconQuest_20",
+      "frames": 57,
+      "id": 48,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": null,
+      "frames": 35,
+      "id": 58,
+      "interpolation": {
+       "bytes": 1632,
+       "motion": 199.22,
+       "snapped": 0,
+       "steps": 34
+      },
+      "new_frames": 140,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "IconDropDownListItem",
+      "frames": 80,
+      "id": 60,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "InputFeedbackButton_mouseIcon",
+      "frames": 7,
+      "id": 76,
+      "reasons": [
+       "selector clip: every frame has a label or frame script"
+      ],
+      "stretched": false
+     },
+     {
+      "class": null,
+      "frames": 101,
+      "id": 202,
+      "reasons": [
+       "computed gotoAndStop() in KeyboardButtonIcon.setFill"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "InputFeedbackButton_kb_background",
+      "frames": 40,
+      "id": 211,
+      "interpolation": {
+       "bytes": 880,
+       "motion": 28.52,
+       "snapped": 0,
+       "steps": 23
+      },
+      "new_frames": 160,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "panel_glossary_storybook_fla.InputFeedbackButton_icon_ps5_33",
+      "frames": 415,
+      "id": 216,
+      "new_frames": 1660,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "panel_glossary_storybook_fla.InputFeedbackButton_icon_ps4_35",
+      "frames": 415,
+      "id": 219,
+      "new_frames": 1660,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "panel_glossary_storybook_fla.InputFeedbackButton_icon_steam_37",
+      "frames": 345,
+      "id": 220,
+      "new_frames": 1380,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "panel_glossary_storybook_fla.InputFeedbackButton_icon_xbox_38",
+      "frames": 363,
+      "id": 221,
+      "new_frames": 1452,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "panel_glossary_storybook_fla.InputFeedbackButton_icon_switch_39",
+      "frames": 363,
+      "id": 222,
+      "new_frames": 1452,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "InputFeedbackButtonRef",
+      "frames": 70,
+      "id": 225,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "NoIconListItem",
+      "frames": 80,
+      "id": 234,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "W3ScrollingListNoBG",
+      "frames": 30,
+      "id": 236,
+      "new_frames": 120,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "ModuleHighlight",
+      "frames": 11,
+      "id": 242,
+      "interpolation": {
+       "bytes": 552,
+       "motion": 200.0,
+       "snapped": 0,
+       "steps": 8
+      },
+      "new_frames": 44,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "s_ScrollBar_track",
+      "frames": 40,
+      "id": 246,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "s_ScrollBar_thumb",
+      "frames": 40,
+      "id": 249,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "panel_glossary_storybook_fla.PanelIcon_15",
+      "frames": 11,
+      "id": 276,
+      "reasons": [
+       "selector clip: every frame has a label or frame script",
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "W3TextArea",
+      "frames": 30,
+      "id": 280,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "panel_glossary_storybook_fla.PanelBackgroundIcon_2",
+      "frames": 14,
+      "id": 283,
+      "reasons": [
+       "selector clip: every frame has a label or frame script",
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     }
+    ],
+    "target_fps": 120.0,
+    "unlinked_classes": [
+     "red.game.witcher3.controls.AdvancedTabListItem",
+     "red.game.witcher3.controls.TabListItem",
+     "red.game.witcher3.menus.common.AdaptiveStatsListItem",
+     "red.game.witcher3.menus.common.ModuleMerchantInfo",
+     "red.game.witcher3.menus.common.RecipeIconItemRenderer",
+     "red.game.witcher3.menus.inventory.InventorySlotOverlay",
+     "red.game.witcher3.menus.inventory_menu.InventoryDropArea",
+     "red.game.witcher3.menus.inventory_menu.ModulePaperdoll",
+     "red.game.witcher3.menus.mainmenu.AccountIcon",
+     "red.game.witcher3.menus.mainmenu.IngameMenu",
+     "red.game.witcher3.menus.mainmenu.MyRewardsListItem",
+     "red.game.witcher3.menus.mainmenu.MyRewardsPanel",
+     "red.game.witcher3.menus.modmenu.VerificationModPreview",
+     "red.game.witcher3.modules.TabbedScrollingListModule",
+     "red.game.witcher3.slots.SlotSkillGrid",
+     "red.game.witcher3.tooltips.TooltipStatRenderer",
+     "red.game.witcher3.tooltips.TooltipStatRenderer_ar",
+     "red.game.witcher3.tooltips.TooltipStatistic",
+     "scaleform.clik.controls.StatusIndicator"
+    ],
+    "unmet_rules": [],
+    "warnings": []
+   },
+   "shipped": false,
+   "source_sha256": "895f637505eb5c619d80c45fb44bfc19fbcb73e7885243f1d674f8f129836ed9",
+   "source_size": 1207167,
+   "source_swf_sha256": "38fef26742b465445549a2e9b5fb7c431a04bdb4f4eb0739b16b1e627f719467"
+  },
   "gameplay/gui_new/swf/glossary/panel_glossary_tutorials.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 3632512810,
    "output_sha256": "c0efad46f659535750515ca7db65bc1c78a82da4d39e265d37ab4ac55ceddbac",
    "output_size": 1781673,
@@ -4632,13 +4901,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "2d03929c4d45391b12a2058c6676d8e2f43af62c7d63212194e5f4cac414fe7a",
    "source_size": 1779771,
@@ -4646,6 +4909,7 @@
   },
   "gameplay/gui_new/swf/gwint/deck_builder.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 3152375343,
    "output_sha256": "b2b91e76e139d74dd58bef3ace79435976f08470c47532298b031a3c08cd84f4",
    "output_size": 4937964,
@@ -4828,7 +5092,9 @@
       "id": 218,
       "reasons": [
        "selector clip: every frame has a label or frame script",
+       "nextFrame read in GwintTutorial.continueTutorial",
        "totalFrames read in GwintTutorial.incrementTutorial",
+       "nextFrame read in GwintTutorial.incrementTutorial",
        "currentFrame read in GwintTutorial.onGetTutorialStrings",
        "excluded by the exclude list"
       ],
@@ -5086,23 +5352,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     },
-     {
-      "hash": "09df7152",
-      "key": "unresolved-frame-property GwintTutorial.continueTutorial",
-      "message": "nextFrame used in red.game.witcher3.menus.gwint.GwintTutorial.continueTutorial on an unresolved receiver"
-     },
-     {
-      "hash": "a343cc83",
-      "key": "unresolved-frame-property GwintTutorial.incrementTutorial",
-      "message": "nextFrame used in red.game.witcher3.menus.gwint.GwintTutorial.incrementTutorial on an unresolved receiver"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "9dfce1218d66233984b50deab4766c4855ec1ceae7c65f1a1b1e387e59d8b708",
    "source_size": 4932621,
@@ -5110,6 +5360,7 @@
   },
   "gameplay/gui_new/swf/gwint/gwint_game.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 2436747894,
    "output_sha256": "8412088cf7d0e38b56e5f05c0ddee7920fcd6dbbc596ca4f1dfc2d017c9e55b6",
    "output_size": 12577696,
@@ -6002,7 +6253,9 @@
       "id": 879,
       "reasons": [
        "selector clip: every frame has a label or frame script",
+       "nextFrame read in GwintTutorial.continueTutorial",
        "totalFrames read in GwintTutorial.incrementTutorial",
+       "nextFrame read in GwintTutorial.incrementTutorial",
        "currentFrame read in GwintTutorial.onGetTutorialStrings",
        "excluded by the exclude list"
       ],
@@ -6456,23 +6709,7 @@
      "red.game.witcher3.tooltips.TooltipStatistic"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     },
-     {
-      "hash": "09df7152",
-      "key": "unresolved-frame-property GwintTutorial.continueTutorial",
-      "message": "nextFrame used in red.game.witcher3.menus.gwint.GwintTutorial.continueTutorial on an unresolved receiver"
-     },
-     {
-      "hash": "ee636631",
-      "key": "unresolved-frame-property GwintTutorial.incrementTutorial",
-      "message": "nextFrame used in red.game.witcher3.menus.gwint.GwintTutorial.incrementTutorial on an unresolved receiver"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "aeb1255be5a4d218bf41a7630dd27e4b25b32936c0f06055fa77e7aec4d5664e",
    "source_size": 12284472,
@@ -6480,6 +6717,7 @@
   },
   "gameplay/gui_new/swf/hud/hud.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 844036353,
    "output_sha256": "aad780a640d76d44e65d1dda6593b11632bf28b32a44fb93597f324e036d3a25",
@@ -6570,6 +6808,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_anchors.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 4293827022,
    "output_sha256": "af3be4e245fb5df7897061934fd15cb95c0f9ab25493a359db43b16f8a6ff0aa",
@@ -6629,6 +6868,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_areainfo.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 2313517113,
    "output_sha256": "9a4a87f79d1990dcd03792391b7de32c1187122bb95d08b0ad6821ea4b837ee2",
@@ -6688,6 +6928,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_boathealth.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 1093741873,
    "output_sha256": "c8c7126528a314178f4d952c2b14b4e5664147c6866d78b64c8da4c664db43de",
@@ -6806,6 +7047,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_bossfocus.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 562141660,
    "output_sha256": "a241391bb46790414e6350fc33843524fb96a9da2fe260a179e0c616946ad885",
@@ -6876,6 +7118,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_buffs.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 3907062751,
    "output_sha256": "3be5fe0fd534d67a9daf13c1648b61cba904e45746f166a3b80bcc9742bb798f",
@@ -6992,6 +7235,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_companion.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 1968483635,
    "output_sha256": "51e6f60d6dc5c097d824c70ce18e90f6f62f17f52183e158fa3fcbfc6bd8453d",
@@ -7062,6 +7306,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_controlsfeedback.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 1753013807,
    "output_sha256": "fb84f8fbacf2e2bdef3c8cb9eddd54270d0cf7647eb6c2d5543fa2f92900bffa",
@@ -7177,6 +7422,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_crosshair.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 2909632514,
    "output_sha256": "e395d009c44aa13c0e296d2daba911d6993b4b8442768cc3f2e25951054c294c",
@@ -7241,6 +7487,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_damageditems.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 1353301854,
    "output_sha256": "f4a9edb14c28856b33c73674c9980b204256c2b750dc2419191c6920f800aa94",
@@ -7357,6 +7604,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_dialog.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 3898096116,
    "output_sha256": "1c45d7d23d83e80b0a67e7f694c64866c6418f15bbdb67b083a20e9394d32a33",
@@ -7548,6 +7796,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_enemyfocus.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 744749519,
    "output_sha256": "6b34c65cca0212c1777466c30bb149b95f8e4c254f320df5cbf1236ca1517f86",
@@ -7682,6 +7931,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_horsepanicbar.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 3917160673,
    "output_sha256": "2bcd78ed136a00b5dde79097c53439f3c967b3edcaee673f9337dc7026a03fba",
@@ -7756,6 +8006,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_horsestaminabar.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 2781889915,
    "output_sha256": "fbfbc4107f57f9cf52393e485feacda35e831d1639a13552fcb494730aa890bb",
@@ -7824,6 +8075,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_interactions.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 2804400899,
    "output_sha256": "dfb0ba4e788ee534c485bc877e15670d9eccc234b5b70ddb8841f3ecda5247f9",
@@ -7974,6 +8226,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_iteminfo.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 3920952377,
    "output_sha256": "706d1fb79cb33735b400b0b752eac539752c7d5a3634a4e89b040d35c875c05e",
@@ -8105,6 +8358,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_journalupdate.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 2103229766,
    "output_sha256": "a5bfdab1c45f3828c2623b1f2847552b00678b6bc37593d3fed50af43dc41fa7",
@@ -8491,6 +8745,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_lootfeed.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 2158466929,
    "output_sha256": "f014aea7e6686cdc4d0547d8bc7c70999b875c61293e979bb3444857ea4406c7",
@@ -8609,6 +8864,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_message.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 3255434905,
    "output_sha256": "330ea42493f38b7e55e50d76dc7913aff0fd7357d8662a6322ffebc7786b7573",
@@ -8668,6 +8924,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_minimap2.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 551361998,
    "output_sha256": "72454eeae7af09b5776c277368c3ab8daee3f9e46f00cb2df1c54d8dca783d4d",
@@ -8833,6 +9090,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_oneliners.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 1105531223,
    "output_sha256": "6b5c456a97ff4298566790377cb9b573ccb3526eb81ab04af5ba9aeaaf4a8500",
@@ -8892,6 +9150,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_oxygenbar.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 710682974,
    "output_sha256": "68dd210786451f9af388bc9746474f7d4e0f30cfd39ba3848a5d09e4fcf3f8a8",
@@ -8960,6 +9219,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_quests.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 1665481580,
    "output_sha256": "6894a9309fe4ca07ec339cd99b789786968e71a464d36e3205bfc8a12d0d023b",
@@ -9053,6 +9313,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_radialmenu.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 3669291984,
    "output_sha256": "55976a64d8e0b96df4d8f2a6542559e55fe722282a2e7267410b4bfe04c4ecfa",
@@ -9329,6 +9590,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_timeleft.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 2359710161,
    "output_sha256": "c8922263c435b218915e5fcacc4e84ce6d4140a697dccf5be343c3944bef93c8",
@@ -9389,6 +9651,7 @@
   },
   "gameplay/gui_new/swf/hud/hud_wolfstatbars.redswf": {
    "fps": 120.0,
+   "game_copy": "merger-only",
    "group": "hud",
    "output_crc32": 1372375793,
    "output_sha256": "58d5c802c545454e2f9a96d802c2ce885ce38730abbad0617a831d6868f5167d",
@@ -9766,6 +10029,7 @@
   },
   "gameplay/gui_new/swf/inventory/panel_inventory.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 803452336,
    "output_sha256": "f343f4762a5240147be389ab0e7b8488fdf0a70a1bd388db06412dae478372fc",
    "output_size": 4044552,
@@ -9892,6 +10156,7 @@
       "id": 94,
       "reasons": [
        "selector clip: every frame has a label or frame script",
+       "computed gotoAndStop() in SlotDragAvatar.setActionIcon",
        "excluded by the exclude list"
       ],
       "stretched": false
@@ -10443,13 +10708,7 @@
      "red.game.witcher3.tooltips.TooltipStatistic"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "79d448fcf006c6294eeb3f71a553570a8bee2c01cf53e1a3e6f89f5f2f28ed29",
    "source_size": 4035043,
@@ -10457,6 +10716,7 @@
   },
   "gameplay/gui_new/swf/journal/panel_journal_quests.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 1068265217,
    "output_sha256": "53cd1907d5c6f31d918bad2c713d089414be091d89052df29104a43b19e925ff",
    "output_size": 1313586,
@@ -10791,20 +11051,141 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "b8fb9df0ba62e6c61c62386dfc2f92c452b1c555aac2c05b81404bb7bd6ec542",
    "source_size": 1311974,
    "source_swf_sha256": "39a22a1598883825df5654619e675a6a7264106dc14fe0bc52d5fb269229ec78"
   },
+  "gameplay/gui_new/swf/mainmenu/panel_mainmenu_dbg_startquest.redswf": {
+   "fps": 120.0,
+   "game_copy": "unused",
+   "output_crc32": 1137242058,
+   "output_sha256": "887a7101f34b68ab92e2e43ae74eae8937957c1648c4f2651edf19226e768df5",
+   "output_size": 319763,
+   "output_swf_sha256": "b0241baf4d28e56133bd44a0e7663aa90e2358967589ffe5258d7a209430120c",
+   "report": {
+    "exclude": [
+     {
+      "matched": [],
+      "pattern": "^SlotAvatarIconRef$"
+     },
+     {
+      "matched": [],
+      "pattern": "^panel_transmog_fla\\.McTransmogItemBg_50$"
+     },
+     {
+      "matched": [],
+      "pattern": "^GwintTutorials$"
+     }
+    ],
+    "fixes": [],
+    "holds": [
+     4
+    ],
+    "include": [],
+    "increments": [],
+    "new_fps": 120.0,
+    "old_fps": 30.0,
+    "patched": {
+     "frame_scripts": 3,
+     "gotos": 0,
+     "increments": 0
+    },
+    "ratio": "4",
+    "rules": [],
+    "sprites": [
+     {
+      "class": "sliderTrack",
+      "frames": 40,
+      "id": 2,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "sliderThumb",
+      "frames": 40,
+      "id": 5,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "AchievementMenuListItem",
+      "frames": 80,
+      "id": 28,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "W3ScrollingListNoBG",
+      "frames": 30,
+      "id": 30,
+      "new_frames": 120,
+      "speed": "1",
+      "stretched": true
+     },
+     {
+      "class": "s_ScrollBar_thumb",
+      "frames": 40,
+      "id": 33,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     },
+     {
+      "class": "s_ScrollBar_track",
+      "frames": 40,
+      "id": 36,
+      "reasons": [
+       "still clip: it stops before each change, so frame timing never shows"
+      ],
+      "stretched": false
+     }
+    ],
+    "target_fps": 120.0,
+    "unlinked_classes": [
+     "red.game.witcher3.controls.AdvancedTabListItem",
+     "red.game.witcher3.controls.InputFeedbackButton",
+     "red.game.witcher3.controls.KeyboardButtonIcon",
+     "red.game.witcher3.controls.TabListItem",
+     "red.game.witcher3.menus.common.AdaptiveStatsListItem",
+     "red.game.witcher3.menus.common.IconItemRenderer",
+     "red.game.witcher3.menus.common.ModuleMerchantInfo",
+     "red.game.witcher3.menus.common.TextAreaModule",
+     "red.game.witcher3.menus.inventory.InventorySlotOverlay",
+     "red.game.witcher3.menus.inventory_menu.InventoryDropArea",
+     "red.game.witcher3.menus.inventory_menu.ModulePaperdoll",
+     "red.game.witcher3.menus.mainmenu.AccountIcon",
+     "red.game.witcher3.menus.mainmenu.IngameMenu",
+     "red.game.witcher3.menus.mainmenu.MyRewardsListItem",
+     "red.game.witcher3.menus.mainmenu.MyRewardsPanel",
+     "red.game.witcher3.menus.modmenu.VerificationModPreview",
+     "red.game.witcher3.modules.TabbedScrollingListModule",
+     "red.game.witcher3.slots.SlotSkillGrid",
+     "red.game.witcher3.slots.SlotsListGrid",
+     "red.game.witcher3.tooltips.TooltipStatRenderer",
+     "red.game.witcher3.tooltips.TooltipStatRenderer_ar",
+     "red.game.witcher3.tooltips.TooltipStatistic",
+     "scaleform.clik.controls.StatusIndicator"
+    ],
+    "unmet_rules": [],
+    "warnings": []
+   },
+   "shipped": false,
+   "source_sha256": "8e375d6bd6ff14e146ae3554cfb5c966787779fa165c44edaa406d14a84f800c",
+   "source_size": 319413,
+   "source_swf_sha256": "01e5a8f00c7454caceced6e05fce5f136b44f6ec8e58f178fd7a70407285f567"
+  },
   "gameplay/gui_new/swf/noticeboard/panel_noticeboard.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 3919342295,
    "output_sha256": "b3fd21147a00436ae376bf957924d8089fd3d553cf96e78405cafe1007f7c656",
    "output_size": 13006728,
@@ -11002,13 +11383,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "47bad5192740b10d27368499063cad698045c8ac4fa863db7907b7bcbda21533",
    "source_size": 13005740,
@@ -11016,6 +11391,7 @@
   },
   "gameplay/gui_new/swf/repair/panel_blacksmith.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 4153571902,
    "output_sha256": "e12ec0d7afd5c1bf5c3a219c2d5ed7e3c65fc651b862fbea4da5031d22ece3b0",
    "output_size": 1853649,
@@ -11415,13 +11791,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "353cf27ae7150625a1a54bba0f1628a149e8ec9d2ec05045a3b2c9d5051a4441",
    "source_size": 1849833,
@@ -11429,6 +11799,7 @@
   },
   "gameplay/gui_new/swf/repair/panel_enchanting.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 3825161126,
    "output_sha256": "bbc47771c36634a9d3c1f2b1e3a73e210bcf70fdc9228d14fd18268e7af1eaa0",
    "output_size": 1329165,
@@ -11804,13 +12175,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "0d1d17216a87a545dcf980dacd30497d1c6522f2297574269ad5c21ef0f54351",
    "source_size": 1325094,
@@ -11818,6 +12183,7 @@
   },
   "gameplay/gui_new/swf/repair/panel_transmog.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 2770704109,
    "output_sha256": "86817fede4aa80dea6ad6b157a45ecae0b94eccf911c9e19b762d425a7e5b8df",
    "output_size": 3302044,
@@ -11864,6 +12230,7 @@
       "id": 11,
       "reasons": [
        "selector clip: every frame has a label or frame script",
+       "computed gotoAndStop() in SlotDragAvatar.setActionIcon",
        "excluded by the exclude list"
       ],
       "stretched": false
@@ -12534,11 +12901,6 @@
     "unmet_rules": [],
     "warnings": [
      {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     },
-     {
       "hash": "736904c0",
       "key": "unresolved-goto ModuleTransmogVis.handleUpdateEquipped",
       "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.menus.blacksmith.ModuleTransmogVis.handleUpdateEquipped -- if it targets a stretched clip, check by hand"
@@ -12556,6 +12918,7 @@
   },
   "gameplay/gui_new/swf/worldmap/panel_worldmap.redswf": {
    "fps": 120.0,
+   "game_copy": "shipped",
    "output_crc32": 591179140,
    "output_sha256": "45e46eefa2f1cec25943a5e1e25e7b9e9748a34a2c4c1d1809f4b88279181f02",
    "output_size": 3883063,
@@ -13266,13 +13629,7 @@
      "scaleform.clik.controls.StatusIndicator"
     ],
     "unmet_rules": [],
-    "warnings": [
-     {
-      "hash": "96b36850",
-      "key": "unresolved-goto SlotDragAvatar.setActionIcon",
-      "message": "unresolved receiver: computed gotoAndStop(...) in red.game.witcher3.slots.SlotDragAvatar.setActionIcon -- if it targets a stretched clip, check by hand"
-     }
-    ]
+    "warnings": []
    },
    "source_sha256": "cbcd44c8e84a0b35bfa3dd548437385f632060e4c5c372ff3e7c58030c9d03fb",
    "source_size": 3877270,
@@ -13298,9 +13655,9 @@
    "source_fps": 24.0
   }
  },
- "manifest_format": 1,
+ "manifest_format": 2,
  "output_zip": "SmoothUIRemastered_v0.3.3-120fps.zip",
- "patcher_commit": "71fb25360000578109422eb338d1cf4329ca4499",
+ "patcher_commit": "d1864f4b3feefe212b930357d6857532e2f0fe66",
  "patcher_uncommitted_changes": false,
  "requires": [
   "fix:gwent-3d-bug-fix",
@@ -13316,5 +13673,5 @@
   "setting:speed",
   "setting:group"
  ],
- "targeted_game_version": "5.01"
+ "targeted_game_version": "5.01c"
 }
