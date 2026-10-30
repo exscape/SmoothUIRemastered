@@ -291,8 +291,6 @@ def build(args, config, paths, version, fps):
             if group := group_of.get(profile_key(path)):
                 record["group"] = group.name
             record["game_copy"] = game_copy_of[profile_key(path)]
-            if record["game_copy"] != SHIPPED:
-                record["shipped"] = False   # for mergers from before "game_copy" (see manifests.game_copy)
         commit, uncommitted = patcher_commit()
         recorded = {profile_key(path) for path in records}
         requires = release_requires(settings for key, settings in profile.items() if profile_key(key) in recorded)

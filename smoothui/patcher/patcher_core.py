@@ -344,7 +344,7 @@ def rescale_from_game_rate(body, settings, game_rate, shares_classes):
     return result
 
 def patch_fps_in_body(body, new_fps):
-    """The method that actually patches the framerate bytes.
+    """The method that actually patches the frame rate bytes.
 
     Set the frame rate in an SWF body (the data following the 8-byte file header).
     Patches body in place.

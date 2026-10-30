@@ -95,8 +95,8 @@ SHIPPED, MERGER_ONLY, UNUSED = "shipped", "merger-only", "unused"
 GAME_COPIES = (SHIPPED, MERGER_ONLY, UNUSED)
 
 def game_copy(record) -> str:
-    """A file record's game copy (see GAME_COPIES). Older manifests have no "game_copy", and none of them has
-    unused files: "shipped": false there means merger-only."""
+    """A file record's game copy (see GAME_COPIES). Format 1 manifests have no "game_copy", and none of them
+    has unused files: "shipped": false there means merger-only."""
     return record.get("game_copy") or (SHIPPED if record.get("shipped", True) else MERGER_ONLY)
 
 def shipped_files(manifest) -> dict:
@@ -115,7 +115,10 @@ def compat_files(manifest) -> dict:
 # it: a manifest's "requires" lists them, and a merger refuses one it doesn't know the same way (see
 # requires.py). Increase it for changes "requires" can't tell: a patcher change that patches files
 # differently, new syntax in an existing setting, or a manifest laid out differently.
-MANIFEST_FORMAT = 1
+# Format 2: each file's "game_copy" replaces "shipped" (older mergers would patch the game's copies of unused
+# files), and the patcher finds fewer warnings in the game's code, so older mergers would show the ones
+# the manifest no longer records.
+MANIFEST_FORMAT = 2
 
 def manifest_format(manifest: dict) -> int:
     return manifest.get("manifest_format", 1)
