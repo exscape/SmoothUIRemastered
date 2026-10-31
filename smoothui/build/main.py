@@ -13,7 +13,7 @@ import shutil
 from functools import partial
 
 from ..common import fail, profile_key
-from ..log import HEADING
+from ..log import HEADING, set_verbose
 from ..manifests import SHIPPED, load_manifest, shipped_files
 from ..patcher import dev_mode, patcher_core
 from ..requires import setting_requirement
@@ -86,6 +86,8 @@ def parse_args():
     ap.add_argument("--accept-warnings", action="store_true",
                     help="mark all current patcher warnings as reviewed (adds them to config/reviewed_warnings.txt); "
                          "only after checking them by hand")
+    ap.add_argument("-v", "--verbose", action="store_true",
+                    help="also show each file's patching and other routine steps")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
     ap.add_argument("--force", action="store_true",
@@ -132,6 +134,7 @@ def check_game_version(uncooked_files, targeted_game_version):
 
 def main():
     args = parse_args()
+    set_verbose(args.verbose)
 
     # Dev mode: hand the mode to the patcher's dev hook
     if args.dev_dump:

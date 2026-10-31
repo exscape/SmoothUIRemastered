@@ -24,7 +24,7 @@ import py7zr
 import rarfile
 
 from ..common import fail, normalize_version, profile_key
-from ..log import HEADING
+from ..log import HEADING, set_verbose
 from ..manifests import compat_files
 from ..patcher import dev_mode
 from ..witcher3 import mod_bundles
@@ -101,6 +101,8 @@ def parse_args(argv=None):
                     help="fail unless every file is patched exactly as configured: no file left unchanged, "
                          "every explicit rule followed, and no unreviewed warnings (default: on; use --no-strict "
                          "to build anyway, e.g. while experimenting). A file that fails always fails the build")
+    ap.add_argument("-v", "--verbose", action="store_true",
+                    help="also show each file's patching and other routine steps")
     ap.add_argument("--keep-work", action="store_true",
                     help="keep the work directory on success (it is always kept on failure)")
     ap.add_argument("--force", action="store_true",
@@ -239,6 +241,7 @@ def find_shared_files(theirs, manifest, smooth_version):
 
 def main():
     args = parse_args()
+    set_verbose(args.verbose)
 
     # Dev mode: hand the mode to the patcher's dev hook
     if args.dev_dump:

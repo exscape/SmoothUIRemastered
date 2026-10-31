@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 
 from ..common import fail, normalize_version, to_native
-from ..log import HEADING, SUBHEADING
+from ..log import DETAIL, HEADING, SUBHEADING
 from ..manifests import (  # noqa: F401 (re-exported for the build tools)
     BUILD_RECORD,
     BUILD_VERSION,
@@ -142,7 +142,7 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
         log.info(f"{rel}: {report['old_fps']:g} fps, already at or above the target {report['target_fps']:g} fps; "
                  "fixed only")
     else:
-        log.info(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps")
+        log.info(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps", extra=DETAIL)
     _print_fixes(report)
     if report["unmet_rules"]:
         log.error(f"  {len(report['unmet_rules'])} explicit rule(s) not followed (listed at the end)")
@@ -155,7 +155,10 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
 def _print_fixes(report):
     """The fixes' results; those that changed nothing are listed again at the end, as rule issues"""
     for fix in report.get("fixes", []):
-        log.log(logging.INFO if fix["result"] == APPLIED else logging.ERROR, f"  {format_fix(fix)}")
+        if fix["result"] == APPLIED:
+            log.info(f"  {format_fix(fix)}", extra=DETAIL)
+        else:
+            log.error(f"  {format_fix(fix)}")
 
 def print_rule_issues(issues):
     """Print patcher_core.RuleIssues. The build still finishes, so these must be impossible to miss."""
@@ -205,7 +208,7 @@ def add_mod_files(output_dir, mod_name):
     if unexpected:
         fail(f"{MOD_FILES} should only hold mods/{mod_name}/ and bin/, not {', '.join(unexpected)}")
     for path in copy_files(MOD_FILES, output_dir):
-        log.info(f"Added {path.as_posix()}")
+        log.info(f"Added {path.as_posix()}", extra=DETAIL)
 
 def zip_tree(src_dir, zip_out):
     """Zip every file under src_dir, keeping the tree's layout at the root of the archive"""
@@ -249,7 +252,7 @@ def write_build_record(mod_dir, version, fps):
     """Write BUILD_RECORD into a built mod folder: which build of Smooth UI Remastered it holds"""
     path = mod_dir / BUILD_RECORD
     write_json(path, {"created_mod_version": normalize_version(version), "fps": fps})
-    log.info(f"Added {path.name}")
+    log.info(f"Added {path.name}", extra=DETAIL)
 
 def compat_manifest_path(version, mod_name, mod_version):
     """Where the manifest of a compat patch for one build of a release (version, e.g. v0.3-60fps) lives;

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from ..common import SmoothUIError, fail, profile_key
-from ..log import SUBHEADING
+from ..log import DETAIL, SUBHEADING
 from ..parallel import make_pool, replay_records, run_logged, worker_count
 from ..witcher3.bundle import BundleError, make_entry
 from ..witcher3.redswf import CR2W_VERSION, RedSwf, RedSwfError, replace_swf, swf_sha256
@@ -128,7 +128,7 @@ def _patch_in_pool(pool, jobs):
 def _patch_file(source, settings, body_hook=None):
     """Patch one file; returns its result for patch_files, with its "status" """
     result = {"path": source.path, "origin": source.origin}
-    log.info(source.path, extra=SUBHEADING)
+    log.info(source.path, extra={**SUBHEADING, **DETAIL})
     try:
         data = source.read()
     except (OSError, BundleError) as e:
