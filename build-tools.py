@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """Builds the tools' exes with Nuitka: SmoothUILauncher.exe and SmoothUIMerger.exe, in one folder. Builds on
 64-bit Windows Python (env_gui, see requirements_gui.txt); from WSL, this runs itself again on env_gui's.
     env_gui/Scripts/python.exe build-tools.py      (or from WSL: ./build-tools.py)

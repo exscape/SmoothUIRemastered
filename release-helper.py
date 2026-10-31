@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """The scripted steps of a release (dev/docs/release-checklist.md), run from the repo's root in WSL:
 
     ./release-helper.py tools-packages      Smooth UI Tools: update env_gui's packages, write

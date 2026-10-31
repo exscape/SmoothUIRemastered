@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from smoothui.build.version_tool import main
 from smoothui.common import run_cli
 

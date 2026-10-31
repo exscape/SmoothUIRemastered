@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """SmoothUIMerger.exe (windowed): the merger's window. See smoothui/merger/gui.py.
 
     SmoothUIMerger.exe            (the window: scan, merge)

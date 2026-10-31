@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """SmoothUILauncher.exe (windowed): starts the game, and first the merger if its package is stale. See
 smoothui/launcher.py.
 
