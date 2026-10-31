@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .builder import build_body
 from .movie import RescaleError, SwfMovie
@@ -35,7 +35,7 @@ class RescaleResult:
 
 
 def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclude=(),
-                 shares_classes=True, accept_plan=None) -> RescaleResult | None:
+                 shares_classes=True, accept_plan=None, keep=False) -> RescaleResult | None:
     """Raise the frame rate of an SWF to target_fps, retiming its animations to keep their speed.
 
     body is the decompressed SWF after the 8-byte signature/version/length header. The new body
@@ -46,15 +46,16 @@ def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclud
     RescaleOptions. accept_plan(movie, plan), if given, sees the plan before anything is built; if it
     returns False, nothing is built and None is returned.
 
-    Files already at or above target_fps are left unchanged (new_fps and body are None).
+    Files already at or above target_fps, or any file if keep, are left unchanged (new_fps and body are
+    None); their report says whether they have timeline animations ("animated", see animated).
     Rules that can't be followed (e.g. a sprite matching a SpeedRule is not safe to stretch) don't
     raise; they are listed in result.unmet_rules, which callers must check.
     Raises RescaleError if the file is not supported, or if the result fails verification.
     """
     options = RescaleOptions(target_fps, tuple(rules), tuple(exclude), tuple(include), shares_classes)
     movie = SwfMovie(body)
-    if target_fps <= movie.fps:
-        return RescaleResult(None, unchanged_report(movie.fps, options))
+    if keep or target_fps <= movie.fps:
+        return RescaleResult(None, unchanged_report(movie.fps, options, animated(movie, options)))
 
     plan = Planner(movie, options).make_plan()
     if accept_plan is not None and not accept_plan(movie, plan):
@@ -64,4 +65,14 @@ def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclud
     if problems:
         raise RescaleError("verification failed: " + "; ".join(problems[:MAX_PROBLEMS_SHOWN]))
     return RescaleResult(new_body, build_report(movie, options, plan))
+
+
+def animated(movie: SwfMovie, options: RescaleOptions) -> bool:
+    """Whether a file has timeline animations: clips a rescale would stretch, whose speed depends on the
+    frame rate the file plays at. True if the file can't be planned (it can't be told)."""
+    try:
+        plan = Planner(movie, replace(options, target_fps=movie.fps * 2)).make_plan()
+    except RescaleError:
+        return True
+    return bool(plan.stretched)
 

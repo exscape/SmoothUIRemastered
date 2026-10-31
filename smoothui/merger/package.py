@@ -136,7 +136,9 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
                      reviews_sha256: str | None = None, groups_off=(), screens_off=(), rates=(None, None)) -> dict:
     """What the package holds, and what it was built from: for each file it holds, the copy it was patched
     from (to tell whether that changed without reading it) and the output (to tell whether the package
-    is intact); for each other file, why it isn't there, and the copy that was decided on. A forced file
+    is intact); for each other file, why it isn't there, and the copy that was decided on (and for one left
+unchanged, its frame rate). A file that keeps a frame rate above the target also gets the speed it plays at
+(see policy.PackageFile.speed). A forced file
     also gets why it isn't fully patched, and the date it was first forced: from previous (the manifest
     of the package this one replaces) while its copy is the same, else today."""
     commit, uncommitted = patcher_commit()
@@ -155,6 +157,8 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
                 "forced": file.forced,
                 "fixes_not_applied": file.fixes_not_applied,
             }
+            if file.speed is not None:
+                held[file.path]["speed"] = file.speed
             if file.forced:
                 old = before.get(file.path, {})
                 kept = old.get("forced_since") if old.get("forced") and same_copy(old, file.source) else None
@@ -173,6 +177,10 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
             }
             if file.status.value == "left out":
                 not_held[file.path]["reason"] = file.reason      # see above
+            if file.status.value == "unchanged":
+                not_held[file.path]["fps"] = file.fps
+                if file.speed is not None:
+                    not_held[file.path]["speed"] = file.speed
             if file.status.value == "known broken":
                 # Its other issues don't matter: it is left out anyway
                 not_held[file.path]["reasons"] = [issue.message for issue in file.issues if issue.review in file.known_broken]

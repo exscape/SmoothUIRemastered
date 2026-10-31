@@ -36,7 +36,7 @@ from ..witcher3.source_file import GAME_FILES, SourceFile
 from .installed import is_smoothui_folder
 from .scan import COMPAT_PATCH, Scan
 from .screens import file_name, screen_label
-from .state import merged_anyway, not_merged, original_frame_rate
+from .state import merged_anyway, not_merged, original_frame_rate, played_slowly
 
 
 class FileStatus(Enum):
@@ -45,7 +45,8 @@ class FileStatus(Enum):
     LEFT_OUT = "left out"           # its rescale had problems, so it isn't in the package (it can be forced)
     KNOWN_BROKEN = "known broken"   # its mod's copy is known not to work with Smooth UI, so it isn't in the
                                     # package (it can be forced)
-    UNCHANGED = "unchanged"         # nothing changed it: already at the target frame rate, and each of its
+    UNCHANGED = "unchanged"         # nothing changed it: its own frame rate is kept (at or above the target, or
+                                    # already rescaled, see patcher_core.ALREADY_RESCALED_FPS), and each of its
                                     # fixes wasn't needed (or can't apply): not needed in the package
     FAILED = "failed"               # couldn't be patched, so its mod is left out
     MOD_FAILED = "mod failed"       # left out, as another file of its mod couldn't be patched
@@ -103,6 +104,25 @@ class PackageFile:
         return self.result["entry"]
 
     @property
+    def fps(self) -> float | None:
+        """The frame rate its copy keeps, if it isn't rescaled (UNCHANGED, or only fixed); else None"""
+        if self.status not in (FileStatus.UNCHANGED, FileStatus.PATCHED, FileStatus.FORCED):
+            return None
+        report = self.result["report"]
+        return report["old_fps"] if report["new_fps"] is None else None
+
+    @property
+    def speed(self) -> float | None:
+        """For a copy that keeps its frame rate (see fps): the speed it plays at, if its animations play slower
+        than made for (its rate is above the target's, and it has timeline animations); else None"""
+        if self.fps is None:
+            return None
+        report = self.result["report"]
+        if not report.get("animated") or report["old_fps"] <= report["target_fps"]:
+            return None
+        return report["target_fps"] / report["old_fps"]
+
+    @property
     def known_broken(self) -> list[str]:
         """The reviews of the warnings that mean its copy is known not to work"""
         return [issue.review for issue in self.issues if issue.kind == IssueKind.KNOWN_BROKEN]
@@ -149,7 +169,7 @@ class PackageFile:
         if status == FileStatus.PATCHED:
             summary = f"merged ({copy})" + (", without some fixes:" if self.issues else "")
         elif status == FileStatus.UNCHANGED:
-            summary = f"{copy[0].upper() + copy[1:]} is already smooth: used as it is" + (", without some fixes:" if self.issues else "")
+            summary = f"{copy[0].upper() + copy[1:] if self.mod == GAME_FILES else copy} runs at {self.fps:g} fps: used as it is" + (", without some fixes:" if self.issues else "")
         elif status == FileStatus.FORCED:
             summary = merged_anyway(copy, self.reason) + (". Without some fixes:" if self.fixes_not_applied else ".")
         elif status == FileStatus.GROUP_LEFT_OUT:
@@ -158,6 +178,8 @@ class PackageFile:
             reason = self.reason if status == FileStatus.LEFT_OUT else None
             summary = f"{not_merged(status.value, copy, self.mod, reason=reason)} {self._runs()}"
         lines = self._fix_lines() if status.included or status == FileStatus.UNCHANGED else []
+        if self.speed is not None:
+            lines.append(played_slowly(self.result["report"]["target_fps"], self.speed))
         if details := self._details():
             lines.append(f"Details: {details}")
         return "\n  ".join([f"{screen_label(self.path) if label is None else label}: {summary}", *lines])

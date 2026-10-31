@@ -35,8 +35,9 @@ so reports of two versions of a file can be matched up even if ids shift.
 
 A stretched sprite's "speed" is 1 unless a speed rule matched it. "interpolation" and
 "probably_safe_labels" are only present where they apply. A report for a file
-that was left unchanged only has old_fps, new_fps, target_fps, rules (each matching nothing),
-include, exclude, unmet_rules and warnings (empty). A sprite's "class" is None if it has no linkage
+that was left unchanged only has old_fps, new_fps, target_fps, animated (whether it has clips a rescale
+would stretch; missing from reports written before it), rules (each matching nothing), include, exclude,
+unmet_rules and warnings (empty). A sprite's "class" is None if it has no linkage
 class.
 """
 
@@ -50,9 +51,9 @@ from .planner import RescalePlan
 from .retiming import Retiming, fps_ratio
 
 
-def unchanged_report(old_fps: float, options: RescaleOptions) -> dict:
+def unchanged_report(old_fps: float, options: RescaleOptions, animated: bool) -> dict:
     file_ratio = fps_ratio(old_fps, options.target_fps)
-    return {"old_fps": old_fps, "new_fps": None, "target_fps": options.target_fps,
+    return {"old_fps": old_fps, "new_fps": None, "target_fps": options.target_fps, "animated": animated,
             "rules": _rule_records(file_ratio, options.rules, [[] for _ in options.rules]),
             "include": _pattern_records(options.include, [[] for _ in options.include]),
             "exclude": _pattern_records(options.exclude, [[] for _ in options.exclude]),

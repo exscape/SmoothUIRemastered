@@ -111,7 +111,9 @@ TURN_ON_NOTE = "If {mods} or Smooth UI Tools was updated since, it may merge now
 TURNED_OFF = "Merging is turned off for: {screens}."
 # Screens that Smooth UI itself leaves out for a mod (a dont-merge line, see mod_reviews.py), by its reason; the
 # last, for a reason from newer tools. {screens}: the first few, then how many more
-ALREADY_SMOOTH = "Already smooth with {mod}, so not merged: {screens}."
+ALREADY_SMOOTH = "Left as {mod} made them, for their own frame rate: {screens}."
+# Mods' copies kept at their own frame rate, above Smooth UI's (see policy.PackageFile.speed)
+SLOW = "Made for a higher frame rate, so they play slowly: {screens}."
 LEFT_OUT_FOR = "Not merged, as Smooth UI leaves them out for {mod}: {screens}."
 MAX_RULE_SCREENS = 3
 # The same, for those that a trial found would merge now (see turn_on_note)
@@ -384,12 +386,13 @@ def _merged(result: BuildResult, stale, cant_merge):
                                     *((path, group, mod) for path, group, mod, reason in rules
                                       if reason == mod_reviews.KNOWN_BROKEN)])
     known += _by_rule([rule for rule in rules if rule[3] != mod_reviews.KNOWN_BROKEN])
+    known += _screens(SLOW, ((file.path, file.group, file.mod) for file in result.files if file.speed is not None))
     known += _screens(TURNED_OFF, ((key, scan.group_of.get(key), choice.mod)
                                    for key, choice in scan.screens_off.items() if choice.reason is None))
     if result.clean:
         included = [(file.mod, file.path, file.group) for file in result.files if file.status.included]
         headline = (f"Merged: {_patched(included)}" if included
-                    else "Merged: your mods' copies are already smooth"
+                    else "Merged: your mods' copies run at their own frame rate"
                     if any(file.status.value == "unchanged" for file in result.files)
                     else "Nothing to merge")
         return Card(OK, headline, known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
@@ -495,6 +498,8 @@ def _checked(found: Check, stale, merges_now=()):
     known += _by_rule([(file.path, file.group, file.winner, file.reason) for file in found.states
                        if file.state == State.NOT_HELD and file.cause == "by rule"
                        and file.reason != mod_reviews.KNOWN_BROKEN])
+    known += _screens(SLOW, ((file.path, file.group, file.winner) for file in found.states
+                             if file.speed))
     off = [file for file in found.states if file.state == State.NOT_HELD and file.cause == "by choice"]
     now_groups = {file.group for file in off if file.path in merges_now and file.group}
     now = [file for file in off if file.path in merges_now or file.group in now_groups]
@@ -512,7 +517,7 @@ def _checked(found: Check, stale, merges_now=()):
         return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.", *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
     if any(file.state == State.NOT_HELD and file.cause == "unchanged" for file in found.states):
-        return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens are already smooth.", *known),
+        return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens run at their own frame rate.", *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     if known:
         return Card(OK, "Nothing to merge", known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
@@ -552,11 +557,15 @@ def row_status(file: FileState) -> tuple[str, str]:
     if state == State.UP_TO_DATE:
         if cause == "fixes":
             return WARNING, "Merged, fixes missing"
+        if file.speed:
+            return WARNING, "Merged, plays slowly"
         return OK, "Merged anyway" if cause == "forced" else "Merged"
+    if state == State.NOT_HELD and cause == "unchanged":
+        return WARNING if file.speed else OK, f"Runs at {file.fps:g} fps" if file.fps else "Own frame rate"
     if state == State.NOT_HELD:
-        return {"unchanged": (OK, "Already smooth"), "known broken": (INFO, "Known not to work"),
+        return { "known broken": (INFO, "Known not to work"),
                 "by choice": (INFO, "Turned off"),
-                "by rule": (INFO, "Already smooth" if file.reason == mod_reviews.ALREADY_SMOOTH else
+                "by rule": (INFO, "Own frame rate" if file.reason == mod_reviews.ALREADY_SMOOTH else
                             "Known not to work" if file.reason == mod_reviews.KNOWN_BROKEN else "Left out"),
                 "failed": (ERROR, "Can't merge"),
                 "mod failed": (ERROR, "Mod left out"), "group left out": (WARNING, "Left out with its group"),

@@ -103,6 +103,9 @@ class FileState:
                                     # copy the last merge used
     fixes: tuple[str, ...] = ()     # UP_TO_DATE: the fixes the merged copy lacks (a fix that can't apply)
     group: str | None = None        # the group it is in, if any (see build/profile.py's Group)
+    fps: float | None = None        # NOT_HELD "unchanged": the frame rate its copy runs at
+    speed: float | None = None      # NOT_HELD "unchanged" and UP_TO_DATE: the speed it plays at, if its copy keeps
+                                    # a frame rate above the target, so its animations play slowly
     reason: str | None = None       # NOT_HELD "left out", and UP_TO_DATE "forced": why its rescale has problems,
                                     # in a word (see WHY), if the build recorded it; "by rule": the rule's
 
@@ -191,7 +194,7 @@ def left_out_by_rule(choice, group: str | None = None, held: bool = False) -> st
     files (not naming the file, so that they are told as one). held: the merged patches still hold it."""
     copy = f"{choice.mod}'s copy"
     if choice.reason == mod_reviews.ALREADY_SMOOTH:
-        clause = "already smooth"
+        clause = "already at a high frame rate"
     elif choice.reason == mod_reviews.KNOWN_BROKEN:
         clause = "known not to work with Smooth UI"
     else:   # a reason from newer tools
@@ -204,8 +207,13 @@ def left_out_by_rule(choice, group: str | None = None, held: bool = False) -> st
     if group:
         return f"{choice.mod}'s {name} is {clause or 'left out by Smooth UI for this mod'}, so the {name} isn't merged."
     if choice.reason == mod_reviews.ALREADY_SMOOTH:
-        return f"{copy} is already smooth, so Smooth UI leaves it as it is."
+        return f"{copy} is already at a high frame rate, so Smooth UI leaves it as it is."
     return f"{copy} is {clause or 'left out by Smooth UI for this mod'}, so it isn't merged."
+
+
+def played_slowly(target_fps: float, speed: float) -> str:
+    """What a copy kept at a frame rate above the target (see policy.PackageFile.speed) means, for the user"""
+    return f"Played back at {target_fps:g} fps, this file plays at {speed:.0%} speed."
 
 
 def merged_anyway(copy: str, reason: str | None, since: str = "") -> str:
@@ -279,10 +287,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         origin = winner.origin if winner else None
 
         def state(kind, message, severity=None, needs_build=None, cause=None, previous=None, fixes=(), key=key,
-                  origin=origin, reason=None):
+                  origin=origin, reason=None, fps=None, speed=None):
             needs_build = kind.needs_build if needs_build is None else needs_build
             states.append(FileState(key, kind, message, origin, severity, needs_build, cause, previous, fixes,
-                                    groups.get(key), reason))
+                                    groups.get(key), fps, speed, reason))
 
         if file.undetermined:
             state(State.UNDETERMINED, "the load order doesn't decide which mod's copy the game uses (see the problems)")
@@ -357,8 +365,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             else:
                 fixes = tuple(record.get("fixes_not_applied") or ())
                 newer = ", which is newer than this Smooth UI: untested" if result.from_game.get(key) == "game" else ""
-                state(State.UP_TO_DATE, f"merged ({_copy_of(origin)}{newer})" + (", without some fixes" if fixes else ""),
-                      cause="fixes" if fixes else None, fixes=fixes)
+                speed = record.get("speed")
+                slowly = f". {played_slowly(result.fps_of(key), speed)}" if speed and not fixes else ""
+                state(State.UP_TO_DATE, f"merged ({_copy_of(origin)}{newer})" + (", without some fixes" if fixes else "")
+                      + slowly, cause="fixes" if fixes else None, fixes=fixes, speed=speed)
         elif key in held:
             state(State.DAMAGED, "the merged patches are damaged (their manifest lists it, their bundle doesn't): "
                   "merge again", Severity.HIGH)
@@ -381,7 +391,11 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.CHANGED, "the merger was updated since this screen was left out: merge again, as it may "
                       "merge it now", Severity.MEDIUM, cause="merger")
             elif record["status"] == "unchanged":
-                state(State.NOT_HELD, f"{_copy_of(origin)}: already smooth, nothing to merge", cause="unchanged")
+                fps, speed = record.get("fps"), record.get("speed")
+                runs = f"runs at {fps:g} fps" if fps else "runs at its own frame rate"
+                slowly = f". {played_slowly(result.fps_of(key), speed)}" if speed else ""
+                state(State.NOT_HELD, f"{_copy_of(origin)} {runs}: used as it is{slowly}", cause="unchanged",
+                      fps=fps, speed=speed)
             else:
                 # Short, for the user: the technical reasons are in the merge's log
                 status, group = record["status"], groups.get(key)
