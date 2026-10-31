@@ -39,9 +39,12 @@ MODS_SETTINGS_BACKUP = "mods.settings.bak"
 GAME_EXE = Path("bin", "x64_dx12", "witcher3.exe")
 # Mod Organizer 2's virtual file system, loaded into the programs it starts
 MO2_VFS_DLL = "usvfs_x64.dll"
-# The frame rates the user may choose (see Settings.target_fps): (lowest, highest). The HUD's goes lower, for
-# frame generation (the HUD advances once per rendered frame, half the frames shown with 2x)
+# The frame rates to build for (see Settings.target_fps): (lowest, highest). The HUD's goes lower, for frame
+# generation (the HUD advances once per rendered frame, half the frames shown with 2x). Below 48 (twice the
+# game's 24) there's too little to gain, so a lower rate in gameplay gets a 48 fps HUD that plays slowly.
 FPS_RANGES = {"target_fps": (60, 240), "hud_fps": (48, 240)}
+# The frame generation multipliers (see Settings.hud_fg): 1 is off
+FG_MULTIPLIERS = range(1, 7)
 
 log = logging.getLogger(__name__)
 
@@ -56,10 +59,30 @@ class Settings:
     # choice stays while the mod doesn't ship the screen, or another mod's copy wins: it applies again if
     # the mod's copy wins again.
     screens_off: tuple[ScreenOff, ...] = ()
-    # The frame rates to build for: the menus' and the HUD's (see scan.Scan.target_fps); None: the installed
-    # Smooth UI build's
+    # The menus' frame rate to build for (see scan.Scan.target_fps); None: the installed Smooth UI build's
     target_fps: int | None = None
-    hud_fps: int | None = None
+    # The frame rate in gameplay (what a counter shows) and the frame generation multiplier, which give the
+    # HUD's rate (see hud_fps); None: the HUD at the installed build's rate
+    hud_game_fps: int | None = None
+    hud_fg: int = 1
+
+    @property
+    def hud_fps(self) -> int | None:
+        return hud_rate(self.hud_game_fps, self.hud_fg)[0] if self.hud_game_fps is not None else None
+
+
+def hud_rate(game_fps: int, fg: int) -> tuple[int, float, str]:
+    """The HUD's frame rate to build for a frame rate in gameplay and a frame generation multiplier (the HUD
+    advances once per rendered frame; at least FPS_RANGES' lowest), the speed it plays at (1.0, or less below
+    that lowest: 40 fps plays a 48 fps HUD at 0.83), and how well it works: "ok"; "slowed" (40-47 rendered: it
+    plays somewhat slowly); "advise-off" (below 40: Smooth HUD is best off); "too-high" (above FPS_RANGES:
+    refused)"""
+    rendered = round(game_fps / fg)
+    lowest, highest = FPS_RANGES["hud_fps"]
+    if rendered > highest:
+        return rendered, 1.0, "too-high"
+    rate = max(rendered, lowest)
+    return rate, rendered / rate, "ok" if rendered >= lowest else "slowed" if rendered >= 40 else "advise-off"
 
 
 def groups_off(settings: Settings | None) -> frozenset[str]:
@@ -103,11 +126,21 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
         if not isinstance(off, list):
             raise TypeError(f"not_merged is {off!r}, not a list")
         off = tuple(choice for choice in map(_screen_off, off) if choice is not None)
-        rates = [settings.get(name) for name in FPS_RANGES]
-        for (name, (lowest, highest)), rate in zip(FPS_RANGES.items(), rates):
-            if rate is not None and not (type(rate) is int and lowest <= rate <= highest):
-                raise TypeError(f"{name} is {rate!r}, not a whole number from {lowest} to {highest}")
-        return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off, *rates)
+        target_fps, game_fps, fg = (settings.get(name) for name in ("target_fps", "hud_game_fps", "hud_fg"))
+        lowest, highest = FPS_RANGES["target_fps"]
+        if target_fps is not None and not (type(target_fps) is int and lowest <= target_fps <= highest):
+            raise TypeError(f"target_fps is {target_fps!r}, not a whole number from {lowest} to {highest}")
+        fg = 1 if fg is None else fg
+        if not (type(fg) is int and fg in FG_MULTIPLIERS):
+            raise TypeError(f"hud_fg is {fg!r}, not a whole number from 1 to {FG_MULTIPLIERS[-1]}")
+        if game_fps is not None:
+            if not (type(game_fps) is int and game_fps >= 1):
+                raise TypeError(f"hud_game_fps is {game_fps!r}, not a whole number from 1")
+            if hud_rate(game_fps, fg)[2] == "too-high":
+                raise TypeError(f"hud_game_fps {game_fps} with hud_fg {fg} gives a HUD rate of "
+                                f"{hud_rate(game_fps, fg)[0]}, above {FPS_RANGES['hud_fps'][1]}")
+        return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off, target_fps,
+                        game_fps, fg)
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
 
@@ -138,9 +171,10 @@ def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
               "smooth_hud": settings.smooth_hud}
     if settings.last_update_check is not None:
         fields["last_update_check"] = settings.last_update_check
-    for name in ("target_fps", "hud_fps"):
-        if getattr(settings, name) is not None:
-            fields[name] = getattr(settings, name)
+    if settings.target_fps is not None:
+        fields["target_fps"] = settings.target_fps
+    if settings.hud_game_fps is not None:
+        fields |= {"hud_game_fps": settings.hud_game_fps, "hud_fg": settings.hud_fg}
     if settings.screens_off:
         fields["not_merged"] = [{"screen": choice.path, "mod": choice.mod, "since": choice.since,
                                  **({"size": choice.size, "crc32": choice.crc32} if choice.size is not None else {}),
