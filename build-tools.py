@@ -12,6 +12,10 @@
     --out DIR         build into DIR instead (inside build/), and leave it there
     --install         also mirror the build into the tools' folder in the game folder (config.toml's game_path, see
                       INSTALL_FOLDER), keeping its data/
+    --force           build even if nothing the build uses has changed since the last build into build/dist/
+                      (see fingerprint): without it, that build is reused, so --install after a build is quick
+
+Only one build runs at a time (build/tools-build.lock; a crashed build leaves it behind: delete it).
 
 Each exe is built on its own, so the launcher holds only what it imports (no Qt), then both go into the build
 folder, which is deleted first. Nuitka puts the files the exes need next to them; the files both builds have
@@ -21,8 +25,11 @@ dist/SmoothUIMerger/ itself is never deleted, only mirrored into: WSL1 can keep 
 Windows made again (while a WSL process, e.g. a file watcher, still holds the old one).
 """
 import argparse
+import contextlib
 import filecmp
+import hashlib
 import importlib.metadata
+import json
 import os
 import platform
 import re
@@ -30,6 +37,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import zipfile
 from fnmatch import fnmatch
@@ -39,6 +47,9 @@ from xml.etree import ElementTree
 ROOT = Path(__file__).resolve().parent
 BUILD_DIR = ROOT / "build" / "dist" / "SmoothUIMerger"
 INSTALL_DIR = ROOT / "dist" / "SmoothUIMerger"
+STAMP = ROOT / "build" / "dist" / "tools-build.json"    # what BUILD_DIR was built from (see fingerprint)
+LOCK = ROOT / "build" / "tools-build.lock"
+LOCK_STALE_SECONDS = 30 * 60            # a build takes about 2 minutes
 ZIP_FOLDER = "Smooth UI Tools"          # the folder at the root of a release zip
 WORK_DIR = ROOT / "build" / "nuitka"    # Nuitka's build folders and reports, and the version file
 COMPANY = "Aeluwas"
@@ -83,6 +94,8 @@ def parse_args():
     parser.add_argument("--install", action="store_true",
                         help="also replace everything in the tools' folder in the game folder (config.toml's game_path) "
                              "but its data\\ with the build")
+    parser.add_argument("--force", action="store_true",
+                        help="build even if nothing has changed since the last build into build/dist/")
     # zip: None, "" (the default zip) or a path. No type=Path: argparse would also convert the "" to Path("."), the current folder
     return parser.parse_args()
 
@@ -117,6 +130,8 @@ def run_on_windows(args):
         command += ["--out", windows_path(args.out)]
     if args.install:
         command.append("--install")
+    if args.force:
+        command.append("--force")
     raise SystemExit(subprocess.run(command, cwd=ROOT, check=False).returncode)
 
 
@@ -354,17 +369,65 @@ def mirror(built, target):
     print(f"Mirrored into: {target}")
 
 
-def main():
-    args = parse_args()
-    if in_wsl():
-        run_on_windows(args)
-    check_python()
-    install = install_dir() if args.install else None     # before the build: it fails if there's none
-    out_dir = (args.out or BUILD_DIR).resolve()
-    if not out_dir.is_relative_to(ROOT / "build"):
-        raise SystemExit(f"ERROR: --out must be inside {ROOT / 'build'} (it is deleted first), not {out_dir}")
-    version = read_tools_version(args.version)
-    print(f"Tools version {version}")
+def manifests_to_ship(dev_manifests):
+    manifests = sorted(
+        p for p in (ROOT / "manifests").glob("*.json")
+        if (dev_manifests or not fnmatch(p.name, "*dev*")) and p.name != "v0.2.json"
+    )
+    if not manifests:
+        raise SystemExit("ERROR: no release manifests found in manifests/")
+    return manifests
+
+
+def fingerprint(args, version):
+    """A hash of everything a build uses: our code and data (smoothui/, assets/ but for what only Smooth UI's own build ships, the scripts that are built or
+    build), the manifests it ships, the options that change the result, and the tool versions. More than is
+    needed (a comment changes it), never less. The tests, dev/ and config.toml (but for the version) are not part."""
+    import PySide6  # (only on env_gui's Python, like qt_dropped)
+    digest = hashlib.sha256()
+    digest.update(repr((version, args.dev_manifests, sys.version, platform.machine(),
+                        [importlib.metadata.version("nuitka"), PySide6.__version__])).encode())
+    files = [p for folder in ("smoothui", "assets") for p in (ROOT / folder).rglob("*")
+             if p.is_file() and "__pycache__" not in p.parts
+             and p.relative_to(ROOT).parts[:2] not in (("assets", "mod_files"), ("assets", "strings"))]
+    files += [ROOT / name for name in ("launcher.py", "merger-gui.py", "build-tools.py", "LICENSE.txt", "README_tools.md")]
+    files += manifests_to_ship(args.dev_manifests) + [ROOT / "manifests" / "reviewed_mod_warnings.txt"]
+    for path in sorted(files):
+        digest.update(path.relative_to(ROOT).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
+    return digest.hexdigest()
+
+
+def exe_stats(out_dir):
+    return {name: [out_dir.joinpath(name).stat().st_size, out_dir.joinpath(name).stat().st_mtime_ns]
+            for name in ("SmoothUILauncher.exe", "SmoothUIMerger.exe")}
+
+
+def is_current(out_dir, current):
+    """Whether out_dir was built from what fingerprint() gives now, and its exes are as they were built"""
+    try:
+        stamp = json.loads(STAMP.read_text(encoding="utf-8"))
+        return stamp["fingerprint"] == current and stamp["exes"] == exe_stats(out_dir)
+    except (OSError, ValueError, KeyError):
+        return False
+
+
+@contextlib.contextmanager
+def one_build_at_a_time():
+    """The build folders are deleted and rewritten: a second build (--install while a build runs) would break both"""
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    if LOCK.exists() and time.time() - LOCK.stat().st_mtime > LOCK_STALE_SECONDS:
+        LOCK.unlink()
+    try:
+        LOCK.touch(exist_ok=False)
+    except FileExistsError:
+        raise SystemExit(f"ERROR: another build is running (or crashed: then delete {LOCK})") from None
+    try:
+        yield
+    finally:
+        LOCK.unlink(missing_ok=True)
+
+
+def build(args, version, out_dir):
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     version_file = WORK_DIR / "tools_version.txt"
     version_file.write_text(version + "\n", encoding="utf-8")
@@ -392,12 +455,7 @@ def main():
         p.unlink()
 
     # Our own files go next to the exes. copyfile, not copy2: no metadata, which fails on some drives.
-    manifests = sorted(
-        p for p in (ROOT / "manifests").glob("*.json")
-        if (args.dev_manifests or not fnmatch(p.name, "*dev*")) and p.name != "v0.2.json"
-    )
-    if not manifests:
-        raise SystemExit("ERROR: no release manifests found in manifests/")
+    manifests = manifests_to_ship(args.dev_manifests)
     dev_manifests = [p.name for p in manifests if fnmatch(p.name, "*dev*")]
     if dev_manifests:
         print(f"Dev manifests included (a test build, not for a release): {', '.join(dev_manifests)}")
@@ -412,6 +470,29 @@ def main():
     smoke_test_launcher(out_dir)
     (out_dir / SHIPPED_DEST).write_text("".join(f"{p.name}\n" for p in sorted(out_dir.iterdir())), encoding="utf-8")
     print(f"Built: {out_dir}")
+
+
+def main():
+    args = parse_args()
+    if in_wsl():
+        run_on_windows(args)
+    check_python()
+    install = install_dir() if args.install else None     # before the build: it fails if there's none
+    out_dir = (args.out or BUILD_DIR).resolve()
+    if not out_dir.is_relative_to(ROOT / "build"):
+        raise SystemExit(f"ERROR: --out must be inside {ROOT / 'build'} (it is deleted first), not {out_dir}")
+    version = read_tools_version(args.version)
+    print(f"Tools version {version}")
+    current = fingerprint(args, version)
+    if args.out is None and not args.force and is_current(out_dir, current):
+        print(f"Nothing the build uses has changed since the last build: reusing {out_dir} (--force builds anyway)")
+    else:
+        with one_build_at_a_time():
+            if args.out is None:
+                STAMP.unlink(missing_ok=True)
+            build(args, version, out_dir)
+            if args.out is None:
+                STAMP.write_text(json.dumps({"fingerprint": current, "exes": exe_stats(out_dir)}), encoding="utf-8")
 
     if args.zip is not None:
         write_zip(out_dir, Path(args.zip) if args.zip else ROOT / "dist" / f"SmoothUITools-{version}-test.zip")
