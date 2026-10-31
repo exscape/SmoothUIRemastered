@@ -23,11 +23,13 @@ Windows made again (while a WSL process, e.g. a file watcher, still holds the ol
 import argparse
 import filecmp
 import importlib.metadata
+import os
 import platform
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 import zipfile
 from fnmatch import fnmatch
@@ -198,6 +200,29 @@ def check_launcher(dist):
                    if any(name == excluded or name.startswith(excluded + ".") for excluded in LAUNCHER_EXCLUDES))
     if found:
         raise SystemExit(f"ERROR: the launcher holds modules it must not: {', '.join(found)}")
+
+
+def smoke_test_launcher(out_dir):
+    """Run the built launcher's check once, on an empty game folder, as the exe will run it: what Nuitka left out
+    (LAUNCHER_EXCLUDES) fails there at the import, as no unit test can show. Its log is removed again."""
+    exe = out_dir / "SmoothUILauncher.exe"
+    data = out_dir / "data"
+    with tempfile.TemporaryDirectory() as temp:
+        game = Path(temp) / "game"
+        (game / "Mods").mkdir(parents=True)
+        (Path(temp) / "mods.settings").touch()
+        env = {**os.environ, "SMOOTHUI_LAUNCHER_CHECK_ONLY": "1", "SMOOTHUI_GAME_PATH": str(game),
+               "SMOOTHUI_MODS_SETTINGS": str(Path(temp) / "mods.settings")}
+        try:
+            code = subprocess.run([str(exe)], env=env, timeout=60, check=False).returncode
+        except subprocess.TimeoutExpired:
+            code = "timed out"
+    log = data / "launcher.log"
+    text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else "(no log)"
+    shutil.rmtree(data, ignore_errors=True)
+    if code != 0 or "Checked:" not in text:
+        raise SystemExit(f"ERROR: the built launcher's check failed (exit code {code}):\n{text}")
+    print("The built launcher's check works")
 
 
 def combine(dists, out_dir):
@@ -384,6 +409,7 @@ def main():
     shutil.copyfile(ROOT / "LICENSE.txt", out_dir / "LICENSE.txt")
     shutil.copyfile(ROOT / "README_tools.md", out_dir / "README_tools.md")
     write_licenses(out_dir, [launcher, merger])
+    smoke_test_launcher(out_dir)
     (out_dir / SHIPPED_DEST).write_text("".join(f"{p.name}\n" for p in sorted(out_dir.iterdir())), encoding="utf-8")
     print(f"Built: {out_dir}")
 

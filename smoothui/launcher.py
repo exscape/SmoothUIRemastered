@@ -12,6 +12,7 @@ nothing. Light: no Qt, and none of the patcher (see tests/test_state.py: LightIm
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -48,6 +49,10 @@ ABORT = 11
 UPDATING = 12       # it is updating itself: don't start the game
 
 DETAILS = r"Details are in data\launcher.log."
+
+# Set (to anything) by build-tools.py's test of the built exe: only the check runs, on the game folder and
+# mods.settings of the test variables, and the exit code says whether it worked (no message box, no game, no merger)
+CHECK_ONLY_ENV = "SMOOTHUI_LAUNCHER_CHECK_ONLY"
 
 
 class Log:
@@ -96,6 +101,8 @@ def main(args: list[str], log: Log) -> int:
     log(f"Smooth UI launcher {version}, started {log.ms():.0f} ms after its process was created; arguments: "
         f"{subprocess.list2cmdline(args) or '(none)'}")
 
+    if os.environ.get(CHECK_ONLY_ENV):
+        return check_only(log)
     settings = read_settings(log)
     game = game_path(settings)
     log(f"Game folder: {game or 'not chosen yet'}")
@@ -112,6 +119,16 @@ def main(args: list[str], log: Log) -> int:
     elif package_stale(game, log, scan_options(settings)) and not open_merger(log):
         return 0
     return start_game(command_for(args, game, log), log)
+
+
+def check_only(log: Log) -> int:
+    try:
+        found = check(game_path(None), mods_settings())
+    except Exception as e:  # noqa: BLE001 (the exit code says so)
+        log.failure("The check failed", e)
+        return 1
+    log(f"Checked: {found.scan.installed.message}")
+    return 0
 
 
 def read_settings(log: Log) -> Settings | None:

@@ -58,6 +58,7 @@ from pathlib import Path
 from .common import SmoothUIError
 from .files import read_file
 from .paths import MANIFEST_DIRS
+from .sprite_patterns import parse_sprite_pattern
 
 log = logging.getLogger(__name__)
 
@@ -155,7 +156,7 @@ def sha256() -> str | None:
 def load() -> ModReviews:
     """The reviews in the file in use (none if there is none), for this tools version. Lines that can't be
     read are logged."""
-    from .merger import tools_version   # (here: the build doesn't need it)
+    from .merger import tools_version  # (here: the build doesn't need it)
     found = path()
     try:
         data = read_file(found) if found else None
@@ -173,7 +174,6 @@ def load() -> ModReviews:
 def parse(text: str, tools: str | None = None) -> tuple[ModReviews, list[str]]:
     """(the reviews in a file's text, a line for each problem). tools: the tools version (X.Y.Z), for the
     dont-merge lines whose reason is "before-X-Y-Z" (None: they all apply)."""
-    from .patcher.swf_patcher.options import parse_sprite_pattern     # (here: the launcher doesn't have the patcher)
     tools = tuple(map(int, tools.split("."))) if tools else None
     groups, problems = [], []
     # [pattern, reviews, leave-outs, dont-merges, dont-stretches] of the last header; its pattern is None if it
