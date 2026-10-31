@@ -167,6 +167,7 @@ WHY = {
 
 # A file's frame rate changed in the settings since the last build
 FPS_CHANGED = "the frame rate changed"
+GAME_UPDATED = "the game was updated since this Smooth UI's release"
 
 
 def not_merged(status: str, copy: str, mod: str, *, reason: str | None = None, group: str | None = None,
@@ -355,7 +356,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.UP_TO_DATE, text, cause="forced", fixes=fixes, reason=record.get("reason"))
             else:
                 fixes = tuple(record.get("fixes_not_applied") or ())
-                state(State.UP_TO_DATE, f"merged ({_copy_of(origin)})" + (", without some fixes" if fixes else ""),
+                newer = ", which is newer than this Smooth UI: untested" if result.from_game.get(key) == "game" else ""
+                state(State.UP_TO_DATE, f"merged ({_copy_of(origin)}{newer})" + (", without some fixes" if fixes else ""),
                       cause="fixes" if fixes else None, fixes=fixes)
         elif key in held:
             state(State.DAMAGED, "the merged patches are damaged (their manifest lists it, their bundle doesn't): "
@@ -404,6 +406,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         elif groups.get(key) in was_off:
             state(State.NOT_BUILT, f"merging the {group_name(groups[key])} was turned on in the settings since the last "
                   "merge: merge again", Severity.MEDIUM, cause="setting")
+        elif result.from_game.get(key) == "game":
+            state(State.NOT_BUILT, f"{GAME_UPDATED}: merge again", Severity.MEDIUM, cause="game")
         else:
             state(State.NOT_BUILT, f"{_copy_of(origin)} is new since the last merge: merge again", Severity.MEDIUM)
     return _whole_groups(result, states)

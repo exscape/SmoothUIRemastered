@@ -4,7 +4,8 @@ builds (game copy "merger-only", see manifests.game_copy), the game's own copy i
 mod changes the file; a file a mod adds to a group's folder is the group's too (see Scan.group_of). Files that
 only mods use (game copy "unused") are left out where no mod has them. At a frame rate other than the
 installed build's (see Scan.target_fps), every file but those is built like the merger-only ones: Smooth UI's
-own copies are for its own rate.
+own copies are for its own rate. So is a file whose game copy isn't the one the installed build was made from
+(a game update since its release).
 
 Read-only, and reads only bundles' tables of contents (except to compare two copies of a file within one
 mod). It must work through MO2's virtual file system, where exists() and is_dir() often say no for files
@@ -141,7 +142,8 @@ class Scan:
     target_fps: int | None = None
     hud_fps: int | None = None
     # The files whose winner is the game's own copy, and why: {profile key: "merger-only" (no download holds
-    # it) or "fps" (the menus' rate isn't the installed build's)}
+    # it), "fps" (the menus' rate isn't the installed build's) or "game" (the game's copy changed since the
+    # installed build's release)}
     from_game: dict[str, str] = field(default_factory=dict)
 
     def fps_of(self, key: str) -> int | None:
@@ -230,7 +232,9 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     group_of = {key: record["group"] for key, record in records.items() if "group" in record}
     group_of |= {key: group_dirs[posixpath.dirname(key)] for mod, found in shipped.items() if not is_own_folder(mod.folder)
                  for key in found if key not in keys}
-    game = _game_copies(game_path, merger_only.keys() - off, problems)
+    # The game's copies of the shipped files too (only their TOC entries), to tell a game update
+    game = _game_copies(game_path, keys - unused - off, merger_only.keys() - off, problems)
+    merger_only |= {key: "game" for key, copy in game.items() if key not in merger_only and _game_updated(records[key], copy)}
 
     files = {}
     for key in sorted(group_of.keys() | keys):
@@ -287,19 +291,27 @@ def _screens_off(files, group_of, screens_off, reviews) -> dict[str, ScreenOff]:
     return off | {key: groups[group] for key, group in group_of.items() if group in groups and key not in off}
 
 
-def _game_copies(game_path, keys, problems) -> dict[str, SourceFile]:
-    """{profile key: SourceFile} for the game's own copies of keys; what's missing goes into problems"""
+def _game_copies(game_path, keys, needed, problems) -> dict[str, SourceFile]:
+    """{profile key: SourceFile} for the game's own copies of keys; what's missing of those needed (a subset of
+    keys) goes into problems"""
     if not keys:
         return {}
     try:
         found = game_files(game_path, keys)
     except SmoothUIError as e:
-        problems.append(Problem(ProblemKind.GAME_FILES, f"the game's own files can't be read: {e}"))
+        if needed:
+            problems.append(Problem(ProblemKind.GAME_FILES, f"the game's own files can't be read: {e}"))
         return {}
-    for key in sorted(keys - found.keys()):
+    for key in sorted(needed - found.keys()):
         problems.append(Problem(ProblemKind.GAME_FILES, f"the game has no {screen_name(key)} ({key}): is the game "
                                 "installed fully, and of the version this Smooth UI is for?", file=key))
     return found
+
+
+def _game_updated(record, copy) -> bool:
+    """Whether the game's copy (a SourceFile) of a file isn't the one its manifest record says the release was
+    built from: a game update. A record without source_crc32 tells nothing."""
+    return "source_crc32" in record and (copy.size, copy.toc_entry.crc) != (record.get("source_size"), record["source_crc32"])
 
 
 def _conflicts(mods_dir, order) -> list[str]:

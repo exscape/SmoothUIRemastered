@@ -269,6 +269,8 @@ NUMBERS = ("No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
 CAUSES = {
     "smoothui": "Smooth UI was updated.",
     "merger": "The merger was updated.",
+    "fps": "The frame rate changed since the last merge.",
+    "game": "The game was updated since this Smooth UI's release: its newer screens are merged from it, untested.",
     "damaged": "The merged patches are damaged.",
     "entry": "The merged patches' mods.settings entry is missing or changed.",
     "overridden": "{mod} has priority 0 too, and its name sorts first.",
