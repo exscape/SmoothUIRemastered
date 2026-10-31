@@ -1,7 +1,8 @@
 """What both exes need from Windows itself: message boxes, when the process started, and (the merger) a
-window on top, one merger at a time, whether a DLL is loaded, and waiting for a process. Light (ctypes only);
-elsewhere (tests under WSL), the boxes show nothing, the start time is unknown, each process is the only one,
-no DLL is loaded, and every process has ended."""
+window on top, one merger at a time, whether a DLL is loaded, waiting for a process, and the display's
+refresh rate. Light (ctypes only); elsewhere (tests under WSL), the boxes show nothing, the start time is
+unknown, each process is the only one, no DLL is loaded, every process has ended, and the refresh rate is
+unknown."""
 
 import ctypes
 
@@ -154,3 +155,20 @@ def wait_for_process(pid: int, seconds: float) -> bool:
         return kernel32.WaitForSingleObject(handle, round(seconds * 1000)) == wait_object_0
     finally:
         kernel32.CloseHandle(handle)
+
+
+def refresh_rate() -> int | None:
+    """The primary display's refresh rate in Hz (EnumDisplaySettingsW); None if Windows can't tell, and
+    outside Windows"""
+    try:
+        user32 = ctypes.windll.user32
+    except AttributeError:
+        return None
+    enum_current_settings, size, size_offset, frequency_offset = -1, 220, 68, 184     # DEVMODEW's layout
+    mode = ctypes.create_string_buffer(size)
+    ctypes.c_ushort.from_buffer(mode, size_offset).value = size
+    user32.EnumDisplaySettingsW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_void_p]
+    if not user32.EnumDisplaySettingsW(None, enum_current_settings & 0xFFFFFFFF, mode):
+        return None
+    hz = ctypes.c_uint32.from_buffer(mode, frequency_offset).value
+    return hz if hz > 1 else None   # (0 and 1 mean the hardware's default)

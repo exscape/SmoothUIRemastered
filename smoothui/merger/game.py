@@ -43,6 +43,9 @@ MO2_VFS_DLL = "usvfs_x64.dll"
 # generation (the HUD advances once per rendered frame, half the frames shown with 2x). Below 48 (twice the
 # game's 24) there's too little to gain, so a lower rate in gameplay gets a 48 fps HUD that plays slowly.
 FPS_RANGES = {"target_fps": (60, 240), "hud_fps": (48, 240)}
+# The frame rates in gameplay (rendered, after frame generation) below which hud_rate refuses to build (the
+# game's own 24 fps or less: nothing to gain, it would only play in slow motion) and advises Smooth HUD off
+HUD_REFUSED_UP_TO, HUD_ADVISE_OFF_BELOW = 24, 35
 # The frame generation multipliers (see Settings.hud_fg): 1 is off
 FG_MULTIPLIERS = range(1, 7)
 
@@ -74,15 +77,18 @@ class Settings:
 def hud_rate(game_fps: int, fg: int) -> tuple[int, float, str]:
     """The HUD's frame rate to build for a frame rate in gameplay and a frame generation multiplier (the HUD
     advances once per rendered frame; at least FPS_RANGES' lowest), the speed it plays at (1.0, or less below
-    that lowest: 40 fps plays a 48 fps HUD at 0.83), and how well it works: "ok"; "slowed" (40-47 rendered: it
-    plays somewhat slowly); "advise-off" (below 40: Smooth HUD is best off); "too-high" (above FPS_RANGES:
-    refused)"""
+    that lowest: 40 fps plays a 48 fps HUD at 0.83), and how well it works: "ok"; "slowed" (below that lowest,
+    from HUD_ADVISE_OFF_BELOW: it plays somewhat slowly); "advise-off" (below HUD_ADVISE_OFF_BELOW: Smooth HUD
+    is best off); "too-low" (HUD_REFUSED_UP_TO or less) and "too-high" (above FPS_RANGES): refused"""
     rendered = round(game_fps / fg)
     lowest, highest = FPS_RANGES["hud_fps"]
     if rendered > highest:
         return rendered, 1.0, "too-high"
     rate = max(rendered, lowest)
-    return rate, rendered / rate, "ok" if rendered >= lowest else "slowed" if rendered >= 40 else "advise-off"
+    if rendered <= HUD_REFUSED_UP_TO:
+        return rate, rendered / rate, "too-low"
+    return rate, rendered / rate, ("ok" if rendered >= lowest else "slowed" if rendered >= HUD_ADVISE_OFF_BELOW
+                                   else "advise-off")
 
 
 def groups_off(settings: Settings | None) -> frozenset[str]:
@@ -136,9 +142,10 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
         if game_fps is not None:
             if not (type(game_fps) is int and game_fps >= 1):
                 raise TypeError(f"hud_game_fps is {game_fps!r}, not a whole number from 1")
-            if hud_rate(game_fps, fg)[2] == "too-high":
-                raise TypeError(f"hud_game_fps {game_fps} with hud_fg {fg} gives a HUD rate of "
-                                f"{hud_rate(game_fps, fg)[0]}, above {FPS_RANGES['hud_fps'][1]}")
+            if hud_rate(game_fps, fg)[2] in ("too-low", "too-high"):
+                raise TypeError(f"hud_game_fps {game_fps} with hud_fg {fg} can't be built for: the game renders "
+                                f"{round(game_fps / fg)} fps, not from {HUD_REFUSED_UP_TO + 1} to "
+                                f"{FPS_RANGES['hud_fps'][1]}")
         return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off, target_fps,
                         game_fps, fg)
     except (ValueError, KeyError, TypeError, AttributeError) as e:

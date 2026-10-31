@@ -67,6 +67,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -80,6 +81,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QStackedWidget,
     QTextBrowser,
     QVBoxLayout,
@@ -91,7 +93,13 @@ from ..files import stop_writes, write_file
 from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
 from ..patcher.fixes import fix_consequence, fix_kind
 from ..paths import APP_DIR, FROZEN, REPO_ROOT
-from ..windows import MB_ICONERROR, ms_since_process_start, msg_box, set_topmost
+from ..windows import (
+    MB_ICONERROR,
+    ms_since_process_start,
+    msg_box,
+    refresh_rate,
+    set_topmost,
+)
 from . import (
     FILES_URL,
     REPORT_URL,
@@ -104,8 +112,11 @@ from . import (
     tools_version,
 )
 from .game import (
+    FG_MULTIPLIERS,
+    FPS_RANGES,
     GAME_EXE,
     GAME_PATH_ENV,
+    HUD_REFUSED_UP_TO,
     MODS_SETTINGS_ENV,
     GameFolder,
     Settings,
@@ -142,9 +153,14 @@ from .gui_texts import (
     DATA,
     DATA_HEADING,
     DELETE_FAILED,
+    DISPLAY_RATE,
     DOWNLOAD_PAGE,
     ERROR,
     FAILED,
+    FG_OFF,
+    FPS_HEADING,
+    FPS_SUFFIX,
+    FRAME_GENERATION,
     GAME_HEADING,
     GAME_NOT_FOUND,
     GAME_NOT_STARTED,
@@ -153,7 +169,8 @@ from .gui_texts import (
     GUIDE_LINK,
     HELP,
     HIDE_LOG,
-    HUD_HEADING,
+    HUD_FPS,
+    HUD_FPS_NOTE,
     INFO,
     KNOWN_BROKEN_ANYWAY_NOTE,
     LATER,
@@ -163,7 +180,10 @@ from .gui_texts import (
     LICENSES_HEADING,
     LOOKING,
     LOOKING_FOR_GAME,
+    MENU_FPS,
+    MENU_FPS_NOTE,
     MERGER_VERSION,
+    NEUTRAL,
     NEWER_RELEASE,
     NO_LAUNCHER,
     NOTES_HEADING,
@@ -224,6 +244,8 @@ from .gui_texts import (
     capitalized,
     dont_merge,
     dont_merge_texts,
+    game_screens,
+    hud_advice,
     known_broken_question,
     left_out,
     merging_status,
@@ -234,6 +256,7 @@ from .gui_texts import (
     row_rank,
     row_status,
     screen_rows,
+    smoothui_build,
     status_card,
     turn_on_note,
     unchanged_screens,
@@ -255,7 +278,7 @@ SYMBOL_FONT = "Segoe UI Symbol"         # the glyphs (in Windows 10 and later)
 # The window's icon (Merger.ico, which is also the exe's): frozen, the spec puts it next to this module
 ICON_FILE = Path(__file__).with_name("Merger.ico") if FROZEN else REPO_ROOT / "assets" / "Merger.ico"
 LICENSES_DIR = APP_DIR / "licenses"      # (only next to the frozen exes)
-WIDTH, HEIGHT = 720, 680                # the window's size at first, before Windows' scaling
+WIDTH, HEIGHT = 720, 760                # the window's size at first, before Windows' scaling
 MIN_WIDTH, MIN_HEIGHT = WIDTH, 520
 # A row's status label is at least as wide as the widest status ("Another mod loads first"), so that a status
 # changing (as while merging) doesn't move the arrows after it
@@ -303,13 +326,6 @@ def find_candidates() -> list[GameFolder]:
 def same_folder(a: Path | None, b: Path | None) -> bool:
     return a is not None and b is not None and os.path.normcase(os.path.normpath(a)) == os.path.normcase(
         os.path.normpath(b))
-
-
-def smoothui_build(installed) -> str | None:
-    """The installed Smooth UI build, e.g. "Smooth UI Remastered v0.3.2, 120 fps"; None if it can't be used"""
-    if installed and installed.usable:
-        return f"Smooth UI Remastered {installed.version.split('-')[0]}, {installed.fps} fps"
-    return None
 
 
 # ---- The look ----
@@ -609,8 +625,9 @@ class MergerWindow:
 
     def center(self, width, height):
         """Size the window, and center it on the main screen"""
-        self.root.resize(width, height)
         screen = QGuiApplication.primaryScreen().availableGeometry()
+        height = min(height, screen.height())
+        self.root.resize(width, height)
         self.root.move(screen.x() + max((screen.width() - width) // 2, 0),
                        screen.y() + max((screen.height() - height) // 2, 0))
 
@@ -642,10 +659,19 @@ class MergerWindow:
         return self.pages.currentWidget()
 
     def make_page(self) -> tuple[QWidget, QVBoxLayout]:
+        """A page, and the layout of its content, which scrolls (its buttons, see page_buttons, don't)"""
         page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 12, 0, 0)
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        content = QWidget()
+        scroll.setWidget(content)
+        outer.addWidget(scroll, 1)
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 12, 8, 0)
         layout.setSpacing(4)
+        layout.page_layout = outer
         self.pages.addWidget(page)
         return page, layout
 
@@ -655,8 +681,9 @@ class MergerWindow:
         layout.addWidget(label(text, size, bold=True))
 
     def page_buttons(self, layout, *buttons):
-        """A page's buttons, at the bottom right (the last one rightmost)"""
+        """A page's buttons, below its content (layout, see make_page), at the right (the last one rightmost)"""
         layout.addStretch()
+        layout = layout.page_layout
         row = QHBoxLayout()
         row.setContentsMargins(0, 8, 0, 2)
         row.addStretch()
@@ -674,12 +701,12 @@ class MergerWindow:
         self.heading(layout, GAME_HEADING)
         self.welcome_chooser = GameChooser(self, self.welcome_chosen)
         layout.addWidget(self.welcome_chooser.widget)
-        self.welcome_hud_box = self.hud_section(layout)
-        self.welcome_hud_box.setChecked(self.smooth_hud)
+        self.continue_button = button(CONTINUE, self.confirm_welcome, primary=True)
+        self.welcome_rates = RateSection(self, layout, self.update_continue)
+        self.welcome_rates.show(*self.shown_rates(), self.smooth_hud)
         self.heading(layout, LAUNCHER_HEADING)
         layout.addWidget(self.launcher_section(self.welcome_chooser))
-        self.continue_button = button(CONTINUE, self.confirm_welcome, primary=True)
-        self.continue_button.setEnabled(False)     # until a folder is chosen
+        self.update_continue()
         self.page_buttons(layout, self.continue_button)
         return page
 
@@ -690,7 +717,7 @@ class MergerWindow:
         layout.addSpacing(10)
         self.update_box = QCheckBox(CHECK_UPDATES.replace("&", "&&"))
         layout.addWidget(self.update_box)
-        self.hud_box = self.hud_section(layout)
+        self.rates = RateSection(self, layout, self.update_save)
         self.heading(layout, GAME_HEADING)
         self.settings_chooser = GameChooser(self, lambda folder: None)
         layout.addWidget(self.settings_chooser.widget)
@@ -700,15 +727,18 @@ class MergerWindow:
         self.page_buttons(layout, button(CANCEL, lambda: self.show_page(self.main_page)), self.save_button)
         return page
 
-    def hud_section(self, layout) -> QCheckBox:
-        """The Smooth HUD setting, under its heading, with what it does: its check box"""
-        self.heading(layout, HUD_HEADING)
-        box = QCheckBox(SMOOTH_HUD.replace("&", "&&"))
-        layout.addWidget(box)
-        note = label(SMOOTH_HUD_NOTE, tone="muted", wrap=True)
-        note.setContentsMargins(0, 2, 0, 0)
-        layout.addWidget(note)
-        return box
+    def shown_rates(self) -> tuple[int, int, int]:
+        """What the frame rate section shows: (the menus' rate, the rate in gameplay, the frame generation
+        multiplier), as saved. Not saved: the installed build's rate; on the first run, the menus' is the
+        display's refresh rate instead (within FPS_RANGES), and the rate in gameplay that, at most 120."""
+        installed = self.found.scan.installed if self.found else None
+        release = installed.fps if installed and installed.usable else None
+        hz = refresh_rate() if self.settings is None else None
+        lowest, highest = FPS_RANGES["target_fps"]
+        menus = (self.settings and self.settings.target_fps) or (hz and min(max(hz, lowest), highest)) or release or 120
+        if self.settings and self.settings.hud_game_fps:
+            return menus, self.settings.hud_game_fps, self.settings.hud_fg
+        return menus, (self.settings and release) or min(menus, 120), 1
 
     def make_help(self):
         """The help page: the versions, how to set the tools up, reporting a bug, the data folder, the licenses"""
@@ -747,8 +777,9 @@ class MergerWindow:
         if self.help_page is None:
             self.help_page = self.make_help()
         installed = self.found.scan.installed if self.found else None
-        self.help_smoothui.setText(smoothui_build(installed) or (capitalized(installed.message) if installed
-                                                                 else SMOOTHUI_NOT_CHECKED))
+        scan = self.found.scan if self.found else None
+        build = smoothui_build(installed, *self.built_rates(scan))
+        self.help_smoothui.setText(build or (capitalized(installed.message) if installed else SMOOTHUI_NOT_CHECKED))
         self.show_page(self.help_page)
 
     def open_bug_report(self):
@@ -831,20 +862,28 @@ class MergerWindow:
         elif self.page is self.settings_page:
             self.settings_chooser.show(self.candidates, self.settings_chooser.selected() or self.game)
 
+    def update_continue(self):
+        """Continue is off until a folder is chosen and the frame rates can be built"""
+        self.continue_button.setEnabled(self.welcome_chooser.selected() is not None and self.welcome_rates.valid())
+
+    def update_save(self):
+        self.save_button.setEnabled(self.rates.valid())
+
     def welcome_chosen(self, folder):
         """A folder chosen on the welcome page: scanned at once, so that the result is ready on Continue"""
-        self.continue_button.setEnabled(True)
+        self.update_continue()
         if not same_folder(folder, self.game):
             self.change_game(folder)
 
     def confirm_welcome(self):
-        """Continue: save the settings, with the folder chosen and the HUD setting, and show the main page (the
-        scan, made with the default HUD setting, runs again if it changed)"""
+        """Continue: save the settings, with the folder chosen and the frame rate section's, and show the main
+        page (the scan, made with the default settings, runs again if they change it)"""
         folder = self.welcome_chooser.selected()
-        smooth_hud = self.welcome_hud_box.isChecked()
-        hud_changed = smooth_hud != self.smooth_hud
-        if folder is not None and self.save_game(folder, self.welcome_chooser, smooth_hud=smooth_hud):
-            if hud_changed:
+        if folder is None or not self.welcome_rates.valid():
+            return
+        before = scan_options(self.settings)
+        if self.save_game(folder, self.welcome_chooser, rates=self.welcome_rates.values()):
+            if scan_options(self.settings) != before:
                 self.change_game(folder)
             self.show_page(self.main_page)
 
@@ -853,30 +892,40 @@ class MergerWindow:
             self.settings_page = self.make_settings()
         self.settings_chooser.show(self.candidates or [], self.game, searching=self.candidates is None)
         self.update_box.setChecked(self.check_updates)
-        self.hud_box.setChecked(self.smooth_hud)
+        self.rates.show(*self.shown_rates(), self.smooth_hud,
+                        unset=self.settings and (self.settings.target_fps, self.settings.hud_game_fps))
         self.find_game_folders()
         self.show_page(self.settings_page)
 
     def save_settings_page(self):
-        """Save: the game folder chosen, the update check and the HUD setting, if any changed (a new folder is
-        scanned, and the folder again for a new HUD setting); back to the main page"""
+        """Save: the game folder chosen, the update check and the frame rate section's, if any changed (a new
+        folder is scanned, and the folder again for settings the scan depends on); back to the main page"""
         folder = self.settings_chooser.selected() or self.game
+        if not self.rates.valid():
+            return
         new_folder = folder is not None and not same_folder(folder, self.game)
-        hud_changed = self.hud_box.isChecked() != self.smooth_hud
-        if folder is not None and (new_folder or hud_changed or self.update_box.isChecked() != self.check_updates):
-            if not self.save_game(folder, self.settings_chooser, self.update_box.isChecked(), self.hud_box.isChecked()):
+        rates = self.rates.values()
+        old = (self.settings.smooth_hud, self.settings.target_fps, self.settings.hud_game_fps,
+               self.settings.hud_fg) if self.settings else None
+        if folder is not None and (new_folder or rates != old or self.update_box.isChecked() != self.check_updates):
+            before = scan_options(self.settings)
+            if not self.save_game(folder, self.settings_chooser, self.update_box.isChecked(), rates):
                 return
-            if new_folder or hud_changed:
+            if new_folder or scan_options(self.settings) != before:
                 self.change_game(folder)
         self.show_page(self.main_page)
 
-    def save_game(self, folder, chooser, check_updates=None, smooth_hud=None) -> bool:
-        """Save the settings with the game folder, check_updates and smooth_hud (None: as they are); a failure
-        is said in chooser"""
+    def save_game(self, folder, chooser, check_updates=None, rates=None) -> bool:
+        """Save the settings with the game folder, check_updates and rates (see RateSection.values; None: as
+        they are); a failure is said in chooser"""
         check_updates = self.check_updates if check_updates is None else check_updates
-        smooth_hud = self.smooth_hud if smooth_hud is None else smooth_hud
-        settings = Settings(folder, check_updates, self.settings.last_update_check if self.settings else None,
-                            smooth_hud, screens_off(self.settings))
+        base = self.settings or Settings(folder)
+        if rates is not None:
+            smooth_hud, target_fps, hud_game_fps, hud_fg = rates
+            base = replace(base, smooth_hud=smooth_hud, target_fps=target_fps, hud_game_fps=hud_game_fps,
+                           hud_fg=hud_fg)
+        settings = replace(base, game_path=folder, check_updates=check_updates)
+        smooth_hud = settings.smooth_hud
         try:
             save_settings(settings, gui.DATA_DIR)
         except SmoothUIError as e:
@@ -884,7 +933,10 @@ class MergerWindow:
             chooser.say(SETTINGS_NOT_SAVED.format(error=e), ERROR)
             return False
         log.info(f"Settings saved: the game folder is {folder}; update check {'on' if check_updates else 'off'}; "
-                 f"HUD merging {'on' if smooth_hud else 'off'}")
+                 f"HUD merging {'on' if smooth_hud else 'off'}; frame rates: menus "
+                 f"{settings.target_fps or 'as installed'}, HUD {settings.hud_fps or 'as installed'}"
+                 + (f" ({settings.hud_game_fps} fps in gameplay, frame generation {settings.hud_fg}x)"
+                    if settings.hud_game_fps else ""))
         self.settings = settings
         return True
 
@@ -972,12 +1024,20 @@ class MergerWindow:
     def refresh(self):
         """Show the window's state: the header's context line, the notices, the card, the screens"""
         installed = self.found.scan.installed if self.found else None
-        context = [smoothui_build(installed), str(self.game) if self.game else None]
+        scan = self.found.scan if self.found else None
+        context = [smoothui_build(installed, *self.built_rates(scan)), str(self.game) if self.game else None]
         self.context.setText("  ·  ".join(text for text in context if text))
         self.settings_button.setEnabled(self.busy not in EXCLUSIVE)  # no other game folder meanwhile
         self.show_notices(installed)
         self.show_card()
         self.show_screens()
+
+    @staticmethod
+    def built_rates(scan) -> tuple[int | None, int | None]:
+        """The menus' and the HUD's rates the scan merges for (the HUD's: None while it isn't merged)"""
+        if scan is None:
+            return None, None
+        return scan.target_fps, scan.hud_fps if "hud" not in scan.groups_off else None
 
     def show_notices(self, installed):
         """The notices, each (text, tone, buttons ((label, action), see card_actions)), made again only when
@@ -1149,12 +1209,16 @@ class MergerWindow:
         order = lambda row: _row_order(row[0])
         if self.keep_order:     # a row that wasn't shown goes after the others
             order = lambda row: (self.row_order.get(row[0].path, len(self.row_order)), _row_order(row[0]))
-        shown = sorted(screen_rows([state for state in states if state.state != State.NOTHING_TO_DO]), key=order)
+        # Smooth UI's screens built from the game's copies for another frame rate: one line, unless left out
+        from_game = self.found.scan.from_game if self.found else {}
+        rebuilt = [state for state in states if from_game.get(state.path) == "fps" and state.state != State.NOT_HELD]
+        shown = sorted(screen_rows([state for state in states if state.state != State.NOTHING_TO_DO
+                                    and state not in rebuilt]), key=order)
         self.row_order = {state.path: index for index, (state, _) in enumerate(shown)}
-        others = len(states) - sum(len(members) for _, members in shown)
+        others = len(states) - len(rebuilt) - sum(len(members) for _, members in shown)
         notes = self.notes() if self.found else []
         content = ([(row, [(state, self.found.scan.files[state.path].shippers) for state in members])
-                    for row, members in shown], others, notes)
+                    for row, members in shown], others, notes, rebuilt)
         merging, self.rows_merging = self.rows_merging, False
         if content == self.list_content and not merging:
             return
@@ -1180,6 +1244,8 @@ class MergerWindow:
                 self.list_row += 1
         for state, members in shown:
             self.screen_row(state, members)
+        if rebuilt:
+            self.list_line(game_screens(rebuilt, self.found.scan.target_fps, others=bool(shown)))
         if others and shown:
             self.list_line(unchanged_screens(others))
         if notes:
@@ -1801,6 +1867,99 @@ class MergerWindow:
         """sys.excepthook: an exception in a slot (Qt would only print it)"""
         log.error("".join(traceback.format_exception(kind, error, tb)).rstrip())
         msg_box(FAILED.format(error=f"{kind.__name__}: {error}", log=LOG_FILE), MB_ICONERROR)
+
+
+class RateSection:
+    """The frame rate section on the welcome and settings pages: the menus' rate, then the Smooth HUD check
+    box with the rate in gameplay and the frame generation multiplier (off while Smooth HUD is), and what
+    the HUD is then built for (see gui_texts.hud_advice)"""
+
+    def __init__(self, window: MergerWindow, layout, on_change):
+        """on_change() is called whenever an input changes (valid() may have)"""
+        window.heading(layout, FPS_HEADING)
+        self.on_change = on_change
+        self.unset = None
+        self.shown = None
+        self.menus = self.spin_box(*FPS_RANGES["target_fps"])
+        self.display = label(tone="muted", wrap=True)
+        layout.addLayout(self.row((MENU_FPS, self.menus)))
+        layout.addWidget(self.display)
+        layout.addSpacing(10)
+        self.hud_box = QCheckBox(SMOOTH_HUD.replace("&", "&&"))
+        self.hud_box.toggled.connect(self.changed)
+        layout.addWidget(self.hud_box)
+        note = label(SMOOTH_HUD_NOTE, tone="muted", wrap=True)
+        note.setContentsMargins(0, 2, 0, 4)
+        layout.addWidget(note)
+        self.game_fps = self.spin_box(HUD_REFUSED_UP_TO + 1, FPS_RANGES["hud_fps"][1] * FG_MULTIPLIERS[-1])
+        self.game_fps.valueChanged.connect(self.changed)
+        self.fg = QComboBox()
+        self.fg.addItems([FG_OFF, *(f"{n}x" for n in FG_MULTIPLIERS[1:])])
+        self.fg.currentIndexChanged.connect(self.changed)
+        layout.addLayout(self.row((HUD_FPS, self.game_fps), (FRAME_GENERATION, self.fg)))
+        self.hud_note = label(HUD_FPS_NOTE, tone="muted", wrap=True)
+        layout.addWidget(self.hud_note)
+        self.advice = label(wrap=True)
+        layout.addWidget(self.advice)
+
+    @staticmethod
+    def spin_box(lowest, highest) -> QSpinBox:
+        box = QSpinBox(minimum=lowest, maximum=highest, suffix=FPS_SUFFIX)
+        box.setMinimumWidth(90)
+        return box
+
+    @staticmethod
+    def row(*fields) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        for index, (text, widget) in enumerate(fields):
+            if index:
+                row.addSpacing(16)
+            row.addWidget(label(text))
+            row.addWidget(widget)
+        row.addStretch()
+        return row
+
+    def show(self, menus, game_fps, fg, smooth_hud, unset=None):
+        """Show these values (see MergerWindow.shown_rates). unset: the saved (target_fps, hud_game_fps), to
+        keep each unset (None: the installed build's rate) while its values stay as shown (see values)"""
+        self.menus.setValue(menus)
+        self.game_fps.setValue(game_fps)
+        self.fg.setCurrentIndex(FG_MULTIPLIERS.index(fg))
+        self.hud_box.setChecked(smooth_hud)
+        self.unset, self.shown = unset, (menus, game_fps, fg)
+        hz = refresh_rate()
+        self.display.setText(MENU_FPS_NOTE.format(display=DISPLAY_RATE.format(hz=hz) if hz else ""))
+        self.changed()
+
+    def changed(self, *_):
+        on = self.hud_box.isChecked()
+        for widget in (self.game_fps, self.fg, self.hud_note, self.advice):
+            widget.setEnabled(on)
+        tone, text = hud_advice(self.game_fps.value(), self.fg_value())
+        self.advice.setText(text)
+        set_tone(self.advice, tone if on and tone != NEUTRAL else "muted")
+        self.on_change()
+
+    def valid(self) -> bool:
+        """Whether the HUD's rate can be built (else the advice says so in red)"""
+        return not self.hud_box.isChecked() or hud_advice(self.game_fps.value(), self.fg_value())[0] != ERROR
+
+    def fg_value(self) -> int:
+        return FG_MULTIPLIERS[self.fg.currentIndex()]
+
+    def values(self) -> tuple[bool, int | None, int | None, int]:
+        """(smooth_hud, target_fps, hud_game_fps, hud_fg) to save; a rate that was unset (see show) and still
+        shows as it did stays unset. While Smooth HUD is off, the HUD's inputs are kept as shown."""
+        menus, game_fps, fg = self.menus.value(), self.game_fps.value(), self.fg_value()
+        if self.unset is not None:
+            if self.unset[0] is None and menus == self.shown[0]:
+                menus = None
+            if self.unset[1] is None and (game_fps, fg) == self.shown[1:]:
+                game_fps, fg = None, 1
+        if not self.hud_box.isChecked() and not self.valid():
+            game_fps, fg = None, 1
+        return self.hud_box.isChecked(), menus, game_fps, fg
 
 
 class GameChooser:

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from .. import mod_reviews
 from ..witcher3.source_file import GAME_FILES
+from .game import FPS_RANGES, HUD_REFUSED_UP_TO, hud_rate
 from .installed import Status
 from .scan import FileResult, is_own_folder
 from .screens import file_name, group_name, screen_label, screen_name
@@ -149,11 +150,34 @@ GAME_NOT_FOUND = "The game wasn't found: choose its folder."
 CHOOSE_FOLDER = "Choose another folder..."
 CHOOSE_FOLDER_TITLE = "Choose the game's folder (the one that holds bin, content and Mods)"
 SETTINGS_NOT_SAVED = "The settings can't be saved: {error}"
-# The Smooth HUD setting (game.Settings.smooth_hud), on the welcome and settings pages
-HUD_HEADING = "The HUD"
+# The frame rates and the Smooth HUD setting (game.Settings), on the welcome and settings pages
+FPS_HEADING = "Frame rate"
+MENU_FPS = "Menus:"
+FPS_SUFFIX = " fps"
+# Below the menus' rate: {display} (DISPLAY_RATE) only if Windows tells the display's refresh rate
+MENU_FPS_NOTE = ("{display}Enter the frame rate your game reaches in menus: your frame rate cap, or else your "
+                 "display's refresh rate. If unsure, pick lower: too low only looks less smooth, too high plays "
+                 "slowly.")
+DISPLAY_RATE = "Your display runs at {hz} Hz. "
 SMOOTH_HUD = "Merge the HUD too (recommended)"
 SMOOTH_HUD_NOTE = ("Smooth UI Remastered itself doesn't change the HUD (such as the list of picked-up items, or the "
                    "radial menu): the merger makes it smooth, from the game's own files or your HUD mods' copies.")
+HUD_FPS = "Frame rate in gameplay:"
+FRAME_GENERATION = "Frame generation:"
+FG_OFF = "Off"
+HUD_FPS_NOTE = ("Enter a typical low, as a frame counter shows it in gameplay (not the peak). The HUD only moves "
+                "on the frames the game renders, so frame generation divides it: 80 fps with 2x makes 40. If "
+                "unsure, pick lower.")
+# What the HUD is built for, by game.hud_rate's level ({rendered}: the rate the game renders in gameplay)
+HUD_ADVICE = {
+    "ok": "The HUD is built for {rate} fps.",
+    "slowed": "The HUD is built for {rate} fps, its lowest: at {rendered} fps it plays at {speed:.0%} speed.",
+    "advise-off": ("At {rendered} fps, a smooth HUD plays at {speed:.0%} speed and gains little: turn \"Merge the "
+                   "HUD too\" off."),
+    "too-high": "The HUD can't be built for more than {highest} fps: enter a lower frame rate.",
+    "too-low": ("At {rendered} fps rendered{generated}, the HUD would only play in slow motion: the game needs to render "
+                "more than {refused} fps."),
+}
 # The launcher
 LAUNCHER_HEADING = "Starting the game"
 LAUNCHER = "Start the game with SmoothUILauncher.exe: it checks your mods first, and opens the merger if they changed."
@@ -257,7 +281,15 @@ MODS = {
     "fixes": ("{count} has screens merged without some fixes: {mods}.",
               "{count} have screens merged without some fixes: {mods}."),
 }
-# The same kinds, for the game's own copies (only the HUD is merged from them)
+# The same kinds, for the game's own copies: the HUD's (GAME_FILES), and Smooth UI's other screens, built from
+# the game's copies at a frame rate other than the download's (GAME_SCREENS)
+GAME_SCREENS = "game screens"
+GAME_SCREEN_COPIES = {
+    "changed": "The game was updated.",
+    "not merged": "Smooth UI's screens aren't built for your frame rate yet.",
+    "left out": "Some of Smooth UI's screens can't be built for your frame rate; see the list below.",
+    "fixes": "Some of Smooth UI's screens are built without some fixes.",
+}
 GAME_COPIES = {
     "changed": "The game was updated.",
     "not merged": "The HUD isn't merged yet.",
@@ -288,6 +320,8 @@ RISKS = {
     Status.UNKNOWN: "Until then, Smooth UI itself may not work as intended.",
 }
 MORE_CAUSES = "And {count} more: see the list below."
+# At frame rates other than the download's (see built_for)
+BUILT_FOR = "Smooth UI's screens are built for {rates}."
 MAX_CAUSES = 2          # sentences about causes on a card, the last one perhaps MORE_CAUSES
 
 # In stale mode, an unknown Smooth UI build makes the merger look for an update at once (update_search)
@@ -297,6 +331,28 @@ LOOKING_FOR_UPDATE = "Looking for a newer Smooth UI Tools..."
 UPDATE_FOUND = "Smooth UI Tools v{version} is available."
 CRITICAL_UPDATE_FOUND = "Smooth UI Tools v{version} is available, a critical update."
 NO_UPDATE = "No newer Smooth UI Tools is out yet."
+
+
+def hud_advice(game_fps: int, fg: int) -> tuple[str, str]:
+    """The tone and text below the HUD's inputs (see game.hud_rate)"""
+    rate, speed, level = hud_rate(game_fps, fg)
+    tone = {"ok": NEUTRAL, "slowed": WARNING, "advise-off": WARNING, "too-high": ERROR, "too-low": ERROR}[level]
+    return tone, HUD_ADVICE[level].format(rate=rate, rendered=round(game_fps / fg), speed=speed,
+                                          highest=FPS_RANGES["hud_fps"][1], refused=HUD_REFUSED_UP_TO,
+                                          generated=f" ({game_fps} fps with {fg}x frame generation)" if fg > 1 else "")
+
+
+def rates_text(target_fps, hud_fps) -> str:
+    """The rates screens are built for, e.g. "144 fps (HUD: 90 fps)" (hud_fps None, or the same: not named)"""
+    return f"{target_fps} fps" + (f" (HUD: {hud_fps} fps)" if hud_fps and hud_fps != target_fps else "")
+
+
+def smoothui_build(installed, target_fps=None, hud_fps=None) -> str | None:
+    """The installed Smooth UI build and the rates it is merged for (None: its own; hud_fps None: the HUD isn't
+    merged), e.g. "Smooth UI Remastered v0.3.4, 144 fps (HUD: 90 fps)"; None if it can't be used"""
+    if not (installed and installed.usable):
+        return None
+    return f"Smooth UI Remastered {installed.version.split('-')[0]}, {rates_text(target_fps or installed.fps, hud_fps)}"
 
 
 def status_card(found: Check | None, *, stale: bool, busy: str | None = None, scan_error: str | None = None,
@@ -391,18 +447,19 @@ def _merged(result: BuildResult, stale, cant_merge):
                                    for key, choice in scan.screens_off.items() if choice.reason is None))
     if result.clean:
         included = [(file.mod, file.path, file.group) for file in result.files if file.status.included]
-        headline = (f"Merged: {_patched(included)}" if included
+        text = _patched(included)
+        headline = (f"Merged: {text}" if text else "Merged" if included
                     else "Merged: your mods' copies run at their own frame rate"
                     if any(file.status.value == "unchanged" for file in result.files)
                     else "Nothing to merge")
-        return Card(OK, headline, known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
+        return Card(OK, headline, (*built_for(scan), *known), (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     causes = []
     for file in result.files:
         status = file.status.value
         if status in ("left out", "failed", "mod failed", "group left out"):
-            causes.append(("failed" if status == "mod failed" else status, file.mod))
+            causes.append(("failed" if status == "mod failed" else status, _who(file.mod, file)))
         elif file.fixes_not_applied:
-            causes.append(("fixes", file.mod))
+            causes.append(("fixes", _who(file.mod, file)))
     notes = []
     if result.check_problems:
         notes.append("Some merged screens don't load as they should: see the notes below.")
@@ -473,7 +530,7 @@ def _checked(found: Check, stale, merges_now=()):
 
     if found.stale:
         files = sorted((file for file in found.states if file.severity is not None), key=lambda file: -file.severity)
-        causes = [(_cause(file), _changed_mod(file, found)) for file in files]
+        causes = [(_cause(file), _who(_changed_mod(file, found), file)) for file in files]
         if not found.needs_build:
             # Only another mod at Priority 0 that sorts first: a merge changes nothing
             fix = "Give it a priority above 0 (in your mod manager or mods.settings), then re-scan."
@@ -486,7 +543,7 @@ def _checked(found: Check, stale, merges_now=()):
                     buttons)
 
     # Up to date: what the merged patches hold, and what they can't
-    causes = [(_cause(file), file.winner) for file in found.states
+    causes = [(_cause(file), _who(file.winner, file)) for file in found.states
               if file.state == State.UNDETERMINED
               or (file.state == State.NOT_HELD
                   and file.cause not in ("unchanged", "turned off", "known broken", "by choice", "by rule"))
@@ -514,7 +571,9 @@ def _checked(found: Check, stale, merges_now=()):
         # (Not what is known not to work, or turned off: that is fine, and the problems come first)
         return Card(WARNING, headline, _sentences(causes, _report(causes, fixes=False)), buttons)
     if patched:
-        return Card(OK, "Your merged patches are up to date", (f"They hold {_patched(patched)}.", *known),
+        held = _patched(patched)
+        return Card(OK, "Your merged patches are up to date",
+                    (*([f"They hold {held}."] if held else []), *built_for(found.scan), *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
     if any(file.state == State.NOT_HELD and file.cause == "unchanged" for file in found.states):
         return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens run at their own frame rate.", *known),
@@ -572,11 +631,11 @@ def row_status(file: FileState) -> tuple[str, str]:
                 "turned off": (OK, "Turned off")}.get(cause, (ERROR, "Left out"))
     if state == State.CHANGED:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
-                "load order": (WARNING, "Load order changed"),
+                "load order": (WARNING, "Load order changed"), "fps": (WARNING, "Frame rate changed"),
                 "setting": (WARNING, "Setting changed"),
                 "by choice": (WARNING, "Setting changed"), "by rule": (WARNING, "Rules changed")}.get(cause, (WARNING, "Mod updated"))
-    if state == State.NOT_BUILT and cause in ("setting", "by choice", "by rule"):
-        return WARNING, "Rules changed" if cause == "by rule" else "Setting changed"
+    if state == State.NOT_BUILT and cause in ("setting", "by choice", "by rule", "fps"):
+        return WARNING, {"by rule": "Rules changed", "fps": "Frame rate changed"}.get(cause, "Setting changed")
     return {State.NOTHING_TO_DO: (OK, "Smooth UI's own copy"), State.NOT_BUILT: (WARNING, "Not merged yet"),
             State.NO_LONGER_NEEDED: (WARNING, "Mod removed"), State.DAMAGED: (ERROR, "Damaged"),
             State.OVERRIDDEN: (WARNING, "Another mod loads first"),
@@ -677,6 +736,15 @@ def unchanged_screens(count) -> str:
     return f"{count} more screens use Smooth UI's own version, as no other mod changes them"
 
 
+def game_screens(states: list[FileState], target_fps: int, others: bool) -> str:
+    """The line below the list's screens, for Smooth UI's screens built from the game's copies at a frame rate
+    other than the download's (states; others: below rows for other screens)"""
+    count = f"The other {_count(len(states), 'screen')}" if others else f"Smooth UI's {_count(len(states), 'screen')}"
+    if all(state.state == State.UP_TO_DATE for state in states):
+        return f"{count}: built for {target_fps} fps from the game's files."
+    return f"{count}: built for {target_fps} fps from the game's files when you merge."
+
+
 def turn_on_note(mods: list[str], changed: list[str] | None) -> str:
     """The note by Turn merging on again, for the copies of mods (those the user chose not to merge); changed:
     what was updated since it was turned off, if a trial found it would merge now (see
@@ -771,8 +839,8 @@ def _sentences(causes, notes=()) -> tuple[str, ...]:
     fits then says how many more there are."""
     sentences, kinds = {}, {}   # sentences: a dict, as an ordered set
     for key, mod in causes:
-        if key in MOD_CAUSES and mod == GAME_FILES:
-            sentences[GAME_COPIES[MOD_CAUSES[key]]] = None
+        if key in MOD_CAUSES and mod in (GAME_FILES, GAME_SCREENS):
+            sentences[(GAME_COPIES if mod == GAME_FILES else GAME_SCREEN_COPIES)[MOD_CAUSES[key]]] = None
         elif key in MOD_CAUSES:
             if mod:
                 kinds.setdefault(MOD_CAUSES[key], {}).setdefault(mod.lower(), mod)
@@ -795,13 +863,28 @@ def _sentences(causes, notes=()) -> tuple[str, ...]:
 
 def _patched(files) -> str:
     """E.g. "10 screens from 5 mods", for files ((mod, path, group)); a group counts as one screen, named
-    first (e.g. "the HUD and 2 screens from 1 mod"), and the game's own copies as no mod"""
+    first (e.g. "the HUD and 2 screens from 1 mod"); the game's own copies of other screens aren't counted
+    (see built_for)"""
     groups = sorted({group_name(group) for _, _, group in files if group})
-    screens = [mod for mod, _, group in files if not group]
+    screens = [mod for mod, _, group in files if not group and mod != GAME_FILES]
     mods = {mod.lower() for mod in screens if mod != GAME_FILES}
     text = (f"{_count(len(screens), 'screen')} from {_count(len(mods), 'mod')}" if mods
             else _count(len(screens), "screen") if screens else "")
     return " and ".join([*(f"the {name}" for name in groups), *([text] if text else [])])
+
+
+def built_for(scan) -> tuple[str, ...]:
+    """BUILT_FOR, if the screens are built for rates other than the download's"""
+    rates = (scan.target_fps, scan.hud_fps if "hud" not in scan.groups_off else None)
+    if rates[0] == scan.installed.fps and rates[1] in (None, scan.installed.fps):
+        return ()
+    return (BUILT_FOR.format(rates=rates_text(*rates)),)
+
+
+def _who(mod, file) -> str | None:
+    """Whose copy a cause is about, for _sentences: GAME_SCREENS for the game's copy of a screen that isn't
+    in a group"""
+    return GAME_SCREENS if mod == GAME_FILES and not file.group else mod
 
 
 def _join(names) -> str:

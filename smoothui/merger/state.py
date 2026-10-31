@@ -403,7 +403,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 text = not_merged(status, _copy_of(origin), origin, reason=record.get("reason"), group=group,
                                   kept_out_by=kept_out_by)
                 # The same for each of a group's files left out with it, so that they are told as one
-                shows = _shows(file, origin, group if status == "group left out" else None)
+                shows = _shows(file, origin, group if status == "group left out" else None, result.fps_of(key),
+                               installed.fps)
                 state(State.NOT_HELD, f"{text} {shows}", cause=status, reason=record.get("reason"))
         elif manifest is None and manifest_problem is None:
             state(State.NOT_BUILT, f"{_copy_of(origin)} isn't merged yet", Severity.MEDIUM)
@@ -532,12 +533,17 @@ def _copy_of(origin):
     return "the game's own copy" if origin == GAME_FILES else f"{origin}'s copy"
 
 
-def _shows(file, origin, group=None):
+def _shows(file, origin, group=None, fps=None, release_fps=None):
     """What the game shows for a file while the package doesn't hold it, as a sentence: its own copy (the
     game's or its mod's; origin: that mod, if known), said of group if given (see original_frame_rate), or
-    another copy that comes first (Smooth UI's own, or a compat patch's)"""
+    another copy that comes first (Smooth UI's own, or a compat patch's). fps: the rate it is merged for, if
+    not release_fps, the installed Smooth UI's (Smooth UI's own copy then plays slowly, or less smoothly)"""
     shown = file.loaded_without_package
     if shown and shown.folder != origin and (is_smoothui_folder(shown.folder) or COMPAT_PATCH.fullmatch(shown.folder)):
+        if fps and fps != release_fps and is_smoothui_folder(shown.folder):
+            effect = (f": it plays at {fps / release_fps:.0%} speed" if fps < release_fps
+                      else ", so it looks less smooth")
+            return f"The game uses {_copy_name(shown.folder)} instead, made for {release_fps} fps{effect}."
         return f"The game uses {_copy_name(shown.folder)} instead."
     return original_frame_rate(group)
 
