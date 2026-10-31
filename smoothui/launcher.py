@@ -29,7 +29,7 @@ from .merger.game import (
     game_path,
     load_settings,
     mods_settings,
-    turned_off,
+    scan_options,
 )
 from .merger.screens import by_group
 from .merger.state import check
@@ -109,7 +109,7 @@ def main(args: list[str], log: Log) -> int:
         # It asks for the game folder on its first run
         game = game_path(read_settings(log))
         log(f"Game folder: {game or 'still not chosen'}")
-    elif package_stale(game, log, turned_off(settings)) and not open_merger(log):
+    elif package_stale(game, log, scan_options(settings)) and not open_merger(log):
         return 0
     return start_game(command_for(args, game, log), log)
 
@@ -139,7 +139,7 @@ def command_for(args: list[str], game: Path | None, log: Log) -> GameCommand | N
 
 
 def package_stale(game: Path, log: Log, off=None) -> bool:
-    """Whether the check says to open the merger (off: what the settings turn off, see game.turned_off); False if
+    """Whether the check says to open the merger (off: the scan options from the settings, see game.scan_options); False if
     it fails (after a message box)"""
     start = time.perf_counter()
     try:

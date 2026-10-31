@@ -117,8 +117,8 @@ from .game import (
     is_game_folder,
     mods_settings,
     save_settings,
+    scan_options,
     screens_off,
-    turned_off,
 )
 from .gui import LOG_FILE, REPORT_FILE, LogFormatter, error_text, in_thread, start_scan
 from .gui_texts import (
@@ -908,7 +908,7 @@ class MergerWindow:
             self.scan_again = True
             self.refresh()
         else:
-            start_scan(game, self.calls, turned_off(self.settings))
+            start_scan(game, self.calls, scan_options(self.settings))
             self.set_busy("scan")   # now, not once "scanning" arrives: another change meanwhile must wait for it
 
     # ---- Qt's thread: what threads hand over ----
@@ -1348,7 +1348,7 @@ class MergerWindow:
                 self.merged = self.merge_error = None
                 self.keep_order = False
             self.scan_again = self.downloaded_meanwhile = False
-            start_scan(self.game, self.calls, turned_off(self.settings))
+            start_scan(self.game, self.calls, scan_options(self.settings))
             self.set_busy("scan")
             return
         if error is not None:
@@ -1425,7 +1425,7 @@ class MergerWindow:
         if not keep_result:
             self.merged = self.merge_error = None
             self.keep_order = False
-        start_scan(self.game, self.calls, turned_off(self.settings))
+        start_scan(self.game, self.calls, scan_options(self.settings))
 
     def play(self):
         """Play, outside stale mode: check again first, as the launcher does right before it starts the game
@@ -1653,7 +1653,7 @@ class MergerWindow:
         start = time.perf_counter()
         started = time.strftime("%Y-%m-%d %H:%M:%S")
         settings = mods_settings()
-        off = turned_off(self.settings)
+        off = scan_options(self.settings)
         force, notes = carried_force(scan(self.game, settings, **off))
         for note in notes:
             log.warning(note)

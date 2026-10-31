@@ -113,6 +113,8 @@ def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
         lines.append(f"Smooth UI: {installed.status.value}, {installed.message}")
         if installed.manifest is not None:
             lines.append(f"Its release manifest was created at {installed.manifest.get('created_at')}")
+        if found.scan.target_fps is not None:
+            lines.append(_rates(found))
     lines += ["", "Release manifests the merger has:"]
     for release, path in sorted(release_manifest_paths().items()):
         try:
@@ -128,6 +130,10 @@ def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
     if unread:
         lines += ["", "Files that can't be read:", *(f"  {line}" for line in unread)]
     return lines
+
+
+def _rates(found: Check) -> str:
+    return f"Frame rates: menus {found.scan.target_fps} fps, HUD {found.scan.hud_fps} fps"
 
 
 def _load_order(found: Check) -> list[str]:
@@ -158,6 +164,8 @@ def short_report(game: Path | None, found: Check | None, window_lines: list[str]
     ]
     if found is not None:
         lines.append(f"Smooth UI: {found.scan.installed.message}")
+        if found.scan.target_fps is not None:
+            lines.append(_rates(found))
     if window_lines:
         lines += ["", "What the merger's window shows:", *(f"  {line}" for line in window_lines)]
     if found is not None:

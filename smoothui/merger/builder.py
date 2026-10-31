@@ -35,7 +35,7 @@ log = logging.getLogger(__name__)
 
 def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> ReleasePatch:
     """Patch the winning copy of each file (see scan.FileResult.winner) with the installed Smooth UI
-    build's settings, plus the dont-stretch lines for its mod, hiding the warnings reviewed for it (both in
+    build's settings at the scan's frame rate for it (see Scan.fps_of), plus the dont-stretch lines for its mod, hiding the warnings reviewed for it (both in
     the scan's reviews, see mod_reviews.py). pool and on_file are as for patch_as_release."""
     installed = result.installed
     if not installed.usable:
@@ -53,7 +53,7 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
              f"({e!r}): update them")
     settings = {}
     for source in sources:
-        settings[source.path] = profile[source.path]
+        settings[source.path] = replace(profile[source.path], target_fps=result.fps_of(source.path))
         if result.reviews and (extra := result.reviews.dont_stretch(source.origin, file_name(source.path),
                                                                      result.group_of.get(source.path))):
             settings[source.path] = replace(settings[source.path], exclude=settings[source.path].exclude + extra)
@@ -99,7 +99,8 @@ def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_
     package_dir = Path(out_dir or result.mods_dir) / PACKAGE_FOLDER
     record = record_path(data_dir, result.mods_dir) if data_dir is not None and out_dir is None else None
     written = write_package(package_dir, result.installed, files, record, reviews_sha256=result.reviews.sha256,
-                            groups_off=result.groups_off, screens_off=result.screens_off)
+                            groups_off=result.groups_off, screens_off=result.screens_off,
+                            rates=(result.target_fps, result.hud_fps))
     if out_dir is not None or written.empty:
         return Installation(package_dir, written, None)
     backup = None

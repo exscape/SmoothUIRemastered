@@ -55,8 +55,8 @@ class State(Enum):
                                         # the winning copy is still the one it decided on
     NOT_BUILT = "not built"             # another mod ships it, and the package has no record of it
     CHANGED = "changed"                 # the package was built from another copy (the mod changed, or another
-                                        # mod wins now), for another Smooth UI build, or by another version
-                                        # of the merger
+                                        # mod wins now), for another Smooth UI build or frame rate, or by
+                                        # another version of the merger
     NO_LONGER_NEEDED = "no longer needed"   # the package holds it, but no other mod ships it now
     DAMAGED = "damaged"                 # the package's copy isn't the one built, or the package is incomplete
     OVERRIDDEN = "overridden"           # the package holds it, but the game loads another mod's copy, which
@@ -88,7 +88,8 @@ class FileState:
     severity: Severity | None = None    # set for the files that open the merger at launch (see Check)
     needs_build: bool = False   # whether building the package again would change it (see State.needs_build)
     cause: str | None = None    # why, in a word, for the window to group files by: for CHANGED, "smoothui" or
-                                # "merger" (updated since the build), "updated" (the mod's copy changed),
+                                # "merger" (updated since the build), "fps" (the file's frame rate changed
+                                # since; also NOT_BUILT's cause), "updated" (the mod's copy changed),
                                 # "load order" (another mod's copy wins now) or "setting" (its group was
                                 # turned off since the build); for NOT_BUILT, "setting" if its group was turned on
                                 # since the build; for NOT_HELD, the status the manifest records (see
@@ -162,6 +163,10 @@ WHY = {
     "left out": "isn't fully supported by Smooth UI",
     "known broken": "is known not to work with Smooth UI",
 }
+
+
+# A file's frame rate changed in the settings since the last build
+FPS_CHANGED = "the frame rate changed"
 
 
 def not_merged(status: str, copy: str, mod: str, *, reason: str | None = None, group: str | None = None,
@@ -239,6 +244,13 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     else:
         rebuilt = rebuilt_text = None
     merger_only = rebuilt == "merger"
+    # The frame rates it was built for (older packages: the release's)
+    built_fps = (built_for.get("target_fps", built_for.get("fps")), built_for.get("hud_fps", built_for.get("fps")))
+
+    def fps_changed(key):
+        """Whether the package was built for another frame rate for this file (a Smooth UI update tells first)"""
+        built = built_fps[1] if groups.get(key) == "hud" else built_fps[0]
+        return manifest is not None and rebuilt != "smoothui" and built != result.fps_of(key)
     # New reviews of mods' code (downloaded since the build) may let a screen that was left out be merged
     reviews = result.reviews
     reviews_changed = (manifest or {}).get("mod_reviews_sha256") != reviews.sha256
@@ -311,6 +323,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             if record is None:
                 why = manifest_problem or "its manifest doesn't list this screen"
                 state(State.DAMAGED, f"the merged patches are damaged ({why}): merge again", Severity.HIGH)
+            elif fps_changed(key):
+                state(State.CHANGED, f"{FPS_CHANGED}: merge again", Severity.HIGH, needs_build=True, cause="fps")
             elif winner is None:
                 after = file.loaded_without_package
                 state(State.NO_LONGER_NEEDED, f"{record['mod']} no longer changes it: merge again (the game then uses "
@@ -352,7 +366,9 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         elif key in not_held:
             # The package doesn't hold it, so the game shows the winning copy, unpatched
             record = not_held[key]
-            if rebuilt:
+            if fps_changed(key):
+                state(State.CHANGED, f"{FPS_CHANGED}: merge again", Severity.MEDIUM, cause="fps")
+            elif rebuilt:
                 state(State.CHANGED, f"{rebuilt_text}: merge again", Severity.LOW if merger_only else Severity.MEDIUM,
                       cause=rebuilt)
             elif not same_copy(record, winner):
@@ -375,6 +391,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.NOT_HELD, f"{text} {shows}", cause=status, reason=record.get("reason"))
         elif manifest is None and manifest_problem is None:
             state(State.NOT_BUILT, f"{_copy_of(origin)} isn't merged yet", Severity.MEDIUM)
+        elif fps_changed(key):
+            state(State.NOT_BUILT, f"{FPS_CHANGED}: merge again", Severity.MEDIUM, cause="fps")
         elif key in rules_were:
             what = f"the {group_name(groups[key])}" if key in groups else _copy_of(origin)
             state(State.NOT_BUILT, f"Smooth UI no longer leaves {what} out: merge again", Severity.MEDIUM,

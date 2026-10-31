@@ -55,7 +55,7 @@ from .game import (
     load_settings,
     mo2_inside_game,
     mods_settings,
-    turned_off,
+    scan_options,
 )
 from .gui_texts import MO2_INSIDE_GAME, TITLE
 from .state import check
@@ -105,7 +105,7 @@ def main() -> int:
     self_update.start_cleanup(DATA_DIR)     # what an update left (it deletes data\\update\\)
     calls = queue.Queue()       # (function, args) to call on Qt's thread
     if game is not None:        # on the first run, once the welcome page knows the folders found
-        start_scan(game, calls, turned_off(settings))
+        start_scan(game, calls, scan_options(settings))
 
     from . import window  # imports Qt, which takes a while: after the scan has started
     return window.run(game, stale, settings, calls, log_records, updated_from=updated_from, critical=critical)
@@ -173,7 +173,7 @@ def in_thread(calls: queue.Queue, work, done, *args):
 
 
 def start_scan(game: Path, calls: queue.Queue, off=None):
-    """Check (state.check) in a thread; off: what the settings turn off (see game.turned_off)"""
+    """Check (state.check) in a thread; off: the scan options from the settings (see game.scan_options)"""
     def work():
         start = time.perf_counter()
         found = check(game, mods_settings(), data_dir=DATA_DIR, **(off or {}))

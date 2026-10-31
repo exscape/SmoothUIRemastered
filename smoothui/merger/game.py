@@ -1,6 +1,7 @@
 """Where the game and its mods.settings are, the command that starts the game, and the merger's settings
 (data\\settings.json): the game folder the user confirmed in the merger, whether it checks for updates,
-and when it last did, whether it merges the HUD, and the screens the user chose not to merge. The launcher
+and when it last did, whether it merges the HUD, the frame rates to build for, and the screens the user
+chose not to merge. The launcher
 opens the merger while there are none.
 
 The merger finds candidates for the game folder (find_games) for the user to confirm, and both exes read
@@ -38,6 +39,9 @@ MODS_SETTINGS_BACKUP = "mods.settings.bak"
 GAME_EXE = Path("bin", "x64_dx12", "witcher3.exe")
 # Mod Organizer 2's virtual file system, loaded into the programs it starts
 MO2_VFS_DLL = "usvfs_x64.dll"
+# The frame rates the user may choose (see Settings.target_fps): (lowest, highest). The HUD's goes lower, for
+# frame generation (the HUD advances once per rendered frame, half the frames shown with 2x)
+FPS_RANGES = {"target_fps": (60, 240), "hud_fps": (48, 240)}
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +56,10 @@ class Settings:
     # choice stays while the mod doesn't ship the screen, or another mod's copy wins: it applies again if
     # the mod's copy wins again.
     screens_off: tuple[ScreenOff, ...] = ()
+    # The frame rates to build for: the menus' and the HUD's (see scan.Scan.target_fps); None: the installed
+    # Smooth UI build's
+    target_fps: int | None = None
+    hud_fps: int | None = None
 
 
 def groups_off(settings: Settings | None) -> frozenset[str]:
@@ -65,10 +73,12 @@ def screens_off(settings: Settings | None) -> tuple[ScreenOff, ...]:
     return settings.screens_off if settings else ()
 
 
-def turned_off(settings: Settings | None) -> dict:
-    """What the settings (None: their defaults) turn off, as scan.scan's options (groups_off, screens_off).
-    The scan also reads the reviews in use, whose dont-merge lines turn off more."""
-    return {"groups_off": groups_off(settings), "screens_off": screens_off(settings)}
+def scan_options(settings: Settings | None) -> dict:
+    """scan.scan's options from the settings (None: their defaults): what they turn off (groups_off,
+    screens_off) and the frame rates. The scan also reads the reviews in use, whose dont-merge lines turn off
+    more."""
+    return {"groups_off": groups_off(settings), "screens_off": screens_off(settings),
+            "target_fps": settings.target_fps if settings else None, "hud_fps": settings.hud_fps if settings else None}
 
 
 def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
@@ -93,7 +103,11 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
         if not isinstance(off, list):
             raise TypeError(f"not_merged is {off!r}, not a list")
         off = tuple(choice for choice in map(_screen_off, off) if choice is not None)
-        return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off)
+        rates = [settings.get(name) for name in FPS_RANGES]
+        for (name, (lowest, highest)), rate in zip(FPS_RANGES.items(), rates):
+            if rate is not None and not (type(rate) is int and lowest <= rate <= highest):
+                raise TypeError(f"{name} is {rate!r}, not a whole number from {lowest} to {highest}")
+        return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off, *rates)
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
 
@@ -124,6 +138,9 @@ def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
               "smooth_hud": settings.smooth_hud}
     if settings.last_update_check is not None:
         fields["last_update_check"] = settings.last_update_check
+    for name in ("target_fps", "hud_fps"):
+        if getattr(settings, name) is not None:
+            fields[name] = getattr(settings, name)
     if settings.screens_off:
         fields["not_merged"] = [{"screen": choice.path, "mod": choice.mod, "since": choice.since,
                                  **({"size": choice.size, "crc32": choice.crc32} if choice.size is not None else {}),

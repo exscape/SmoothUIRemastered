@@ -2,7 +2,9 @@
 loads (see load_order.py), and what keeps a mod or file from being patched. For the files only the merger
 builds (game copy "merger-only", see manifests.game_copy), the game's own copy is the one to patch where no
 mod changes the file; a file a mod adds to a group's folder is the group's too (see Scan.group_of). Files that
-only mods use (game copy "unused") are left out where no mod has them.
+only mods use (game copy "unused") are left out where no mod has them. At a frame rate other than the
+installed build's (see Scan.target_fps), every file but those is built like the merger-only ones: Smooth UI's
+own copies are for its own rate.
 
 Read-only, and reads only bundles' tables of contents (except to compare two copies of a file within one
 mod). It must work through MO2's virtual file system, where exists() and is_dir() often say no for files
@@ -134,6 +136,17 @@ class Scan:
     # The reviews of mods' code (see mod_reviews.py) that the scan read: a build patches with these, and its
     # package records them
     reviews: ModReviews = field(default_factory=ModReviews)
+    # The frame rates to patch for: the menus' (every file but the HUD's) and the HUD's (its group's files,
+    # mods' copies too); None if the installed Smooth UI can't be used
+    target_fps: int | None = None
+    hud_fps: int | None = None
+    # The files whose winner is the game's own copy, and why: {profile key: "merger-only" (no download holds
+    # it) or "fps" (the menus' rate isn't the installed build's)}
+    from_game: dict[str, str] = field(default_factory=dict)
+
+    def fps_of(self, key: str) -> int | None:
+        """The frame rate to patch a file (profile key) for"""
+        return self.hud_fps if self.group_of.get(key) == "hud" else self.target_fps
 
     @property
     def compat_patches(self) -> list[str]:
@@ -171,11 +184,12 @@ def entry_needed(order: list[Mod], ours: ModSettings | None) -> bool:
 
 
 def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screens_off=(),
+         target_fps: int | None = None, hud_fps: int | None = None,
          modio_root: Path | None = None, manifests=None, reviews: ModReviews | None = None) -> Scan:
     """Scan the game's Mods\\ folder, with the load order from mods_settings (the path of mods.settings).
-    groups_off: see Scan.groups_off; screens_off: the user's ScreenOffs (see Scan.screens_off); reviews:
-    the reviews of mods' code, for the dont-merge lines in them (None: mod_reviews.load()'s), kept in
-    Scan.reviews.
+    groups_off: see Scan.groups_off; screens_off: the user's ScreenOffs (see Scan.screens_off); target_fps
+    and hud_fps: see Scan.target_fps (None: the installed build's rate); reviews: the reviews of mods' code,
+    for the dont-merge lines in them (None: mod_reviews.load()'s), kept in Scan.reviews.
 
     modio_root is the folder holding mod.io's mods (default: found from %PUBLIC%); manifests ({version:
     manifest}) replace the release manifests the merger has, for tests. Fails (SmoothUIError) only if
@@ -193,8 +207,13 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
 
     records = {profile_key(key): record for key, record in installed.manifest["files"].items()}
     keys = set(records)
-    merger_only = {key for key, record in records.items() if game_copy(record) == MERGER_ONLY}
     unused = {key for key, record in records.items() if game_copy(record) == UNUSED}
+    target_fps = target_fps or installed.fps
+    hud_fps = hud_fps or installed.fps
+    # The files built from the game's copy where no other mod ships them: {key: why} (see Scan.from_game)
+    merger_only = {key: "merger-only" for key, record in records.items() if game_copy(record) == MERGER_ONLY}
+    if target_fps != installed.fps:
+        merger_only = {key: "fps" for key in keys - unused} | merger_only
     off = {key for key, record in records.items() if record.get("group") in groups_off}
     # The folders of the groups' files, but those turned off: {folder: group}
     group_dirs = {posixpath.dirname(key): record["group"] for key, record in records.items()
@@ -211,7 +230,7 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     group_of = {key: record["group"] for key, record in records.items() if "group" in record}
     group_of |= {key: group_dirs[posixpath.dirname(key)] for mod, found in shipped.items() if not is_own_folder(mod.folder)
                  for key in found if key not in keys}
-    game = _game_copies(game_path, merger_only - off, problems)
+    game = _game_copies(game_path, merger_only.keys() - off, problems)
 
     files = {}
     for key in sorted(group_of.keys() | keys):
@@ -243,8 +262,10 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     off_copies = {key: files[key].winner for key in off_now if files[key].winner is not None}
     for key in off_now:
         files[key].winner = None
+    from_game = {key: merger_only[key] for key, file in files.items() if file.winner is not None and file.winner is game.get(key)}
     return Scan(mods_dir, installed, order, files, problems, group_of=group_of, groups_off=frozenset(groups_off),
-                screens_off=off_now, off_copies=off_copies, reviews=reviews)
+                screens_off=off_now, off_copies=off_copies, reviews=reviews, target_fps=target_fps, hud_fps=hud_fps,
+                from_game=from_game)
 
 
 def _screens_off(files, group_of, screens_off, reviews) -> dict[str, ScreenOff]:

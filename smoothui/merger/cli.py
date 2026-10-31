@@ -19,7 +19,7 @@ from ..paths import DATA_DIR
 from ..witcher3.user_files import mods_settings_path
 from . import updates
 from .builder import build_package
-from .game import load_settings, turned_off
+from .game import FPS_RANGES, load_settings, scan_options
 from .installed import is_smoothui_folder
 from .load_order import Group
 from .scan import is_package_folder
@@ -59,6 +59,10 @@ def parse_args():
     ap.add_argument("--force", action="append", default=[], metavar="FILE",
                     help="--build: put this file (e.g. gameplay/gui_new/swf/hud/hud_minimap2.redswf) in the package "
                          "even though its rescale had problems; repeatable")
+    ap.add_argument("--fps", type=int, default=None, metavar="N",
+                    help="the menus' frame rate (default: from the settings in --data-dir, else the installed build's)")
+    ap.add_argument("--hud-fps", type=int, default=None, metavar="N",
+                    help="the HUD's frame rate (default: as for --fps)")
     return ap.parse_args()
 
 
@@ -74,12 +78,12 @@ def main():
     if args.build:
         build(args, game_path, mods_settings)
     else:
-        show_scan(game_path, mods_settings, args.data_dir)
+        show_scan(game_path, mods_settings, args)
 
 
-def show_scan(game_path, mods_settings, data_dir):
+def show_scan(game_path, mods_settings, args):
     start = time.perf_counter()
-    found = check(game_path, mods_settings, data_dir=data_dir, **_turned_off(data_dir))
+    found = check(game_path, mods_settings, data_dir=args.data_dir, **_scan_options(args))
     elapsed = time.perf_counter() - start
     result = found.scan
 
@@ -95,6 +99,7 @@ def show_scan(game_path, mods_settings, data_dir):
         _show_verdict(found, elapsed)
         return
     log.info(result.installed.message)
+    log.info(f"Frame rates: menus {result.target_fps} fps, HUD {result.hud_fps} fps")
 
     log.info("Load order of the mods that change a screen Smooth UI patches", extra=HEADING)
     relevant = {mod for file in result.files.values() for mod in file.shippers}
@@ -159,16 +164,25 @@ def show_updates(data_dir):
 def build(args, game_path, mods_settings):
     start = time.perf_counter()
     result = build_package(game_path, mods_settings, force=args.force, out_dir=args.out, data_dir=args.data_dir,
-                           **_turned_off(args.data_dir))
+                           **_scan_options(args))
     show_build(result)
     log.info(f"\nMerged in {time.perf_counter() - start:.2f} s" + ("" if result.clean else "; see the problems above"))
     if not result.clean:
         sys.exit(2)
 
 
-def _turned_off(data_dir):
-    """What the merger's settings in data_dir turn off (see game.turned_off; none if it has none)"""
-    return turned_off(load_settings(data_dir) if data_dir is not None else None)
+def _scan_options(args):
+    """The scan options from the merger's settings in --data-dir (see game.scan_options; defaults if it has none),
+    and the frame rates given"""
+    options = scan_options(load_settings(args.data_dir) if args.data_dir is not None else None)
+    for name, rate in (("target_fps", args.fps), ("hud_fps", args.hud_fps)):
+        if rate is not None:
+            lowest, highest = FPS_RANGES[name]
+            if not lowest <= rate <= highest:
+                fail(f"the {'HUD' if name == 'hud_fps' else 'menus'}' frame rate must be from {lowest} to {highest}, "
+                     f"not {rate}")
+            options[name] = rate
+    return options
 
 
 def show_build(result):
