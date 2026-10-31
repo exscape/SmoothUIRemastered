@@ -233,8 +233,8 @@ def write_manifest(version, records, extra=None):
     """Write manifests/<version>.json for this mod release.
 
     records maps each patched file's relative path to its record: SHA-256 and size of the source and
-    output files, SHA-256 of the SWF in each (see patcher/redswf.py's swf_sha256), the output's CRC32
-    (output_crc32, as the bundle's table of contents records it), "fps" (the frame
+    output files, SHA-256 of the SWF in each (see patcher/redswf.py's swf_sha256), the CRC32 of each
+    (source_crc32, output_crc32, as a bundle's table of contents records it), "fps" (the frame
     rate it was patched to) and "report" (its full rescale report, see patcher/swf_patcher/report.py),
     which includes the speed rules and include/exclude lists it was patched with. extra holds the
     top-level fields, including "fps", the build's frame rate."""

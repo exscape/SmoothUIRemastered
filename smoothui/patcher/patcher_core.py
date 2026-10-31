@@ -6,6 +6,7 @@ import hashlib
 import logging
 import struct
 import traceback
+import zlib
 from concurrent.futures import as_completed
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
@@ -76,7 +77,7 @@ def patch_files(inputs, profile, *, on_file=None, pool=None):
     Returns (patched, kept, failed), in input order, lists of dicts with the file's "path" and "origin" (as in its
     SourceFile). patched ones also hold "entry" (the patched file, compressed, as a BundleEntry for
     write_bundle), "hashes" (sha256, swf_sha256 and size of the source and output files, and the output's
-    CRC32, as manifests record them: source_sha256, output_swf_sha256, output_crc32, ...), "fps" (its frame rate now) and "report"; kept
+    CRC32s, as manifests record them: source_sha256, output_swf_sha256, source_crc32, output_crc32, ...), "fps" (its frame rate now) and "report"; kept
     ones (already at or above their target frame rate, with no fixes to apply) hold "report"; failed ones
     hold "error" (the message).
 
@@ -153,7 +154,9 @@ def _patch_file(source, settings, body_hook=None):
         out = replace_swf(data, new_swf_bytes)
         hashes = {"source_sha256": hashlib.sha256(data).hexdigest(), "output_sha256": hashlib.sha256(out).hexdigest(),
                   "source_swf_sha256": swf_sha256(data), "output_swf_sha256": swf_sha256(out),
-                  "source_size": len(data), "output_size": len(out)}
+                  "source_size": len(data), "output_size": len(out),
+                  # As the game's bundle records it, so the launch check can tell a changed game file from its TOC
+                  "source_crc32": zlib.crc32(data)}
         del data
         entry = make_entry(source.path, out)
         # As the bundle's table of contents records it, so an installed build can be identified without reading it
