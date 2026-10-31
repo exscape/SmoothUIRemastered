@@ -114,7 +114,7 @@ TURNED_OFF = "Merging is turned off for: {screens}."
 # last, for a reason from newer tools. {screens}: the first few, then how many more
 ALREADY_SMOOTH = "Left as {mod} made them, for their own frame rate: {screens}."
 # Mods' copies kept at their own frame rate, above Smooth UI's (see policy.PackageFile.speed)
-SLOW = "Made for a higher frame rate, so they play slowly: {screens}."
+SLOW = "{screens} from {mod} {verb} slowly, as {pronoun} made for a higher frame rate."
 LEFT_OUT_FOR = "Not merged, as Smooth UI leaves them out for {mod}: {screens}."
 MAX_RULE_SCREENS = 3
 # The same, for those that a trial found would merge now (see turn_on_note)
@@ -320,8 +320,6 @@ RISKS = {
     Status.UNKNOWN: "Until then, Smooth UI itself may not work as intended.",
 }
 MORE_CAUSES = "And {count} more: see the list below."
-# At frame rates other than the download's (see built_for)
-BUILT_FOR = "Smooth UI's screens are built for {rates}."
 MAX_CAUSES = 2          # sentences about causes on a card, the last one perhaps MORE_CAUSES
 
 # In stale mode, an unknown Smooth UI build makes the merger look for an update at once (update_search)
@@ -442,7 +440,8 @@ def _merged(result: BuildResult, stale, cant_merge):
                                     *((path, group, mod) for path, group, mod, reason in rules
                                       if reason == mod_reviews.KNOWN_BROKEN)])
     known += _by_rule([rule for rule in rules if rule[3] != mod_reviews.KNOWN_BROKEN])
-    known += _screens(SLOW, ((file.path, file.group, file.mod) for file in result.files if file.speed is not None))
+    slow = _slow((file.path, file.group, file.mod) for file in result.files if file.speed is not None)
+    known += slow
     known += _screens(TURNED_OFF, ((key, scan.group_of.get(key), choice.mod)
                                    for key, choice in scan.screens_off.items() if choice.reason is None))
     if result.clean:
@@ -452,7 +451,8 @@ def _merged(result: BuildResult, stale, cant_merge):
                     else "Merged: your mods' copies run at their own frame rate"
                     if any(file.status.value == "unchanged" for file in result.files)
                     else "Nothing to merge")
-        return Card(OK, headline, (*built_for(scan), *known), (PLAY, DONT_START) if stale else (PLAY, RESCAN))
+        return Card(INFO if slow else OK, headline, known,
+                    (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     causes = []
     for file in result.files:
         status = file.status.value
@@ -555,8 +555,8 @@ def _checked(found: Check, stale, merges_now=()):
     known += _by_rule([(file.path, file.group, file.winner, file.reason) for file in found.states
                        if file.state == State.NOT_HELD and file.cause == "by rule"
                        and file.reason != mod_reviews.KNOWN_BROKEN])
-    known += _screens(SLOW, ((file.path, file.group, file.winner) for file in found.states
-                             if file.speed))
+    slow = _slow((file.path, file.group, file.winner) for file in found.states if file.speed)
+    known += slow
     off = [file for file in found.states if file.state == State.NOT_HELD and file.cause == "by choice"]
     now_groups = {file.group for file in off if file.path in merges_now and file.group}
     now = [file for file in off if file.path in merges_now or file.group in now_groups]
@@ -572,8 +572,8 @@ def _checked(found: Check, stale, merges_now=()):
         return Card(WARNING, headline, _sentences(causes, _report(causes, fixes=False)), buttons)
     if patched:
         held = _patched(patched)
-        return Card(OK, "Your merged patches are up to date",
-                    (*([f"They hold {held}."] if held else []), *built_for(found.scan), *known),
+        return Card(INFO if slow else OK, "Your merged patches are up to date",
+                    (*([f"They hold {held}."] if held else []), *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
     if any(file.state == State.NOT_HELD and file.cause == "unchanged" for file in found.states):
         return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens run at their own frame rate.", *known),
@@ -620,7 +620,9 @@ def row_status(file: FileState) -> tuple[str, str]:
             return WARNING, "Merged, plays slowly"
         return OK, "Merged anyway" if cause == "forced" else "Merged"
     if state == State.NOT_HELD and cause == "unchanged":
-        return WARNING if file.speed else OK, f"Runs at {file.fps:g} fps" if file.fps else "Own frame rate"
+        if file.speed:
+            return WARNING, "Plays slowly"
+        return OK, f"Runs at {file.fps:g} fps" if file.fps else "Own frame rate"
     if state == State.NOT_HELD:
         return { "known broken": (INFO, "Known not to work"),
                 "by choice": (INFO, "Turned off"),
@@ -793,6 +795,24 @@ def _screens(sentence, files) -> tuple[str, ...]:
     return (sentence.format(screens=_join(names)),) if names else ()
 
 
+def _cut(names) -> str:
+    """The screen names, the first few and then how many more"""
+    names = sorted(names)
+    shown = names[:MAX_RULE_SCREENS]
+    more = len(names) - len(shown)
+    return _join(shown) if not more else f"{', '.join(shown)} and {more} more"
+
+
+def _slow(files) -> tuple[str, ...]:
+    """SLOW, one sentence per mod, for files ((path, group, mod)); a group counts as one screen"""
+    found = {}
+    for path, group, mod in files:
+        found.setdefault(mod, set()).add(group or path)
+    return tuple(SLOW.format(screens=_count(len(keys), "screen"), mod=mod, verb="plays" if len(keys) == 1 else "play",
+                             pronoun="it's" if len(keys) == 1 else "they're")
+                 for mod, keys in sorted(found.items(), key=lambda item: str(item[0]).lower()))
+
+
 def _by_rule(files) -> tuple[str, ...]:
     """The sentences for screens that Smooth UI leaves out for mods, one per mod and reason (files: their
     (path, group, mod, reason)); a group is named once, and a long list is cut"""
@@ -802,11 +822,7 @@ def _by_rule(files) -> tuple[str, ...]:
         found.setdefault((reason == mod_reviews.ALREADY_SMOOTH, mod), set()).add(name)
     sentences = []
     for (smooth, mod), names in sorted(found.items(), key=lambda item: (not item[0][0], str(item[0][1]).lower())):
-        names = sorted(names)
-        shown = names[:MAX_RULE_SCREENS]
-        more = len(names) - len(shown)
-        listed = _join(shown) if not more else f"{', '.join(shown)} and {more} more"
-        sentences.append((ALREADY_SMOOTH if smooth else LEFT_OUT_FOR).format(mod=mod, screens=listed))
+        sentences.append((ALREADY_SMOOTH if smooth else LEFT_OUT_FOR).format(mod=mod, screens=_cut(names)))
     return tuple(sentences)
 
 
@@ -863,8 +879,7 @@ def _sentences(causes, notes=()) -> tuple[str, ...]:
 
 def _patched(files) -> str:
     """E.g. "10 screens from 5 mods", for files ((mod, path, group)); a group counts as one screen, named
-    first (e.g. "the HUD and 2 screens from 1 mod"); the game's own copies of other screens aren't counted
-    (see built_for)"""
+    first (e.g. "the HUD and 2 screens from 1 mod"); the game's own copies of other screens aren't counted"""
     groups = sorted({group_name(group) for _, _, group in files if group})
     screens = [mod for mod, _, group in files if not group and mod != GAME_FILES]
     mods = {mod.lower() for mod in screens if mod != GAME_FILES}
@@ -872,13 +887,6 @@ def _patched(files) -> str:
             else _count(len(screens), "screen") if screens else "")
     return " and ".join([*(f"the {name}" for name in groups), *([text] if text else [])])
 
-
-def built_for(scan) -> tuple[str, ...]:
-    """BUILT_FOR, if the screens are built for rates other than the download's"""
-    rates = (scan.target_fps, scan.hud_fps if "hud" not in scan.groups_off else None)
-    if rates[0] == scan.installed.fps and rates[1] in (None, scan.installed.fps):
-        return ()
-    return (BUILT_FOR.format(rates=rates_text(*rates)),)
 
 
 def _who(mod, file) -> str | None:

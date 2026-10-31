@@ -38,6 +38,10 @@ from .scan import COMPAT_PATCH, Scan
 from .screens import file_name, screen_label
 from .state import merged_anyway, not_merged, original_frame_rate, played_slowly
 
+# A copy kept at a rate above the target counts as playing slowly below this speed (e.g. a 120 fps copy below
+# 102 fps); a little slower than made for is hard to notice
+SLOW_BELOW = 0.85
+
 
 class FileStatus(Enum):
     PATCHED = "patched"             # in the package
@@ -114,13 +118,12 @@ class PackageFile:
     @property
     def speed(self) -> float | None:
         """For a copy that keeps its frame rate (see fps): the speed it plays at, if its animations play slower
-        than made for (its rate is above the target's, and it has timeline animations); else None"""
+        noticeably slower than made for (below SLOW_BELOW, and it has timeline animations); else None"""
         if self.fps is None:
             return None
         report = self.result["report"]
-        if not report.get("animated") or report["old_fps"] <= report["target_fps"]:
-            return None
-        return report["target_fps"] / report["old_fps"]
+        speed = report["target_fps"] / report["old_fps"]
+        return speed if report.get("animated") and speed < SLOW_BELOW else None
 
     @property
     def known_broken(self) -> list[str]:
