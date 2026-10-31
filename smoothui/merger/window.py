@@ -730,7 +730,8 @@ class MergerWindow:
     def shown_rates(self) -> tuple[int, int, int]:
         """What the frame rate section shows: (the menus' rate, the rate in gameplay, the frame generation
         multiplier), as saved. Not saved: the installed build's rate; on the first run, the menus' is the
-        display's refresh rate instead (within FPS_RANGES), and the rate in gameplay that, at most 120."""
+        display's refresh rate instead (within FPS_RANGES), and the rate in gameplay that, at most 96 (a safe guess:
+        a HUD built too high plays slowly, one built a little low still looks smooth)."""
         installed = self.found.scan.installed if self.found else None
         release = installed.fps if installed and installed.usable else None
         hz = refresh_rate() if self.settings is None else None
@@ -738,7 +739,7 @@ class MergerWindow:
         menus = (self.settings and self.settings.target_fps) or (hz and min(max(hz, lowest), highest)) or release or 120
         if self.settings and self.settings.hud_game_fps:
             return menus, self.settings.hud_game_fps, self.settings.hud_fg
-        return menus, (self.settings and release) or min(menus, 120), 1
+        return menus, (self.settings and release) or min(menus, 96), 1
 
     def make_help(self):
         """The help page: the versions, how to set the tools up, reporting a bug, the data folder, the licenses"""

@@ -168,11 +168,12 @@ FG_OFF = "Off"
 HUD_FPS_NOTE = ("Enter a typical low, as a frame counter shows it in gameplay (not the peak). The HUD only moves "
                 "on the frames the game renders, so frame generation divides it: 80 fps with 2x makes 40. If "
                 "unsure, pick lower.")
-# What the HUD is built for, by game.hud_rate's level ({rendered}: the rate the game renders in gameplay)
+# What the HUD is built for, by game.hud_rate's level ({rendered}: the rate the game renders in gameplay; {at}: that
+# rate, with the shown one if frame generation is on)
 HUD_ADVICE = {
     "ok": "The HUD is built for {rate} fps.",
-    "slowed": "The HUD is built for {rate} fps, its lowest: at {rendered} fps it plays at {speed:.0%} speed.",
-    "advise-off": ("At {rendered} fps, a smooth HUD plays at {speed:.0%} speed and gains little: turn \"Merge the "
+    "slowed": "The HUD is built for {rate} fps, its lowest: at {at} it plays at {speed:.0%} speed.",
+    "advise-off": ("At {at}, a smooth HUD plays at {speed:.0%} speed and gains little: turn \"Merge the "
                    "HUD too\" off."),
     "too-high": "The HUD can't be built for more than {highest} fps: enter a lower frame rate.",
     "too-low": ("At {rendered} fps rendered{generated}, the HUD would only play in slow motion: the game needs to render "
@@ -335,9 +336,11 @@ def hud_advice(game_fps: int, fg: int) -> tuple[str, str]:
     """The tone and text below the HUD's inputs (see game.hud_rate)"""
     rate, speed, level = hud_rate(game_fps, fg)
     tone = {"ok": NEUTRAL, "slowed": WARNING, "advise-off": WARNING, "too-high": ERROR, "too-low": ERROR}[level]
-    return tone, HUD_ADVICE[level].format(rate=rate, rendered=round(game_fps / fg), speed=speed,
-                                          highest=FPS_RANGES["hud_fps"][1], refused=HUD_REFUSED_UP_TO,
-                                          generated=f" ({game_fps} fps with {fg}x frame generation)" if fg > 1 else "")
+    rendered = round(game_fps / fg)
+    generated = f" ({game_fps} fps with {fg}x frame generation)" if fg > 1 else ""
+    return tone, HUD_ADVICE[level].format(rate=rate, rendered=rendered, speed=speed, generated=generated,
+                                          at=f"{rendered} fps rendered{generated}" if fg > 1 else f"{rendered} fps",
+                                          highest=FPS_RANGES["hud_fps"][1], refused=HUD_REFUSED_UP_TO)
 
 
 def rates_text(target_fps, hud_fps) -> str:
