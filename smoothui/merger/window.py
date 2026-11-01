@@ -243,6 +243,7 @@ from .gui_texts import (
     also_changed,
     anyway_texts,
     capitalized,
+    collapses,
     dont_merge,
     dont_merge_texts,
     game_screens,
@@ -1211,9 +1212,7 @@ class MergerWindow:
         order = lambda row: _row_order(row[0])
         if self.keep_order:     # a row that wasn't shown goes after the others
             order = lambda row: (self.row_order.get(row[0].path, len(self.row_order)), _row_order(row[0]))
-        # Smooth UI's screens built from the game's copies for another frame rate: one line, unless left out
-        from_game = self.found.scan.from_game if self.found else {}
-        rebuilt = [state for state in states if from_game.get(state.path) == "fps" and state.state != State.NOT_HELD]
+        rebuilt = [state for state in states if collapses(state)]     # one line
         shown = sorted(screen_rows([state for state in states if state.state != State.NOTHING_TO_DO
                                     and state not in rebuilt]), key=order)
         self.row_order = {state.path: index for index, (state, _) in enumerate(shown)}

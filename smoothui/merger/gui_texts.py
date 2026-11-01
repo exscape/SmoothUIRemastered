@@ -737,9 +737,17 @@ def unchanged_screens(count) -> str:
     return f"{count} more screens use Smooth UI's own version, as no other mod changes them"
 
 
+def collapses(state: FileState) -> bool:
+    """Whether a screen goes in the list's one line (see game_screens) instead of a row of its own: the game's
+    copy of a screen outside any group (not the HUD), merged without an issue or only waiting for a merge"""
+    if state.winner != GAME_FILES or state.group:
+        return False
+    return state.state in (State.NOT_BUILT, State.CHANGED) or (state.state == State.UP_TO_DATE and state.cause is None)
+
+
 def game_screens(states: list[FileState], target_fps: int, others: bool) -> str:
-    """The line below the list's screens, for Smooth UI's screens built from the game's copies at a frame rate
-    other than the download's (states; others: below rows for other screens)"""
+    """The line below the list's screens, for the screens built from the game's copies that have no row (see
+    collapses; states; others: below rows for other screens)"""
     count = f"The other {_count(len(states), 'screen')}" if others else f"Smooth UI's {_count(len(states), 'screen')}"
     if all(state.state == State.UP_TO_DATE for state in states):
         return f"{count}: built for {target_fps} fps from the game's files."
