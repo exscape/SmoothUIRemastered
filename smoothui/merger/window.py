@@ -29,10 +29,10 @@ runs, only after a warning: the package, which may be half written, is then dele
 without it.
 
 After the first scan, the update check (gui.find_updates) runs in a thread. A newer version of the tools
-shows as a notice, with its release notes in the What's new dialog; a critical one (updates.CRITICAL) as a
-taller, red notice. In stale mode, only a critical one shows, and a clean Merge and play then stays open
-instead of playing; for an unknown Smooth UI build, the card offers any newer version instead (and leads with
-it). New Smooth UI manifests make an unknown Smooth UI build scan again.
+shows as a wide button in place of the title, so that nothing moves when it appears: it opens the What's new
+dialog, with the release notes and Update now. A critical one (updates.CRITICAL) is red, and in stale mode a clean
+Merge and play then stays open instead of playing. For an unknown Smooth UI build in stale mode, the card offers
+any newer version instead (and leads with it). New Smooth UI manifests make an unknown Smooth UI build scan again.
 """
 
 from __future__ import annotations
@@ -232,7 +232,6 @@ from .gui_texts import (
     WARNING,
     WELCOME,
     WELCOME_HEADING,
-    WHATS_NEW,
     WHATS_NEW_TITLE,
     WRITE_BUG_REPORT,
     ZIP_NOTE,
@@ -285,7 +284,6 @@ STATUS_WIDTH = 140
 # What runs in a thread (MergerWindow.busy) that turns off the settings and the notices' buttons
 EXCLUSIVE = ("build", "remove", "update")
 BAR_DELAY = 300                         # ms before a progress bar without progress shows (most scans end first)
-CRITICAL_HEIGHT = 56                    # px: a critical update's notice is at least this tall
 VERSION_SPACING = 24                    # px above each version in the What's new dialog but the first (half above its notes' headings)
 
 
@@ -353,7 +351,7 @@ def apply_theme():
 
 def style_sheet(c) -> str:
     """The window's style sheet (STYLE), and texts and the card's border colored by tone (set_tone)"""
-    tones = (OK, INFO, WARNING, ERROR, UPDATE, "neutral")
+    tones = (OK, INFO, WARNING, ERROR, "neutral")
     return STYLE.format(**c) + "\n".join([
         *(f'#card[tone="{tone}"] {{ border-color: {c[tone]}; }}' for tone in tones),
         *(f'QLabel[tone="{tone}"] {{ color: {c[tone]}; }}' for tone in tones),
@@ -365,9 +363,6 @@ def style_sheet(c) -> str:
 STYLE = """
 #card {{ background: {card}; border: 2px solid {neutral}; border-radius: 6px; }}
 #notice {{ background: {notice}; border-radius: 6px; }}
-#notice[tone="update"] {{ background: {notice_update}; }}
-#notice[tone="critical"] {{ background: {notice_critical}; }}
-#notice[tone="critical"] QLabel {{ color: {notice_critical_text}; }}
 #details {{ background: {card}; border-radius: 6px; }}
 QLabel[tone="muted"] {{ color: {muted_text}; }}
 QPushButton {{ background: transparent; color: {quiet_button_text}; border: 1px solid {quiet_button_border};
@@ -377,10 +372,12 @@ QPushButton:disabled {{ color: {disabled_text}; }}
 QPushButton[primary="true"] {{ background: {accent}; color: {accent_text}; border: 1px solid {accent}; }}
 QPushButton[primary="true"]:hover {{ background: {accent_hover}; border-color: {accent_hover}; }}
 QPushButton[primary="true"]:disabled {{ color: {accent_disabled_text}; }}
-#notice[tone="critical"] QPushButton {{ color: {notice_critical_text}; border-color: {notice_critical_text}; }}
-#notice[tone="critical"] QPushButton:hover {{ background: {notice_critical_light}; }}
-#notice[tone="critical"] QPushButton[primary="true"] {{ background: {notice_critical_text}; color: {notice_critical}; }}
-#notice[tone="critical"] QPushButton:disabled {{ color: {notice_critical_light}; border-color: {notice_critical_light}; }}
+QPushButton[tone="update"] {{ background: {notice_update}; border-color: {update}; }}
+QPushButton[tone="update"]:hover {{ background: {quiet_button_hover}; }}
+QPushButton[tone="critical"] {{ background: {notice_critical}; color: {notice_critical_text}; border-color: {notice_critical};
+    font-weight: bold; }}
+QPushButton[tone="critical"]:hover {{ background: {notice_critical_light}; border-color: {notice_critical_light}; }}
+QPushButton[tone="critical"]:disabled {{ color: {notice_critical_light}; }}
 QProgressBar {{ background: {trough}; border: none; border-radius: 4px; max-height: 8px; min-height: 8px; }}
 QProgressBar::chunk {{ background: {accent}; border-radius: 4px; }}
 QRadioButton {{ spacing: 8px; }}
@@ -527,10 +524,16 @@ class MergerWindow:
         header = QGridLayout()
         header.setSpacing(0)
         header.setColumnStretch(0, 1)
-        header.addWidget(label(TITLE, 20, bold=True), 0, 0)
+        self.title = label(TITLE, 20, bold=True)
+        header.addWidget(self.title, 0, 0)
+        header.setRowMinimumHeight(0, self.title.sizeHint().height())   # as high without the title
+        self.update_button = button("", self.whats_new)     # in the title's place (see show_update_button)
+        self.update_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.update_button.hide()
+        header.addWidget(self.update_button, 0, 0)
         self.header_buttons = QWidget()     # Settings and Help (only on the main page)
         row = QHBoxLayout(self.header_buttons)
-        row.setContentsMargins(0, 0, 0, 0)
+        row.setContentsMargins(8, 0, 0, 0)
         row.setSpacing(8)
         self.settings_button = button(SETTINGS, self.open_settings)
         row.addWidget(self.settings_button)
@@ -652,6 +655,7 @@ class MergerWindow:
         """Show a page; the header's Settings and Help buttons only show on the main page"""
         self.pages.setCurrentWidget(page)
         self.header_buttons.setVisible(page is self.main_page)
+        self.show_update_button()
 
     @property
     def page(self):
@@ -1029,6 +1033,7 @@ class MergerWindow:
         self.context.setText("  ·  ".join(text for text in context if text))
         self.settings_button.setEnabled(self.busy not in EXCLUSIVE)  # no other game folder meanwhile
         self.show_notices(installed)
+        self.show_update_button()
         self.show_card()
         self.show_screens()
 
@@ -1045,13 +1050,6 @@ class MergerWindow:
         notices = []
         if self.updated_from:
             notices.append((UPDATED.format(version=tools_version()), OK, ()))
-        if self.update and not self.stale:
-            text, tone = (CRITICAL_UPDATE, CRITICAL) if self.update.critical else (UPDATE_AVAILABLE, UPDATE)
-            notices.append((text.format(version=self.update.version), tone,
-                            ((WHATS_NEW, "whats_new"), (UPDATE_NOW, "update"))))
-        elif self.critical_update() and not self.card_offers_update():  # (stale mode: only a critical one)
-            notices.append((CRITICAL_UPDATE.format(version=self.update.version), CRITICAL,
-                            ((WHATS_NEW, "whats_new"), (UPDATE_NOW, "update"))))
         if installed and installed.newer_release:
             notices.append((NEWER_RELEASE.format(version=installed.newer_release), INFO,
                             ((DOWNLOAD_PAGE, "files_page"),)))
@@ -1068,17 +1066,13 @@ class MergerWindow:
             row = QHBoxLayout(banner)
             row.setContentsMargins(10, 4, 10, 4)
             row.setSpacing(6)
-            critical = tone == CRITICAL     # taller, its text bold, Update now filled in (see STYLE)
-            if critical:
-                banner.setMinimumHeight(CRITICAL_HEIGHT)
-                row.setContentsMargins(12, 8, 12, 8)
-            icon = glyph(tone, 16 if critical else 14)
-            icon.setFixedWidth(18 if critical else 16)  # the glyphs' widths differ: the texts start at one place
+            icon = glyph(tone, 14)
+            icon.setFixedWidth(16)  # the glyphs' widths differ: the texts start at one place
             icon.setAlignment(Qt.AlignHCenter)
-            row.addWidget(icon, 0, Qt.AlignVCenter if critical else Qt.AlignTop)
-            row.addWidget(label(text, bold=critical, wrap=True), 1)
+            row.addWidget(icon, 0, Qt.AlignTop)
+            row.addWidget(label(text, wrap=True), 1)
             for name, action in buttons:
-                widget = button(name, actions[action], primary=critical and action == "update")
+                widget = button(name, actions[action])
                 widget.setEnabled(enabled)
                 row.addWidget(widget)
             wrapper = QWidget()     # the space above it
@@ -1086,6 +1080,19 @@ class MergerWindow:
             outer.setContentsMargins(0, 8, 0, 0)
             outer.addWidget(banner)
             self.notices.addWidget(wrapper)
+
+    def show_update_button(self):
+        """A newer version of the tools: on the main page, a button in the title's place (the header's row
+        keeps its height, so nothing moves). Off while a merge, a removal or an update runs."""
+        show = self.update is not None and self.page is self.main_page and not self.card_offers_update()
+        if show:
+            critical = self.update.critical
+            text = CRITICAL_UPDATE if critical else UPDATE_AVAILABLE
+            self.update_button.setText(text.format(version=self.update.version))
+            set_tone(self.update_button, CRITICAL if critical else UPDATE)
+            self.update_button.setEnabled(self.busy not in EXCLUSIVE)
+        self.update_button.setVisible(show)
+        self.title.setVisible(not show)
 
     def show_card(self):
         """The card for the window's state (see gui_texts.status_card). Its layout doesn't change while
@@ -1194,7 +1201,6 @@ class MergerWindow:
             "files_page": lambda: webbrowser.open(FILES_URL),
             "bug_report": self.open_bug_report,
             "update": self.update_now,
-            "whats_new": self.whats_new,
         }
 
     def show_screens(self):

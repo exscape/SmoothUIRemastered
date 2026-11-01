@@ -158,7 +158,7 @@ Smooth UI Remastered doesn't ship these, so it never gets in those mods' way, bu
 
 ## Updates
 
-When the merger starts, it asks GitHub whether a newer version of Smooth UI Tools exists. If an update exists, the merger window says so: **What's new** shows the release notes, and **Update now** downloads and installs it.  
+When the merger starts, it asks GitHub whether a newer version of Smooth UI Tools exists. If an update exists, a button at the top of the merger window says so: it shows the release notes, and **Update now** downloads and installs it.  
 Updating is automatic: the merger downloads the new version, checks it, closes, and opens again in the new version.  
 If the update fails, the old version stays as it was; you can then download the new version from [Nexus Mods](https://www.nexusmods.com/witcher3/mods/15202).
 

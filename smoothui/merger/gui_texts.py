@@ -22,10 +22,10 @@ from .state import Check, FileState, Severity, State
 if TYPE_CHECKING:
     from .builder import BuildResult
 
-# The card's tones (its color and glyph); UPDATE and CRITICAL: the notice of a newer version, of a critical one
+# The card's tones (its color and glyph); UPDATE and CRITICAL: the button for a newer version, for a critical one
 NEUTRAL, OK, INFO, WARNING, ERROR, UPDATE, CRITICAL = "neutral", "ok", "info", "warning", "error", "update", "critical"
 # Glyphs by tone, from Segoe UI Symbol (in Windows 10 and later)
-GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕", UPDATE: "ⓘ", CRITICAL: "⚠"}
+GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕"}
 
 # ---- The window ----
 
@@ -37,9 +37,9 @@ SHOW_LOG, HIDE_LOG = "Show log", "Hide log"
 # Notices, above the card
 NEWER_RELEASE = "A newer Smooth UI Remastered version is available ({version})"
 DOWNLOAD_PAGE = "Download page"
-UPDATE_AVAILABLE = "Smooth UI Tools v{version} is available."
-CRITICAL_UPDATE = "Critical update: Smooth UI Tools v{version} fixes a serious bug. Please update."
-WHATS_NEW, UPDATE_NOW, LATER = "What's new", "Update now", "Later"
+UPDATE_AVAILABLE = "Smooth UI Tools v{version} is available: what's new"
+CRITICAL_UPDATE = "Critical update: Smooth UI Tools v{version} fixes a serious bug"
+UPDATE_NOW, LATER = "Update now", "Later"
 # A message box, by stale mode (the game starts once it closes)
 _MO2 = ("Smooth UI Tools can't run from inside the game folder when Mod Organizer 2 starts them: MO2 would move "
         "their own files (settings, logs, updates) into its overwrite folder.\n\nMove the folder {folder} out of the "
@@ -227,7 +227,7 @@ class Card:
     """What the status card shows. A button is (label, action); the first one is the default. Actions:
     merge, merge_and_play, merge_anyway, merge_anyway_and_play, play, abort, remove, remove_and_play, rescan,
     bug_report, smoothui_page, update.
-    (The notices also use whats_new and files_page.)"""
+    (The notices also use files_page.)"""
     tone: str
     headline: str
     sentences: tuple[str, ...] = ()
