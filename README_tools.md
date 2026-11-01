@@ -15,7 +15,7 @@ Download them from [their Nexus Mods page](https://www.nexusmods.com/witcher3/mo
    - **Otherwise:** a mod manager (see its section below) or a desktop shortcut to `SmoothUILauncher.exe`. (Create one in the merger app to get the Witcher icon automatically.)
 
    Yes, it's a launcher, but I've spent a lot of time ensuring that it's as fast as possible, and that it has none of the annoyances of the typical game launcher that everybody hates. <!-- nexus:skip --> It's invisible and unnoticeable (less than 1 second of extra launch time) unless there are issues that need your attention. <!-- /nexus:skip -->
-3. The first time (and whenever you install, update, remove or reorder mods), the launcher opens the merger and tells you what needs fixing. <!-- nexus:skip -->Typically, this is a single button click that takes less than 5 seconds; the merger closes immediately when it's done, and the game launches.<!-- /nexus:skip -->
+3. The first time (and whenever you install, update, remove or reorder mods), the launcher opens the merger and tells you what needs fixing. <!-- nexus:skip -->Typically, this is a single button click that takes less than 10 seconds; the merger closes immediately when it's done, and the game launches.<!-- /nexus:skip -->
 
 That's it.
 The sections below cover Steam and GOG Galaxy first, then Mod Organizer 2. The other mod managers need nothing special, so their sections are optional tips.
@@ -77,7 +77,7 @@ In the plugin's **Mod Load Order** panel (the Mods tab on the right), keep `mod0
 
 ## Setup: Without a mod manager
 
-Prefer to start the game from Steam or GOG Galaxy: see the sections above (on Steam, this keeps the overlay working).
+If you have the game on Steam or GOG Galaxy, start it from there instead: see the sections above (on Steam, this keeps the overlay working).
 
 If this is not possible, start the game via a desktop or taskbar shortcut to `SmoothUILauncher.exe` instead of `witcher3.exe`. (The merger app can easily create one.)
 
@@ -87,14 +87,14 @@ Alternatively, run `SmoothUIMerger.exe` manually any time you install/update/rem
 
 ## Setup: TW3MM and Relapse's Mod Manager
 
-Prefer to start the game from Steam or GOG Galaxy: see the sections above (on Steam, this keeps the overlay working).
+If you have the game on Steam or GOG Galaxy, start it from there instead: see the sections above (on Steam, this keeps the overlay working).
 
 These are lightweight enough that the "Without a mod manager" section essentially applies.  
 Both only allow for starting `witcher3.exe`, so you can't set the "Run the Game" button to use the launcher. The merger itself works with them: nothing special is needed, and the merged patches load first by default.
 
 ## Setup: Vortex
 
-Prefer to start the game from Steam or GOG Galaxy: see the sections above (on Steam, this keeps the overlay working).
+If you have the game on Steam or GOG Galaxy, start it from there instead: see the sections above (on Steam, this keeps the overlay working).
 
 1. Click **Tools** (or the Dashboard's tool list), then the plus icon, and select `SmoothUILauncher.exe` as the target. The other fields can stay as they are.
 2. On the new tool's tile, click the three dots and choose **Set as default launcher**. Vortex's Play button then runs the launcher for you.
@@ -123,7 +123,7 @@ The launcher is optional, but recommended: without it, nothing tells you when yo
 ## Frame rates
 
 Smooth UI's downloads run at 60 or 120 fps. With the tools, you can use any rate from 60 to 240 fps: the merger builds every screen for it from the game's files. You set the rates on the first run's page, or under Settings.  
-If you don't pick other rates, nothing changes: you keep the rate of the Smooth UI download you installed.
+For new users, the default menu frame rate is set to your primary monitor's refresh rate. Change this if you play on a different monitor, or use a frame rate cap.
 
 ### Menus
 
@@ -131,8 +131,6 @@ This is the rate for the inventory, map, Gwent and every other screen except for
 
 - your frame rate cap, if you use one (also with VRR/G-Sync/FreeSync)
 - otherwise, your display's refresh rate
-
-If you use frame generation, enter the same number: it only matters for the HUD (see below).
 
 If the rate you enter is higher than the game's actual frame rate, screens play slowly: a 144 fps build at 120 fps plays at 83% speed. Screens built for a lower rate (e.g. a 60 fps build played at 120 fps) play correctly, but not as smoothly.
 
@@ -146,11 +144,11 @@ Only the merger can do this, so there's no Smooth UI HUD package to download. Th
 The HUD has two settings of its own, since gameplay usually runs slower than menus:
 
 - **Frame rate in gameplay:** enter a typical low on an FPS counter, not the peak: at 70-90 fps, enter about 70. As with menus, too high plays slowly, while too low only looks a little less smooth.
-- **Frame generation:** the multiplier, if you use DLSS, FSR or third-party frame generation such as Lossless Scaling. Otherwise, leave it off. Enter the frame rate you see, including generated frames: the HUD needs the rate before frame generation, so the tools divide by the multiplier for you.
+- **Frame generation:** the multiplier, if you use DLSS or FSR frame generation. Otherwise, leave it off. Enter the frame rate you see, including generated frames: the HUD needs the rate before frame generation, so the tools divide by the multiplier for you.
 
 ### Mods that already run at 100+ fps
 
-Screens from mods that already run at 100 fps or more (e.g. UI Remastered at 120 fps) are kept as they are, but Smooth UI's additions (e.g. Gwent speed options) are still applied. If your frame rate is lower than theirs, they play slowly, and the merger marks them "Plays slowly" (when they're below 85% speed). This is entirely unrelated to Smooth UI and the Tools; they just warn you about it.  
+Screens from mods that already run at 100 fps or more (e.g. UI Remastered at 120 fps) are kept as they are, but Smooth UI's additions (e.g. Gwent speed options) are still applied. If your frame rate is lower than theirs, they play slowly, and the merger marks them "Plays slowly" (when they're below 85% speed). The tools don't cause this; they just warn you about it.  
 To fix this, raise your frame rate cap and the Menus setting to the mod's rate, if your PC and display can reach it.
 
 ## Screens that only mods use

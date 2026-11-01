@@ -7,7 +7,7 @@
 * Improved: more lenient patcher: fixes "unexpected bytes after the End tag" issue that happened with some mods (e.g. Better Vanilla UI v0.1).
 * Docs: on Steam and GOG Galaxy, I now recommend starting the launcher from there. On Steam, this keeps the overlay working.
 
-Existing setups don't change until you change your frame rate settings. For more information on how to choose them, see "Frame rates" on the Nexus page or in README_tools.md.
+Existing setups don't change until you change your frame rate settings. If your gameplay runs below your Smooth UI download's frame rate, set Smooth HUD's frame rate in Settings, or the HUD plays slowly. For more information on how to choose them, see "Frame rates" on the Nexus page or in README_tools.md.
 
 # v0.9.3
 * Improved: fewer "not merged" warnings: the merger is smarter, and doesn't need to ask as often.
