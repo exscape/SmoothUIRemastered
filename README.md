@@ -2,7 +2,7 @@
 
 **If you only want to install the mod to play the game, [install it from the Nexus Mods page](https://www.nexusmods.com/witcher3/mods/13526) instead.**
 
-**If you're looking for Smooth UI Tools (for players wanting compatibility with other UI mods), see [README_tools](README_tools.md), or [their Nexus Mods page](https://www.nexusmods.com/witcher3/mods/15202).**
+**If you're looking for Smooth UI Tools (for players wanting a smooth HUD, other frame rates, or compatibility with other UI mods), see [README_tools](README_tools.md), or [their Nexus Mods page](https://www.nexusmods.com/witcher3/mods/15202).**
 
 The rest of this file is about the developer tools that create the mod itself, and compatibility patches between Smooth UI and other mods, for mod authors to release.  
 If you are a mod author that wants to release a compatibility patch, read on!
@@ -35,7 +35,7 @@ from my own machine, so they most likely need to be changed to work for you.
 
 # Usage
 
-Smooth UI Remastered comes in two builds: 120 fps, and 60 fps: intended for displays (or frame limiters) below 120 Hz (including e.g. 75 Hz or 90 Hz). Their versions name the frame rate, e.g. `v0.3-120fps` and `v0.3-60fps`.
+Smooth UI Remastered comes in two builds: 120 fps, and 60 fps: intended for displays (or frame limiters) below 120 Hz (including e.g. 75 Hz or 90 Hz). Their versions name the frame rate, e.g. `v0.3-120fps` and `v0.3-60fps`. Any other rate (60-240 fps) comes from [Smooth UI Tools](README_tools.md), which builds it from the player's game files. Compat patches are not necessary for Smooth UI Tools users.
 
 build-compat.py builds **two compatibility patches**, one for each build (`..._v0.3-120fps_..._Compat.zip` and `..._v0.3-60fps_..._Compat.zip`).  
 Please release both:  

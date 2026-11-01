@@ -1,3 +1,13 @@
+# v0.9.4
+* Changed: "Merge the HUD too" is now called "Smooth HUD".
+* Added: Any FPS: 60 to 240 fps, no longer only Smooth UI's 60 and 120 fps downloads. The merger builds every screen for it from the game's files (Settings > Frame rate). Mod screens that already run at 100+ fps are kept as they are.
+* Added: Smooth HUD gets its own frame rate, since gameplay usually runs slower than menus. Frame generation is taken into account.
+* Added: after a game update, the merger tries to rebuild changed screens from the new game files, without waiting for a new Smooth UI release.
+* Improved: support for more mods, e.g. Map Remastered (Map and Icons Remastered), with and without Smooth Map and World Map Merger.
+* Docs: on Steam and GOG Galaxy, I now recommend starting the launcher from there. On Steam, this keeps the overlay working.
+
+Existing setups don't change until you change your frame rate settings. For more information on how to choose them, see "Frame rates" on the Nexus page or in README_tools.md.
+
 # v0.9.3
 * Improved: fewer "not merged" warnings: the merger is smarter, and doesn't need to ask as often.
 * Improved: support rescaling mods that raise a screen's frame rate only (e.g. Community GUI, HoodSlots), restoring the original animation speed but adding smoothness.
