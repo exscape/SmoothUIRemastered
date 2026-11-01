@@ -213,7 +213,7 @@ def left_out_by_rule(choice, group: str | None = None, held: bool = False) -> st
 
 def played_slowly(target_fps: float, speed: float) -> str:
     """What a copy kept at a frame rate above the target (see policy.PackageFile.speed) means, for the user"""
-    return f"Played back at {target_fps:g} fps, this file plays at {speed:.0%} speed."
+    return f"At {target_fps:g} fps, this screen plays at {speed:.0%} speed."
 
 
 def merged_anyway(copy: str, reason: str | None, since: str = "") -> str:
@@ -392,7 +392,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                       "merge it now", Severity.MEDIUM, cause="merger")
             elif record["status"] == "unchanged":
                 fps, speed = record.get("fps"), record.get("speed")
-                runs = f"runs at {fps:g} fps" if fps else "runs at its own frame rate"
+                runs = f"runs at {fps:g} fps" if fps else "runs at a high frame rate"
                 slowly = f". {played_slowly(result.fps_of(key), speed)}" if speed else ""
                 state(State.NOT_HELD, f"{_copy_of(origin)} {runs}: used as it is{slowly}", cause="unchanged",
                       fps=fps, speed=speed)

@@ -111,8 +111,8 @@ TURN_ON = "Turn merging on again"
 TURN_ON_NOTE = "If {mods} or Smooth UI Tools was updated since, it may merge now."
 TURNED_OFF = "Merging is turned off for: {screens}."
 # Screens that Smooth UI itself leaves out for a mod (a dont-merge line, see mod_reviews.py), by its reason; the
-# last, for a reason from newer tools. {screens}: the first few, then how many more
-ALREADY_SMOOTH = "Left as {mod} made them, for their own frame rate: {screens}."
+# last, for a reason from newer tools. {screens}: how many (ALREADY_SMOOTH), or the first few, then how many more
+ALREADY_SMOOTH = "{screens} from {mod} already {verb} at a high frame rate: not merged."
 # Mods' copies kept at their own frame rate, above Smooth UI's (see policy.PackageFile.speed)
 SLOW = "{screens} from {mod} {verb} slowly, as {pronoun} made for a higher frame rate."
 LEFT_OUT_FOR = "Not merged, as Smooth UI leaves them out for {mod}: {screens}."
@@ -302,7 +302,7 @@ CAUSES = {
     "smoothui": "Smooth UI was updated.",
     "merger": "The merger was updated.",
     "fps": "The frame rate changed since the last merge.",
-    "game": "The game was updated since this Smooth UI's release: its newer screens are merged from it, untested.",
+    "game": "The game was updated since this Smooth UI's release: merge to rebuild its changed screens (untested).",
     "damaged": "The merged patches are damaged.",
     "entry": "The merged patches' mods.settings entry is missing or changed.",
     "overridden": "{mod} has priority 0 too, and its name sorts first.",
@@ -447,7 +447,7 @@ def _merged(result: BuildResult, stale, cant_merge):
         included = [(file.mod, file.path, file.group) for file in result.files if file.status.included]
         text = _patched(included)
         headline = (f"Merged: {text}" if text else "Merged" if included
-                    else "Merged: your mods' copies run at their own frame rate"
+                    else "Merged: your mods' copies already run at a high frame rate"
                     if any(file.status.value == "unchanged" for file in result.files)
                     else "Nothing to merge")
         return Card(INFO if slow else OK, headline, known,
@@ -575,7 +575,7 @@ def _checked(found: Check, stale, merges_now=()):
                     (*([f"They hold {held}."] if held else []), *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
     if any(file.state == State.NOT_HELD and file.cause == "unchanged" for file in found.states):
-        return Card(OK, "Nothing to merge", ("Your other mods' copies of Smooth UI's screens run at their own frame rate.", *known),
+        return Card(OK, "Nothing to merge", ("Your mods' copies already run at a high frame rate.", *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     if known:
         return Card(OK, "Nothing to merge", known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
@@ -621,11 +621,11 @@ def row_status(file: FileState) -> tuple[str, str]:
     if state == State.NOT_HELD and cause == "unchanged":
         if file.speed:
             return WARNING, "Plays slowly"
-        return OK, f"Runs at {file.fps:g} fps" if file.fps else "Own frame rate"
+        return OK, f"Runs at {file.fps:g} fps" if file.fps else "High frame rate"
     if state == State.NOT_HELD:
         return {"known broken": (INFO, "Known not to work"),
                 "by choice": (INFO, "Turned off"),
-                "by rule": (INFO, "Own frame rate" if file.reason == mod_reviews.ALREADY_SMOOTH else
+                "by rule": (INFO, "High frame rate" if file.reason == mod_reviews.ALREADY_SMOOTH else
                             "Known not to work" if file.reason == mod_reviews.KNOWN_BROKEN else "Left out"),
                 "failed": (ERROR, "Can't merge"),
                 "mod failed": (ERROR, "Mod left out"), "group left out": (WARNING, "Left out with its group"),
@@ -822,14 +822,16 @@ def _slow(files) -> tuple[str, ...]:
 
 def _by_rule(files) -> tuple[str, ...]:
     """The sentences for screens that Smooth UI leaves out for mods, one per mod and reason (files: their
-    (path, group, mod, reason)); a group is named once, and a long list is cut"""
+    (path, group, mod, reason)); a group counts as one screen, and a long list is cut"""
     found = {}
     for path, group, mod, reason in files:
         name = group_name(group) if group else screen_name(path)
         found.setdefault((reason == mod_reviews.ALREADY_SMOOTH, mod), set()).add(name)
     sentences = []
     for (smooth, mod), names in sorted(found.items(), key=lambda item: (not item[0][0], str(item[0][1]).lower())):
-        sentences.append((ALREADY_SMOOTH if smooth else LEFT_OUT_FOR).format(mod=mod, screens=_cut(names)))
+        sentences.append(ALREADY_SMOOTH.format(screens=_count(len(names), "screen"), mod=mod,
+                                               verb="runs" if len(names) == 1 else "run") if smooth
+                         else LEFT_OUT_FOR.format(mod=mod, screens=_cut(names)))
     return tuple(sentences)
 
 
