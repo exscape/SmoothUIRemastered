@@ -380,9 +380,10 @@ def manifests_to_ship(dev_manifests):
 
 
 def fingerprint(args, version):
-    """A hash of everything a build uses: our code and data (smoothui/, assets/ but for what only Smooth UI's own build ships, the scripts that are built or
-    build), the manifests it ships, the options that change the result, and the tool versions. More than is
-    needed (a comment changes it), never less. The tests, dev/ and config.toml (but for the version) are not part."""
+    """A hash of everything a build uses: our code and data (smoothui/, assets/ but for what only Smooth UI's own
+    build ships, the scripts that are built or build), the manifests it ships, the options that change the result,
+    and the tool versions. More than is needed (a comment changes it), never less. The tests, dev/ and config.toml
+    (but for the version) are not part."""
     import PySide6  # (only on env_gui's Python, like qt_dropped)
     digest = hashlib.sha256()
     digest.update(repr((version, args.dev_manifests, sys.version, platform.machine(),

@@ -117,7 +117,7 @@ class PackageFile:
 
     @property
     def speed(self) -> float | None:
-        """For a copy that keeps its frame rate (see fps): the speed it plays at, if its animations play slower
+        """For a copy that keeps its frame rate (see fps): the speed it plays at, if its animations play
         noticeably slower than made for (below SLOW_BELOW, and it has timeline animations); else None"""
         if self.fps is None:
             return None

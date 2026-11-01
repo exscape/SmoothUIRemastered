@@ -35,8 +35,9 @@ log = logging.getLogger(__name__)
 
 def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> ReleasePatch:
     """Patch the winning copy of each file (see scan.FileResult.winner) with the installed Smooth UI
-    build's settings at the scan's frame rate for it (see Scan.fps_of), plus the dont-stretch lines for its mod, hiding the warnings reviewed for it (both in
-    the scan's reviews, see mod_reviews.py). pool and on_file are as for patch_as_release."""
+    build's settings at the scan's frame rate for it (see Scan.fps_of), plus the dont-stretch lines for its
+    mod, hiding the warnings reviewed for it (both in the scan's reviews, see mod_reviews.py). pool and on_file
+    are as for patch_as_release."""
     installed = result.installed
     if not installed.usable:
         fail(installed.message)

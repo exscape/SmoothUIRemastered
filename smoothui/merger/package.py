@@ -70,8 +70,9 @@ def write_package(package_dir: Path, installed: Installed, files: list[PackageFi
     package_manifest). installed: the Smooth UI build they were patched for; reviews_sha256: the reviews of
     mods' code they were patched with (see mod_reviews.py); groups_off and screens_off: the groups and
     files turned off (see scan.Scan.groups_off and screens_off; the latter is a dict); rates: the menus' and the
-    HUD's frame rates they were patched for (see scan.Scan.target_fps; None: installed's). If none is to be included, remove the
-    package instead, and write the manifest to record (see above), if given; else delete record."""
+    HUD's frame rates they were patched for (see scan.Scan.target_fps; None: installed's). If none is to be
+    included, remove the package instead, and write the manifest to record (see above), if given; else delete
+    record."""
     package_dir = Path(package_dir)
     content = package_dir / "content"
     previous = _read_manifest(package_dir / PACKAGE_MANIFEST)
@@ -137,9 +138,8 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
     """What the package holds, and what it was built from: for each file it holds, the copy it was patched
     from (to tell whether that changed without reading it) and the output (to tell whether the package
     is intact); for each other file, why it isn't there, and the copy that was decided on (and for one left
-unchanged, its frame rate). A file that keeps a frame rate above the target also gets the speed it plays at
-(see policy.PackageFile.speed). A forced file
-    also gets why it isn't fully patched, and the date it was first forced: from previous (the manifest
+    unchanged, its frame rate). A file that keeps a frame rate above the target also gets the speed it plays at
+    (see policy.PackageFile.speed). A forced file also gets why it isn't fully patched, and the date it was first forced: from previous (the manifest
     of the package this one replaces) while its copy is the same, else today."""
     commit, uncommitted = patcher_commit()
     before = (previous or {}).get("files", {})

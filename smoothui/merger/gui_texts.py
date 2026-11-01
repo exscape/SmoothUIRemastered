@@ -623,7 +623,7 @@ def row_status(file: FileState) -> tuple[str, str]:
             return WARNING, "Plays slowly"
         return OK, f"Runs at {file.fps:g} fps" if file.fps else "Own frame rate"
     if state == State.NOT_HELD:
-        return { "known broken": (INFO, "Known not to work"),
+        return {"known broken": (INFO, "Known not to work"),
                 "by choice": (INFO, "Turned off"),
                 "by rule": (INFO, "Own frame rate" if file.reason == mod_reviews.ALREADY_SMOOTH else
                             "Known not to work" if file.reason == mod_reviews.KNOWN_BROKEN else "Left out"),
@@ -881,11 +881,10 @@ def _patched(files) -> str:
     first (e.g. "the HUD and 2 screens from 1 mod"); the game's own copies of other screens aren't counted"""
     groups = sorted({group_name(group) for _, _, group in files if group})
     screens = [mod for mod, _, group in files if not group and mod != GAME_FILES]
-    mods = {mod.lower() for mod in screens if mod != GAME_FILES}
+    mods = {mod.lower() for mod in screens}
     text = (f"{_count(len(screens), 'screen')} from {_count(len(mods), 'mod')}" if mods
             else _count(len(screens), "screen") if screens else "")
     return " and ".join([*(f"the {name}" for name in groups), *([text] if text else [])])
-
 
 
 def _who(mod, file) -> str | None:

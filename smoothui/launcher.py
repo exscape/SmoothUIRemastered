@@ -156,8 +156,8 @@ def command_for(args: list[str], game: Path | None, log: Log) -> GameCommand | N
 
 
 def package_stale(game: Path, log: Log, off=None) -> bool:
-    """Whether the check says to open the merger (off: the scan options from the settings, see game.scan_options); False if
-    it fails (after a message box)"""
+    """Whether the check says to open the merger (off: the scan options from the settings, see
+    game.scan_options); False if it fails (after a message box)"""
     start = time.perf_counter()
     try:
         found = check(game, mods_settings(), **(off or {}))
