@@ -15,7 +15,7 @@ Download them from [their Nexus Mods page](https://www.nexusmods.com/witcher3/mo
    - **Otherwise:** a mod manager (see its section below) or a desktop shortcut to `SmoothUILauncher.exe`. (Create one in the merger app to get the Witcher icon automatically.)
 
    Yes, it's a launcher, but I've spent a lot of time ensuring that it's as fast as possible, and that it has none of the annoyances of the typical game launcher that everybody hates. <!-- nexus:skip --> It's invisible and unnoticeable (less than 1 second of extra launch time) unless there are issues that need your attention. <!-- /nexus:skip -->
-3. The first time (and whenever you install, update, remove or reorder mods), the launcher opens the merger and tells you what needs fixing. <!-- nexus:skip -->Typically, this is a single button click that takes less than 10 seconds; the merger closes immediately when it's done, and the game launches.<!-- /nexus:skip -->
+The first time (and whenever you install, update, remove or reorder mods), the launcher opens the merger and tells you what needs fixing. <!-- nexus:skip -->Typically, this is a single button click that takes less than 10 seconds; the merger closes immediately when it's done, and the game launches.<!-- /nexus:skip -->
 
 That's it.
 The sections below cover Steam and GOG Galaxy first, then Mod Organizer 2. The other mod managers need nothing special, so their sections are optional tips.
