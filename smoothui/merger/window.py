@@ -106,7 +106,6 @@ from . import (
     SMOOTHUI_URL,
     TOOLS_README_URL,
     TOOLS_URL,
-    UPDATE_URL_ENV,
     gui,
     self_update,
     tools_version,
@@ -116,7 +115,6 @@ from .game import (
     FPS_RANGES,
     GAME_EXE,
     GAME_PATH_ENV,
-    MODS_SETTINGS_ENV,
     GameFolder,
     Settings,
     find_games,
@@ -220,7 +218,6 @@ from .gui_texts import (
     SMOOTHUI_NOT_CHECKED,
     STOP_MERGE,
     STOP_MERGE_TITLE,
-    TEST_MODE,
     TITLE,
     TURN_ON,
     UNKNOWN_FILES,
@@ -1046,8 +1043,6 @@ class MergerWindow:
         """The notices, each (text, tone, buttons ((label, action), see card_actions)), made again only when
         they change. Their buttons are off while a merge, a removal or an update runs."""
         notices = []
-        if names := [name for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV) if os.environ.get(name)]:
-            notices.append((TEST_MODE.format(names=" and ".join(names)), INFO, ()))
         if self.updated_from:
             notices.append((UPDATED.format(version=tools_version()), OK, ()))
         if self.update and not self.stale:

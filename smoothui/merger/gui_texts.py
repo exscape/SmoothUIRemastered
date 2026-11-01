@@ -35,7 +35,6 @@ SCREENS_NOTE = "Merged: the mod's copy of the screen now runs at Smooth UI's fra
 NOTES_HEADING = "Notes"
 SHOW_LOG, HIDE_LOG = "Show log", "Hide log"
 # Notices, above the card
-TEST_MODE = "Test mode: {names} set (their values are in merger.log)"
 NEWER_RELEASE = "A newer Smooth UI Remastered version is available ({version})"
 DOWNLOAD_PAGE = "Download page"
 UPDATE_AVAILABLE = "Smooth UI Tools v{version} is available."
