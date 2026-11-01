@@ -116,7 +116,6 @@ from .game import (
     FPS_RANGES,
     GAME_EXE,
     GAME_PATH_ENV,
-    HUD_REFUSED_UP_TO,
     MODS_SETTINGS_ENV,
     GameFolder,
     Settings,
@@ -159,7 +158,9 @@ from .gui_texts import (
     FAILED,
     FG_OFF,
     FPS_HEADING,
+    FPS_LINK,
     FPS_SUFFIX,
+    FPS_UNSURE,
     FRAME_GENERATION,
     GAME_HEADING,
     GAME_NOT_FOUND,
@@ -182,6 +183,7 @@ from .gui_texts import (
     LOOKING_FOR_GAME,
     MENU_FPS,
     MENU_FPS_NOTE,
+    MENU_FPS_RANGE,
     MERGER_VERSION,
     NEUTRAL,
     NEWER_RELEASE,
@@ -215,7 +217,6 @@ from .gui_texts import (
     SHORTCUT_NAME,
     SHOW_LOG,
     SMOOTH_HUD,
-    SMOOTH_HUD_NOTE,
     SMOOTHUI_NOT_CHECKED,
     STOP_MERGE,
     STOP_MERGE_TITLE,
@@ -1873,7 +1874,7 @@ class MergerWindow:
 class RateSection:
     """The frame rate section on the welcome and settings pages: the menus' rate, then the Smooth HUD check
     box with the rate in gameplay and the frame generation multiplier (off while Smooth HUD is), and what
-    the HUD is then built for (see gui_texts.hud_advice)"""
+    the HUD is then built for (see gui_texts.hud_advice), then how to choose (README_tools.md's Frame rates)"""
 
     def __init__(self, window: MergerWindow, layout, on_change):
         """on_change() is called whenever an input changes (valid() may have)"""
@@ -1881,18 +1882,17 @@ class RateSection:
         self.on_change = on_change
         self.unset = None
         self.shown = None
-        self.menus = self.spin_box(*FPS_RANGES["target_fps"])
-        self.display = label(tone="muted", wrap=True)
+        self.menus = self.spin_box()
+        self.menus.valueChanged.connect(self.changed)
+        self.display = label(wrap=True)
+        self.display_text = ""
         layout.addLayout(self.row((MENU_FPS, self.menus)))
         layout.addWidget(self.display)
         layout.addSpacing(10)
         self.hud_box = QCheckBox(SMOOTH_HUD.replace("&", "&&"))
         self.hud_box.toggled.connect(self.changed)
         layout.addWidget(self.hud_box)
-        note = label(SMOOTH_HUD_NOTE, tone="muted", wrap=True)
-        note.setContentsMargins(0, 2, 0, 4)
-        layout.addWidget(note)
-        self.game_fps = self.spin_box(HUD_REFUSED_UP_TO + 1, FPS_RANGES["hud_fps"][1] * FG_MULTIPLIERS[-1])
+        self.game_fps = self.spin_box()
         self.game_fps.valueChanged.connect(self.changed)
         self.fg = QComboBox()
         self.fg.addItems([FG_OFF, *(f"{n}x" for n in FG_MULTIPLIERS[1:])])
@@ -1902,10 +1902,14 @@ class RateSection:
         layout.addWidget(self.hud_note)
         self.advice = label(wrap=True)
         layout.addWidget(self.advice)
+        layout.addSpacing(10)
+        layout.addWidget(label(FPS_UNSURE, tone="muted", wrap=True))
+        layout.addWidget(QLabel(f'<a href="{TOOLS_README_URL}#frame-rates">{FPS_LINK}</a>', openExternalLinks=True))
 
     @staticmethod
-    def spin_box(lowest, highest) -> QSpinBox:
-        box = QSpinBox(minimum=lowest, maximum=highest, suffix=FPS_SUFFIX)
+    def spin_box() -> QSpinBox:
+        """A frame rate box that takes any rate: one out of range is explained (see changed) rather than refused"""
+        box = QSpinBox(minimum=1, maximum=999, suffix=FPS_SUFFIX)
         box.setMinimumWidth(90)
         return box
 
@@ -1930,10 +1934,14 @@ class RateSection:
         self.hud_box.setChecked(smooth_hud)
         self.unset, self.shown = unset, (menus, game_fps, fg)
         hz = refresh_rate()
-        self.display.setText(MENU_FPS_NOTE.format(display=DISPLAY_RATE.format(hz=hz) if hz else ""))
+        self.display_text = MENU_FPS_NOTE.format(display=DISPLAY_RATE.format(hz=hz) if hz else "")
         self.changed()
 
     def changed(self, *_):
+        lowest, highest = FPS_RANGES["target_fps"]
+        menus_ok = self.menus_valid()
+        self.display.setText(self.display_text if menus_ok else MENU_FPS_RANGE.format(lowest=lowest, highest=highest))
+        set_tone(self.display, "muted" if menus_ok else ERROR)
         on = self.hud_box.isChecked()
         for widget in (self.game_fps, self.fg, self.hud_note, self.advice):
             widget.setEnabled(on)
@@ -1943,8 +1951,15 @@ class RateSection:
         self.on_change()
 
     def valid(self) -> bool:
-        """Whether the HUD's rate can be built (else the advice says so in red)"""
-        return not self.hud_box.isChecked() or hud_advice(self.game_fps.value(), self.fg_value())[0] != ERROR
+        """Whether the rates can be built (else the lines below them say so in red)"""
+        return self.menus_valid() and (not self.hud_box.isChecked() or self.hud_valid())
+
+    def menus_valid(self) -> bool:
+        lowest, highest = FPS_RANGES["target_fps"]
+        return lowest <= self.menus.value() <= highest
+
+    def hud_valid(self) -> bool:
+        return hud_advice(self.game_fps.value(), self.fg_value())[0] != ERROR
 
     def fg_value(self) -> int:
         return FG_MULTIPLIERS[self.fg.currentIndex()]
@@ -1958,7 +1973,7 @@ class RateSection:
                 menus = None
             if self.unset[1] is None and (game_fps, fg) == self.shown[1:]:
                 game_fps, fg = None, 1
-        if not self.hud_box.isChecked() and not self.valid():
+        if not self.hud_box.isChecked() and not self.hud_valid():
             game_fps, fg = None, 1
         return self.hud_box.isChecked(), menus, game_fps, fg
 

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from .. import mod_reviews
 from ..witcher3.source_file import GAME_FILES
-from .game import FPS_RANGES, HUD_REFUSED_UP_TO, hud_rate
+from .game import FPS_RANGES, HUD_LOWEST, hud_rate
 from .installed import Status
 from .scan import FileResult, is_own_folder
 from .screens import file_name, group_name, screen_label, screen_name
@@ -155,29 +155,26 @@ FPS_HEADING = "Frame rate"
 MENU_FPS = "Menus:"
 FPS_SUFFIX = " fps"
 # Below the menus' rate: {display} (DISPLAY_RATE) only if Windows tells the display's refresh rate
-MENU_FPS_NOTE = ("{display}Enter the frame rate your game reaches in menus: your frame rate cap, or else your "
-                 "display's refresh rate. If unsure, pick lower: too low only looks less smooth, too high plays "
-                 "slowly.")
-DISPLAY_RATE = "Your display runs at {hz} Hz. "
-SMOOTH_HUD = "Merge the HUD too (recommended)"
-SMOOTH_HUD_NOTE = ("Smooth UI Remastered itself doesn't change the HUD (such as the list of picked-up items, or the "
-                   "radial menu): the merger makes it smooth, from the game's own files or your HUD mods' copies.")
+MENU_FPS_NOTE = ("Inventory, map, Gwent and every other screen but the HUD: enter your frame rate cap, or your "
+                 "display's refresh rate{display} if you don't cap it.")
+DISPLAY_RATE = " ({hz} Hz)"
+# Instead, in red, while the menus' rate is outside FPS_RANGES
+MENU_FPS_RANGE = "Enter {lowest}-{highest} fps for the menus."
+SMOOTH_HUD = "Smooth HUD: minimap, picked-up items, damage numbers and more (recommended)"
 HUD_FPS = "Frame rate in gameplay:"
 FRAME_GENERATION = "Frame generation:"
 FG_OFF = "Off"
-HUD_FPS_NOTE = ("Enter a typical low, as a frame counter shows it in gameplay (not the peak). The HUD only moves "
-                "on the frames the game renders, so frame generation divides it: 80 fps with 2x makes 40. If "
-                "unsure, pick lower.")
-# What the HUD is built for, by game.hud_rate's level ({rendered}: the rate the game renders in gameplay; {at}: that
-# rate, with the shown one if frame generation is on)
+HUD_FPS_NOTE = "Enter a typical low on an FPS counter, not the peak: at 70-90 fps, enter about 70."
+FPS_UNSURE = "If unsure, enter less: too low only looks less smooth, too high plays slowly."
+FPS_LINK = "How to choose ↗"
+# What the HUD is built for, by game.hud_rate's level ({rendered}: the rate the game renders in gameplay;
+# {generated}: how frame generation makes it, if on)
 HUD_ADVICE = {
-    "ok": "The HUD is built for {rate} fps.",
-    "slowed": "The HUD is built for {rate} fps, its lowest: at {at} it plays at {speed:.0%} speed.",
-    "advise-off": ("At {at}, a smooth HUD plays at {speed:.0%} speed and gains little: turn \"Merge the "
-                   "HUD too\" off."),
-    "too-high": "The HUD can't be built for more than {highest} fps: enter a lower frame rate.",
-    "too-low": ("At {rendered} fps rendered{generated}, the HUD would only play in slow motion: the game needs to render "
-                "more than {refused} fps."),
+    "ok": "HUD: built for {rate} fps{generated}.",
+    "slowed": "HUD: built for {rate} fps, its minimum. At {rendered} fps{generated}, it plays at {speed:.0%} speed.",
+    "too-low": ("HUD: {rendered} fps{generated} isn't supported: it needs at least {lowest} fps. Turn Smooth HUD "
+                "off."),
+    "too-high": "HUD: {rendered} fps{generated} is above its {highest} fps maximum: enter less.",
 }
 # The launcher
 LAUNCHER_HEADING = "Starting the game"
@@ -311,7 +308,7 @@ CAUSES = {
     "overridden": "{mod} has priority 0 too, and its name sorts first.",
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
     "group left out": "The HUD only works if all of it is merged, so it is left out.",
-    "setting": "The \"Merge the HUD too\" setting changed since the last merge.",
+    "setting": "The \"Smooth HUD\" setting changed since the last merge.",
     "by choice": "Your choice of screens not to merge changed since the last merge.",
     "by rule": "Smooth UI's list of screens not to merge changed since the last merge.",
 }
@@ -335,12 +332,11 @@ NO_UPDATE = "No newer Smooth UI Tools is out yet."
 def hud_advice(game_fps: int, fg: int) -> tuple[str, str]:
     """The tone and text below the HUD's inputs (see game.hud_rate)"""
     rate, speed, level = hud_rate(game_fps, fg)
-    tone = {"ok": NEUTRAL, "slowed": WARNING, "advise-off": WARNING, "too-high": ERROR, "too-low": ERROR}[level]
+    tone = {"ok": NEUTRAL, "slowed": WARNING, "too-high": ERROR, "too-low": ERROR}[level]
     rendered = round(game_fps / fg)
-    generated = f" ({game_fps} fps with {fg}x frame generation)" if fg > 1 else ""
+    generated = f" ({game_fps} ÷ {fg}x frame generation)" if fg > 1 else ""
     return tone, HUD_ADVICE[level].format(rate=rate, rendered=rendered, speed=speed, generated=generated,
-                                          at=f"{rendered} fps rendered{generated}" if fg > 1 else f"{rendered} fps",
-                                          highest=FPS_RANGES["hud_fps"][1], refused=HUD_REFUSED_UP_TO)
+                                          lowest=HUD_LOWEST, highest=FPS_RANGES["hud_fps"][1])
 
 
 def rates_text(target_fps, hud_fps) -> str:
