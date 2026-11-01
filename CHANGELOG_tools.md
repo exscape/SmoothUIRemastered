@@ -4,6 +4,7 @@
 * Added: Smooth HUD gets its own frame rate, since gameplay usually runs slower than menus. Frame generation is taken into account.
 * Added: after a game update, the merger tries to rebuild changed screens from the new game files, without waiting for a new Smooth UI release.
 * Improved: support for more mods, e.g. Map Remastered (Map and Icons Remastered), with and without Smooth Map and World Map Merger.
+* Improved: more lenient patcher: fixes "unexpected bytes after the End tag" issue that happened with some mods (e.g. Better Vanilla UI v0.1).
 * Docs: on Steam and GOG Galaxy, I now recommend starting the launcher from there. On Steam, this keeps the overlay working.
 
 Existing setups don't change until you change your frame rate settings. For more information on how to choose them, see "Frame rates" on the Nexus page or in README_tools.md.

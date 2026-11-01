@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
 
-from ..swf import MalformedSwfError
+from ..swf import MalformedSwfError, swf_get_header_offsets
+
+log = logging.getLogger(__name__)
 
 # Every tag starts with a 16-bit little-endian header: the tag code in the upper 10 bits
 # and the payload length in the lower 6 bits. A length of 0x3F is a marker for the
@@ -100,6 +103,24 @@ def iter_tags(body: bytes, start: int, end: int | None = None):
 def parse_tags(body: bytes, start: int, end: int | None = None) -> list[Tag]:
     """All tags of the tag list in body[start:end], including the final End tag"""
     return list(iter_tags(body, start, end))
+
+def cut_after_end_tag(body: bytearray) -> None:
+    """Remove any data after the End tag of the main timeline from a decompressed SWF body, as the game
+    doesn't read it.
+
+    Every .redswf of the game has stale data after its SWF; a tool that sets the SWF's declared length to
+    the whole zlib stream brings that data into the SWF (seen in Better Vanilla UI: byte for byte the data
+    of the game's own file, which doesn't parse as tags, and the game loads the file)."""
+    offset = swf_get_header_offsets(body)[1]
+    if offset is None:
+        return
+    while offset < len(body):
+        tag, offset = read_tag(body, offset, len(body))
+        if tag.code == TagCode.END:
+            if offset < len(body):
+                log.warning(f"Ignoring {len(body) - offset} bytes after the SWF's End tag")
+                del body[offset:]
+            return
 
 def serialize_tags(tags) -> bytes:
     return b"".join(tag.to_bytes() for tag in tags)

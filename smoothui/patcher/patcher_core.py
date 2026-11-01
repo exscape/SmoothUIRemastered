@@ -39,6 +39,7 @@ from .swf_patcher import (
 )
 from .swf_patcher.movie import RescaleError
 from .swf_patcher.place_object import clear_parse_cache
+from .swf_patcher.swf_tags import cut_after_end_tag
 
 log = logging.getLogger(__name__)
 
@@ -302,6 +303,7 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True, game_rat
 
     def patch(body):
         """Helper that is called on the decompressed SWF bytes, and patches them in place"""
+        cut_after_end_tag(body)
         # Most fixes go first, so the rescale (and its verification) works on the fixed file
         fixed, fix_records = apply_fixes(body, settings.fixes, BEFORE_RESCALE)
         if fixed is not None:
