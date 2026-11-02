@@ -11,8 +11,7 @@ progress) over through queues, which a timer empties (window.MergerWindow.poll).
 With --stale, the launcher opened it before starting the game (see launcher.py, for the exit codes).
 
 An update (self_update.py) runs this exe from the unpacked new version as --finish-update, which does its work
-before anything else here; the new merger it starts has --update-done OLD_VERSION (and --critical, for a
-critical update).
+before anything else here; the new merger it starts has --update-done OLD_VERSION.
 
 Started by Mod Organizer 2 from inside the game folder (game.mo2_inside_game), it says that this is
 unsupported, and exits before it writes anything (in stale mode, the game starts).
@@ -81,7 +80,6 @@ def main() -> int:
         return self_update.finish(args[1:])
     stale = "--stale" in args
     updated_from = args[args.index("--update-done") + 1] if "--update-done" in args[:-1] else None
-    critical = updated_from is not None and self_update.CRITICAL_ARG in args
     if not only_instance(MUTEX):
         if (hwnd := find_window(TITLE, QT_WINDOW_CLASS)) is not None:
             bring_to_front(hwnd)
@@ -96,7 +94,7 @@ def main() -> int:
     settings = _settings()
     game = game_path(settings)
     if updated_from:
-        log.info(f"Updated from Smooth UI Tools v{updated_from} to v{version()}" + (" (critical)" if critical else ""))
+        log.info(f"Updated from Smooth UI Tools v{updated_from} to v{version()}")
     log.info(f"Game folder: {game or 'not chosen yet'}")
     for name in (GAME_PATH_ENV, MODS_SETTINGS_ENV, UPDATE_URL_ENV, UPDATE_TOKEN_ENV):
         if os.environ.get(name):
@@ -108,7 +106,7 @@ def main() -> int:
         start_scan(game, calls, scan_options(settings))
 
     from . import window  # imports Qt, which takes a while: after the scan has started
-    return window.run(game, stale, settings, calls, log_records, updated_from=updated_from, critical=critical)
+    return window.run(game, stale, settings, calls, log_records, updated_from=updated_from)
 
 
 class LogFormatter(logging.Formatter):

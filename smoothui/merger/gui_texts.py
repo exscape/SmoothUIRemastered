@@ -256,9 +256,6 @@ HEADLINES = {
     Severity.MEDIUM: "Some screens aren't merged",
     Severity.LOW: "Merging again is recommended",
 }
-# After a critical update, instead of Severity.LOW's card (only the merger was updated)
-CRITICAL_INSTALLED_HEADLINE = "Merging again is strongly recommended"
-CRITICAL_INSTALLED = "A critical update of Smooth UI Tools was installed."
 # What playing without merging costs, where the headline doesn't say it
 COST = {
     Severity.HIGH: "Until you merge, those screens may look wrong or not work.",
@@ -389,7 +386,7 @@ def smoothui_build(installed, target_fps=None, hud_fps=None) -> str | None:
 def status_card(found: Check | None, *, stale: bool, busy: str | None = None, scan_error: str | None = None,
                 merged: BuildResult | None = None, merge_error: str | None = None,
                 progress: tuple[int, int] | None = None, update: str | None = None, critical: bool = False,
-                update_search: str | None = None, critical_installed: bool = False, merges_now=()) -> Card:
+                update_search: str | None = None, merges_now=()) -> Card:
     """What the status card shows, from the window's state. found: the last check (None until one ends);
     stale: whether the launcher opened the window; busy: what runs in a thread ("scan", "build", "remove" or
     "update"); scan_error: why the last check failed; merged and merge_error: the result of the window's
@@ -397,8 +394,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
     update: a newer Smooth UI Tools version, if one was found (critical: a critical one); update_search: in
     stale mode, LOOKING or NOTHING_FOUND while or after looking for one (None: not looked for, or the check
     failed); merges_now: the files the user chose not to merge that would merge now (see
-    builder.merges_now); critical_installed: a critical update was just installed, so a merge that is only recommended
-    (the merger was updated) is strongly recommended.
+    builder.merges_now).
 
     Outside stale mode, only the cards that are fine to play from have Play, first: up to date, or with
     screens that use their mods' own copies (left out, or merged without some fixes).
@@ -409,8 +405,6 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
         fraction = progress[0] / progress[1] if progress and progress[1] else None
         return Card(NEUTRAL, DOWNLOADING_UPDATE.format(version=update), busy=True, progress=fraction)
     card = _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_now)
-    if critical_installed and not busy and card.headline == HEADLINES[Severity.LOW]:
-        card = replace(card, tone=WARNING, headline=CRITICAL_INSTALLED_HEADLINE, sentences=(CRITICAL_INSTALLED,))
     if stale and not busy and found is not None and found.scan.installed.status == Status.UNKNOWN:
         if update:
             found_text = CRITICAL_UPDATE_FOUND if critical else UPDATE_FOUND

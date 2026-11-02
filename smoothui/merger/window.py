@@ -298,11 +298,10 @@ VERSION_SPACING = 24                    # px above each version in the What's ne
 
 
 def run(game: Path | None, stale: bool, settings: Settings | None, calls: queue.Queue, log_records: queue.Queue,
-        *, updated_from: str | None = None, critical: bool = False) -> int:
-    """Show the window until it closes; returns the exit code. updated_from: the version this one replaced
-    (critical: by a critical update)"""
+        *, updated_from: str | None = None) -> int:
+    """Show the window until it closes; returns the exit code. updated_from: the version this one replaced"""
     app = make_app()
-    window = MergerWindow(game, stale, settings, calls, log_records, updated_from=updated_from, critical=critical)
+    window = MergerWindow(game, stale, settings, calls, log_records, updated_from=updated_from)
     sys.excepthook = window.callback_failed
     window.root.show()
     app.exec()
@@ -483,12 +482,11 @@ class Root(QWidget):
 
 class MergerWindow:
     def __init__(self, game: Path | None, stale: bool, settings: Settings | None, calls: queue.Queue,
-                 log_records: queue.Queue, *, updated_from: str | None = None, critical: bool = False):
+                 log_records: queue.Queue, *, updated_from: str | None = None):
         """game: None until the user chooses it; settings: as saved (None: the first run, none yet);
-        updated_from: the tools were just updated (from this version); critical: by a critical update"""
+        updated_from: the tools were just updated (from this version)"""
         self.game, self.stale, self.calls, self.log_records = game, stale, calls, log_records
         self.updated_from = updated_from
-        self.critical_installed = critical
         self.settings = settings
         self.update_checked = False     # the update check ran (once per window)
         self.update = None              # the newer tools version it found (updates.ToolsUpdate)
@@ -1119,7 +1117,7 @@ class MergerWindow:
                            merged=self.merged, merge_error=self.merge_error, progress=self.progress,
                            update=self.update.version if self.update else None,
                            critical=self.critical_update(), update_search=self.update_search,
-                           critical_installed=self.critical_installed, merges_now=self.merges_now)
+                           merges_now=self.merges_now)
         if card == self.card:
             self.enable_buttons(True)
             return
@@ -1638,7 +1636,7 @@ class MergerWindow:
             self.progress = None
             if error is None:
                 try:
-                    self_update.start_helper(root, gui.APP_DIR, tools_version(), self.pids(), update.critical)
+                    self_update.start_helper(root, gui.APP_DIR, tools_version(), self.pids())
                 except SmoothUIError as e:
                     error = e
             if error is not None:
