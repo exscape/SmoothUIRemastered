@@ -267,7 +267,13 @@ from .package import remove_package
 from .scan import PACKAGE_FOLDER, ScreenOff, is_package_folder, scan
 from .screens import group_name, screen_label
 from .shortcut import create_shortcut, desktop_folder
-from .state import FileState, State, carried_force, changed_since_off
+from .state import (
+    FileState,
+    State,
+    carried_force,
+    changed_since_off,
+    original_frame_rate,
+)
 
 log = logging.getLogger(__name__)
 
@@ -1315,12 +1321,33 @@ class MergerWindow:
             discard(self.details.pop(path)[0])
             self.rows[path][1][4].setText("▸")
 
+    def original_fps(self, paths) -> float | None:
+        """The frame rate in the headers of the mods' copies of these files, which the game uses when they
+        aren't merged; None if they differ, or it can't be told (then the texts just don't say it)"""
+        import struct
+        import zlib
+
+        from ..witcher3.redswf import swf_fps
+        scan = self.found.scan
+        rates = set()
+        for path in paths:
+            copy = scan.off_copies.get(path) or scan.files[path].winner
+            shown = scan.files[path].loaded_without_package
+            if copy is None or shown is None or shown.folder != copy.origin:
+                return None
+            try:
+                rates.add(swf_fps(copy.read()))
+            except (OSError, ValueError, struct.error, zlib.error, SmoothUIError) as e:     # only a detail in a text
+                log.warning(f"The frame rate of {screen_label(path)} can't be read: {e}")
+                return None
+        return rates.pop() if len(rates) == 1 else None
+
     def show_details(self, path):
         """Below a screen's row: its file name, the full message, the other mods that change it, and Patch
         anyway (a screen left out for its rescale's problems or known not to work, never for a failure; the
         latter asks first) or its revert. For a group's row, both take every file of it left out so (or
         forced): the group is merged whole or not at all, so forcing or reverting only some of them would
-        leave the others' choice to no effect. And Don't merge for a screen left out (see dont_merge), or Turn
+        leave the others' choice to no effect. And Don't merge for a screen merged or left out (see dont_merge), or Turn
         merging on again for one the user chose not to merge."""
         state, cells, row, members = self.rows[path]
         cells[4].setText("▾")
@@ -1329,7 +1356,12 @@ class MergerWindow:
         layout.setContentsMargins(12, 6, 12, 10)
         layout.setSpacing(6)
         layout.addWidget(label(row_label(state, members), tone="muted", wrap=True))
-        layout.addWidget(label(capitalized(state.message) + (":" if state.fixes else ""), wrap=True))
+        off = dont_merge(members, self.found.states)
+        chosen = {self.found.scan.screens_off[file.path] for file in members
+                  if file.cause == "by choice" and file.path in self.found.scan.screens_off}
+        fps = self.original_fps([*(path for path, _ in off), *(choice.path for choice in chosen)])
+        message = state.message.replace(original_frame_rate(state.group), original_frame_rate(state.group, fps))
+        layout.addWidget(label(capitalized(message) + (":" if state.fixes else ""), wrap=True))
         for name in state.fixes:
             layout.addWidget(label(f"•  {fix_text(name)}", wrap=True))
         if not state.group and (also := also_changed(self.found.scan.files[path], state.winner)):
@@ -1357,15 +1389,12 @@ class MergerWindow:
             text = None
         if text:
             actions.append((text, note, command))
-        if off := dont_merge(members, self.found.states):
-            text, note = dont_merge_texts(off, state.group)
+        if off:
+            text, note = dont_merge_texts(off, state.group, fps)
             actions.append((text, note, lambda: self.turn_off(off)))
-        chosen = {self.found.scan.screens_off[file.path] for file in members
-                  if file.cause == "by choice" and file.path in self.found.scan.screens_off}
         if chosen:
             changed = next((self.merges_now[file.path] for file in members if file.path in self.merges_now), None)
-            mods = sorted({choice.mod for choice in chosen}, key=str.lower)
-            actions.append((TURN_ON, turn_on_note(mods, changed), lambda: self.turn_on(chosen)))
+            actions.append((TURN_ON, turn_on_note(changed), lambda: self.turn_on(chosen)))
         widgets = []
         for text, note, command in actions:
             buttons = QHBoxLayout()
@@ -1633,24 +1662,30 @@ class MergerWindow:
     # ---- Merge, remove ----
 
     def turn_off(self, off):
-        """Don't merge these copies of screens ((path, mod)), from today: saved in the settings, then scanned
-        again (the package doesn't hold them, so nothing needs merging)"""
+        """Don't merge these copies of screens ((path, mod)), from today: saved in the settings, then merged
+        if the package holds any of them, else scanned again (nothing needs merging)"""
         chosen = screens_off(self.settings)
         known = {(choice.path, choice.mod.lower()) for choice in chosen}
         today = datetime.date.today().isoformat()
         copies = self.found.scan.files
         reviews, tools = self.found.scan.reviews.sha256, tools_version()
+        paths = {path for path, _ in off}
+        merged = {file.path for file in self.found.states if file.path in paths and file.state == State.UP_TO_DATE}
 
         def choice(path, mod):      # with what it is made with (see state.changed_since_off)
             copy = copies[path].winner if path in copies else None
-            if copy is None or copy.origin.lower() != mod.lower():
+            # A merged copy needs no trial: it merged, so a trial could only say so again
+            if copy is None or copy.origin.lower() != mod.lower() or path in merged:
                 return ScreenOff(path, mod, today)
             return ScreenOff(path, mod, today, copy.size, copy.toc_entry.crc, reviews, tools)
 
         new = tuple(choice(path, mod) for path, mod in off if (path, mod.lower()) not in known)
         if self.save_screens_off((*chosen, *new)):
             log.info(f"Merging turned off for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in off)}")
-            self.rescan()
+            if merged:
+                self.merge(self.stale)
+            else:
+                self.rescan()
 
     def turn_on(self, chosen):
         """Merge these screens again (ScreenOffs the settings hold): dropped from the settings, then merged"""

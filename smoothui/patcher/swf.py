@@ -126,3 +126,11 @@ def swf_get_header_offsets(body: bytearray):
     # This could return first_tag_offset, since fps_offset = first_tag_offset = 4.
     # Not sure which I prefer.
     return fps_offset, first_tag_offset
+
+
+def header_fps(body):
+    """The frame rate in an SWF body's header; None if it can't be read"""
+    fps_offset, _ = swf_get_header_offsets(body)
+    if fps_offset is None:
+        return None
+    return struct.unpack_from("<H", body, fps_offset)[0] / FPS_FIXED_POINT_SCALE

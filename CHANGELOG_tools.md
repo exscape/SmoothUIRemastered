@@ -1,3 +1,12 @@
+# v0.9.5
+* Critical fix: Fix update check for launcher-only users, who never saw any update notices before
+* Fixed: occasional crash on update from the launcher (may happen to some users updating *to* this version, but not in the future)
+* Added: allow disabling merging for screens that merged cleanly, just in case / for troubleshooting; show mod's default frame rate
+ * Improved: warn in Settings when game settings (FPS limiter, frame generation settings) would cause slow-motion menus or HUD
+
+This is marked as a critical update, as that is the only way I can reach some users: older versions hides all non-critical updates when the merger is started by the launcher, which means most users still use the version they first downloaded.  
+After updating, update notices are always shown in the merger if a new version is available, but it never interferes with playing. The launcher still never goes online.
+
 # v0.9.4
 * Changed: "Merge the HUD too" is now called "Smooth HUD".
 * Added: Any FPS: 60 to 240 fps, no longer only Smooth UI's 60 and 120 fps downloads. The merger builds every screen for it from the game's files (Settings > Frame rate). Mod screens that already run at 100+ fps are kept as they are.

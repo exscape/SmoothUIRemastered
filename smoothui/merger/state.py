@@ -225,10 +225,11 @@ def merged_anyway(copy: str, reason: str | None, since: str = "") -> str:
     return f"merged anyway, as you chose{since}: {copy} {WHY.get(reason) or WHY['left out']}, so it may look or behave wrong in places"
 
 
-def original_frame_rate(group: str | None = None) -> str:
+def original_frame_rate(group: str | None = None, fps: float | None = None) -> str:
     """What the game shows for a file that isn't merged, when that is its own copy (the game's or its mod's):
-    said of the whole group for a group's file, so that its files say the same"""
-    return f"The {group_name(group)} runs at its original frame rate." if group else "It runs at its original frame rate."
+    said of the whole group for a group's file, so that its files say the same; fps: that rate, if known"""
+    rate = f" ({fps:g} fps)" if fps else ""
+    return f"{f'The {group_name(group)}' if group else 'It'} runs at its original frame rate{rate}."
 
 
 def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileState]:

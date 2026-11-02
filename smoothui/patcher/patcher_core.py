@@ -28,6 +28,7 @@ from .swf import (
     SWF_HEADER_SIZE,
     SWF_SIGS,
     MalformedSwfError,
+    header_fps,
     swf_get_header_offsets,
     swf_patch,
     valid_versions,
@@ -362,13 +363,6 @@ def rescale_from_game_rate(body, settings, game_rate, shares_classes):
              f"animations are the game's: rescaled from {game_rate:g} fps, so they play at the game's speed")
     result.report["header_fps"] = header
     return result
-
-def header_fps(body):
-    """The frame rate in an SWF body's header; None if it can't be read"""
-    fps_offset, _ = swf_get_header_offsets(body)
-    if fps_offset is None:
-        return None
-    return struct.unpack_from("<H", body, fps_offset)[0] / FPS_FIXED_POINT_SCALE
 
 def patch_fps_in_body(body, new_fps):
     """The method that actually patches the frame rate bytes.

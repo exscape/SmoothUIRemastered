@@ -99,15 +99,14 @@ KNOWN_BROKEN_QUESTION = ("{copies} known not to work with Smooth UI.\n\n"
                          "its details in the list.")
 # On a card that is otherwise fine
 KNOWN_BROKEN = "Left as they are, as they don't work with Smooth UI: {screens}."
-# The user's choice not to merge a mod's copy (in the details of a screen left out), and its revert
+# The user's choice not to merge a mod's copy (in the details of a screen merged or left out), and its revert
 DONT_MERGE = "Don't merge it"
-DONT_MERGE_NOTE = "The game then uses {mod}'s own copy. You can turn merging on again here."
+DONT_MERGE_NOTE = "The game then uses {mod}'s own copy{fps}. You can turn merging on again here."
 DONT_MERGE_MOD = "Don't merge {mod}'s screens"
-DONT_MERGE_MOD_NOTE = "The game then uses {mod}'s own copies. You can turn merging on again here."
+DONT_MERGE_MOD_NOTE = "The game then uses {mod}'s own copies{fps}. You can turn merging on again here."
 # For a group's row (see dont_merge_texts)
-DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files. You can turn merging on again here."
+DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files{fps}. You can turn merging on again here."
 TURN_ON = "Turn merging on again"
-TURN_ON_NOTE = "If {mods} or Smooth UI Tools was updated since, it may merge now."
 TURNED_OFF = "Merging is turned off for: {screens}."
 # Screens that Smooth UI itself leaves out for a mod (a dont-merge line, see mod_reviews.py), by its reason; the
 # last, for a reason from newer tools. {screens}: how many (ALREADY_SMOOTH), or the first few, then how many more
@@ -789,12 +788,11 @@ def game_screens(states: list[FileState], target_fps: int, others: bool) -> str:
     return f"{count}: built for {target_fps} fps from the game's files when you merge."
 
 
-def turn_on_note(mods: list[str], changed: list[str] | None) -> str:
-    """The note by Turn merging on again, for the copies of mods (those the user chose not to merge); changed:
-    what was updated since it was turned off, if a trial found it would merge now (see
-    state.changed_since_off), else None"""
+def turn_on_note(changed: list[str] | None) -> str:
+    """The note by Turn merging on again; changed: what was updated since it was turned off, if a trial found
+    it would merge now (see state.changed_since_off). Without that, none."""
     if not changed:
-        return TURN_ON_NOTE.format(mods=", ".join(mods))
+        return ""
     return MERGES_NOW_NOTE.format(what=_join(changed), was="was" if len(changed) == 1 else "were")
 
 
@@ -806,24 +804,28 @@ def known_broken_question(mods: list[str], screen: str) -> str:
     return KNOWN_BROKEN_QUESTION.format(copies=copies)
 
 
-def dont_merge_texts(off: list[tuple[str, str]], group: str | None) -> tuple[str, str]:
-    """(the button, its note) for a row's Don't merge, which turns off off (see dont_merge); group: the row's"""
+def dont_merge_texts(off: list[tuple[str, str]], group: str | None, fps: float | None = None) -> tuple[str, str]:
+    """(the button, its note) for a row's Don't merge, which turns off off (see dont_merge); group: the row's;
+    fps: the frame rate of those copies, if known"""
     mods = sorted({mod for _, mod in off}, key=str.lower)
+    fps = f" ({fps:g} fps)" if fps else ""
     if group:
         return DONT_MERGE, DONT_MERGE_GROUP_NOTE.format(mods=f"{mods[0]}'s" if len(mods) == 1 else "the mods'",
-                                                        group=group_name(group))
+                                                        group=group_name(group), fps=fps)
     if len(off) > 1:
-        return DONT_MERGE_MOD.format(mod=mods[0]), DONT_MERGE_MOD_NOTE.format(mod=mods[0])
-    return DONT_MERGE, DONT_MERGE_NOTE.format(mod=mods[0])
+        return DONT_MERGE_MOD.format(mod=mods[0]), DONT_MERGE_MOD_NOTE.format(mod=mods[0], fps=fps)
+    return DONT_MERGE, DONT_MERGE_NOTE.format(mod=mods[0], fps=fps)
 
 
 def dont_merge(members: list[FileState], states: list[FileState]) -> list[tuple[str, str]]:
-    """What a row's "Don't merge" turns off, as (path, mod): its files that are left out and keep it out (for
-    its rescale's problems, or a failure; not known not to work, which doesn't warn), in mods' copies (not the
-    game's). For a mod that failed, every screen of it (all are left out); in a group's row (members: the row's
-    files), the files that keep the group out. None: the row has no such button."""
-    found = [file for file in members if file.state == State.NOT_HELD and file.cause in ("left out", "failed", "mod failed")
-             and file.winner not in (None, GAME_FILES)]
+    """What a row's "Don't merge" turns off, as (path, mod): its files that are merged, or left out and keeping
+    it out (for its rescale's problems, or a failure; not known not to work, which doesn't warn), in mods' copies
+    (not the game's). For a mod that failed, every screen of it (all are left out); in a group's row (members:
+    the row's files), the files that keep the group out, or all its mods' copies if it's merged. None: the row
+    has no such button."""
+    found = [file for file in members if file.winner not in (None, GAME_FILES) and (
+             file.state == State.UP_TO_DATE
+             or (file.state == State.NOT_HELD and file.cause in ("left out", "failed", "mod failed")))]
     failed = {file.winner.lower() for file in found if file.cause in ("failed", "mod failed")}
     found += [file for file in states if file.state == State.NOT_HELD and file.cause in ("failed", "mod failed")
               and file.winner and file.winner.lower() in failed]
