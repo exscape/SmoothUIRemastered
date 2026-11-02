@@ -119,6 +119,7 @@ from .game import (
     GameFolder,
     Settings,
     find_games,
+    frame_settings,
     game_command,
     game_environment,
     game_folder_of,
@@ -248,6 +249,7 @@ from .gui_texts import (
     known_broken_question,
     left_out,
     merging_status,
+    rate_warnings,
     release_notes,
     row_label,
     row_mods,
@@ -734,16 +736,23 @@ class MergerWindow:
     def shown_rates(self) -> tuple[int, int, int]:
         """What the frame rate section shows: (the menus' rate, the rate in gameplay, the frame generation
         multiplier), as saved. Not saved: the installed build's rate; on the first run, the menus' is the
-        display's refresh rate instead (within FPS_RANGES), and the rate in gameplay that, at most 96 (a safe guess:
-        a HUD built too high plays slowly, one built a little low still looks smooth)."""
+        display's refresh rate or the game's frame rate limit, the lower (within FPS_RANGES), and the rate in
+        gameplay that, at most 96 (a safe guess: a HUD built too high plays slowly, one built a little low still
+        looks smooth) and at most the limit, with the game's frame generation."""
         installed = self.found.scan.installed if self.found else None
         release = installed.fps if installed and installed.usable else None
         hz = refresh_rate() if self.settings is None else None
+        frames = frame_settings() if self.settings is None else None
+        cap = frames.cap if frames else None
+        first_run = min(filter(None, (hz, cap)), default=None)
         lowest, highest = FPS_RANGES["target_fps"]
-        menus = (self.settings and self.settings.target_fps) or (hz and min(max(hz, lowest), highest)) or release or 120
+        menus = ((self.settings and self.settings.target_fps) or (first_run and min(max(first_run, lowest), highest))
+                 or release or 120)
         if self.settings and self.settings.hud_game_fps:
             return menus, self.settings.hud_game_fps, self.settings.hud_fg
-        return menus, (self.settings and release) or min(menus, 96), 1
+        if self.settings:
+            return menus, release or min(menus, 96), 1
+        return menus, min(menus, 96, cap or 96), min(frames.fg, FG_MULTIPLIERS[-1]) if frames else 1
 
     def make_help(self):
         """The help page: the versions, how to set the tools up, reporting a bug, the data folder, the licenses"""
@@ -1886,12 +1895,15 @@ class RateSection:
         self.on_change = on_change
         self.unset = None
         self.shown = None
+        self.frames = None
         self.menus = self.spin_box()
         self.menus.valueChanged.connect(self.changed)
         self.display = label(wrap=True)
         self.display_text = ""
         layout.addLayout(self.row((MENU_FPS, self.menus)))
         layout.addWidget(self.display)
+        self.menus_warning = label(tone=WARNING, wrap=True)
+        layout.addWidget(self.menus_warning)
         layout.addSpacing(10)
         self.hud_box = QCheckBox(SMOOTH_HUD.replace("&", "&&"))
         self.hud_box.toggled.connect(self.changed)
@@ -1906,6 +1918,8 @@ class RateSection:
         layout.addWidget(self.hud_note)
         self.advice = label(wrap=True)
         layout.addWidget(self.advice)
+        self.hud_warning = label(tone=WARNING, wrap=True)
+        layout.addWidget(self.hud_warning)
         layout.addSpacing(10)
         layout.addWidget(label(FPS_UNSURE, tone="muted", wrap=True))
         layout.addWidget(QLabel(f'<a href="{TOOLS_README_URL}#frame-rates">{FPS_LINK}</a>', openExternalLinks=True))
@@ -1932,6 +1946,7 @@ class RateSection:
     def show(self, menus, game_fps, fg, smooth_hud, unset=None):
         """Show these values (see MergerWindow.shown_rates). unset: the saved (target_fps, hud_game_fps), to
         keep each unset (None: the installed build's rate) while its values stay as shown (see values)"""
+        self.frames = frame_settings()
         self.menus.setValue(menus)
         self.game_fps.setValue(game_fps)
         self.fg.setCurrentIndex(FG_MULTIPLIERS.index(fg))
@@ -1949,9 +1964,13 @@ class RateSection:
         on = self.hud_box.isChecked()
         for widget in (self.game_fps, self.fg, self.hud_note, self.advice):
             widget.setEnabled(on)
-        tone, text = hud_advice(self.game_fps.value(), self.fg_value())
+        tone, text = hud_advice(self.game_fps.value(), self.fg_value(), self.frames and self.frames.cap)
         self.advice.setText(text)
         set_tone(self.advice, tone if on and tone != NEUTRAL else "muted")
+        warnings = rate_warnings(self.frames, self.menus.value(), on, self.game_fps.value(), self.fg_value())
+        for widget, text in zip((self.menus_warning, self.hud_warning), warnings):
+            widget.setText(text)
+            widget.setVisible(bool(text))
         self.on_change()
 
     def valid(self) -> bool:

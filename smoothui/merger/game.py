@@ -22,11 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-from ..common import fail, to_native, to_windows
+from ..common import SmoothUIError, fail, to_native, to_windows
 from ..files import make_dirs, read_file, write_file
 from ..paths import APP_DIR, DATA_DIR
 from ..windows import module_loaded
-from ..witcher3.user_files import mods_settings_path
+from ..witcher3.user_files import FrameSettings, mods_settings_path, read_frame_settings
 from .scan import ScreenOff
 
 GAME_PATH_ENV = "SMOOTHUI_GAME_PATH"
@@ -405,6 +405,15 @@ def mods_settings() -> Path:
     if os.environ.get(MODS_SETTINGS_ENV):
         return to_native(os.environ[MODS_SETTINGS_ENV])
     return mods_settings_path()
+
+
+def frame_settings() -> FrameSettings | None:
+    """The game's frame rate cap and frame generation, from the folder of mods.settings; None if unknown"""
+    try:
+        return read_frame_settings(mods_settings().parent)
+    except SmoothUIError as e:
+        log.warning(f"The game's frame rate settings can't be read: {e}")
+        return None
 
 
 class GameCommand(NamedTuple):

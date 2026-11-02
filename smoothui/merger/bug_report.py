@@ -25,7 +25,7 @@ from ..files import make_dirs, read_file, write_file
 from ..manifests import load_manifest, release_manifest_paths
 from ..paths import FROZEN
 from . import tools_version
-from .game import MODS_SETTINGS_BACKUP, SETTINGS_FILE
+from .game import MODS_SETTINGS_BACKUP, SETTINGS_FILE, frame_settings
 from .package import PACKAGE_MANIFEST, RECORDS
 from .scan import PACKAGE_FOLDER
 from .state import Check, State
@@ -115,6 +115,7 @@ def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
             lines.append(f"Its release manifest was created at {installed.manifest.get('created_at')}")
         if found.scan.target_fps is not None:
             lines.append(_rates(found))
+    lines.append(_game_rates())
     lines += ["", "Release manifests the merger has:"]
     for release, path in sorted(release_manifest_paths().items()):
         try:
@@ -134,6 +135,14 @@ def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
 
 def _rates(found: Check) -> str:
     return f"Frame rates: menus {found.scan.target_fps} fps, HUD {found.scan.hud_fps} fps"
+
+
+def _game_rates() -> str:
+    frames = frame_settings()
+    if frames is None:
+        return "The game's frame rate settings: can't be read"
+    return (f"The game's frame rate settings: limit {frames.cap or 'none'}, frame generation "
+            + (f"{frames.fg_type} {frames.fg}x" if frames.fg_type else "off"))
 
 
 def _load_order(found: Check) -> list[str]:

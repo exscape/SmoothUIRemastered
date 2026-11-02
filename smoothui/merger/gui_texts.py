@@ -175,6 +175,14 @@ HUD_ADVICE = {
                 "off."),
     "too-high": "HUD: {rendered} fps{generated} is above its {highest} fps maximum: enter less.",
 }
+# In yellow, from the game's own settings (see rate_warnings)
+MENUS_CAPPED = ("The game's frame rate limit is {cap} fps, so menus will play at {speed:.0%} speed. Raise the limit "
+                "in the game's settings, or lower this rate.")
+HUD_CAPPED = ("The game's frame rate limit is {cap} fps, so the HUD will play at about {speed:.0%} speed. Raise the "
+              "limit in the game's settings, or lower \"Frame rate in gameplay\" above.")
+FG_MISMATCH = "{type} Frame Generation seems to be on in the game. If so, set Frame generation here to match."
+# Below this speed, a frame rate limit is worth a warning
+SLOW_SPEED = 0.75
 # The launcher
 LAUNCHER_HEADING = "Starting the game"
 LAUNCHER = "Start the game with SmoothUILauncher.exe: it checks your mods first, and opens the merger if they changed."
@@ -328,14 +336,42 @@ CRITICAL_UPDATE_FOUND = "Smooth UI Tools v{version} is available, a critical upd
 NO_UPDATE = "No newer Smooth UI Tools is out yet."
 
 
-def hud_advice(game_fps: int, fg: int) -> tuple[str, str]:
-    """The tone and text below the HUD's inputs (see game.hud_rate)"""
-    rate, speed, level = hud_rate(game_fps, fg)
+def hud_speed(game_fps: int, fg: int, cap: int | None) -> float:
+    """The speed the HUD built for this rate in gameplay and multiplier plays at, under the game's frame rate
+    limit (cap, None: none; it limits the frames shown, so frame generation divides it too)"""
+    return min(round(min(game_fps, cap or game_fps) / fg) / hud_rate(game_fps, fg)[0], 1.0)
+
+
+def hud_advice(game_fps: int, fg: int, cap: int | None = None) -> tuple[str, str]:
+    """The tone and text below the HUD's inputs (see game.hud_rate; cap: see hud_speed). The limit changes the
+    speed it plays at, not what it's built for or how well that works."""
+    rate, _, level = hud_rate(game_fps, fg)
     tone = {"ok": NEUTRAL, "slowed": WARNING, "too-high": ERROR, "too-low": ERROR}[level]
-    rendered = round(game_fps / fg)
-    generated = f" ({game_fps} ÷ {fg}x frame generation)" if fg > 1 else ""
-    return tone, HUD_ADVICE[level].format(rate=rate, rendered=rendered, speed=speed, generated=generated,
+    limited = level == "slowed" and cap and cap < game_fps
+    shown = f"the game's {cap} fps limit" if limited else game_fps
+    rendered = round(min(game_fps, cap) / fg) if limited else round(game_fps / fg)
+    generated = f" ({shown} ÷ {fg}x frame generation)" if fg > 1 else f" ({shown})" if limited else ""
+    return tone, HUD_ADVICE[level].format(rate=rate, rendered=rendered, speed=hud_speed(game_fps, fg, cap),
+                                          generated=generated,
                                           lowest=HUD_LOWEST, highest=FPS_RANGES["hud_fps"][1])
+
+
+def rate_warnings(frames, menus: int, smooth_hud: bool, game_fps: int, fg: int) -> tuple[str, str]:
+    """The warnings for the menus and for the HUD ("": none) about the rates shown, given the game's settings
+    (frames: a user_files.FrameSettings; None: unknown)."""
+    if frames is None:
+        return "", ""
+    menus_text, hud_texts = "", []
+    if frames.cap:
+        if frames.cap / menus < SLOW_SPEED:
+            menus_text = MENUS_CAPPED.format(cap=frames.cap, speed=frames.cap / menus)
+        speed = hud_speed(game_fps, fg, frames.cap)
+        # (A HUD at its minimum rate: hud_advice's line already says all this)
+        if smooth_hud and frames.cap < game_fps and speed < SLOW_SPEED and hud_rate(game_fps, fg)[2] != "slowed":
+            hud_texts.append(HUD_CAPPED.format(cap=frames.cap, speed=speed))
+    if smooth_hud and frames.fg_type and fg == 1:
+        hud_texts.append(FG_MISMATCH.format(type=frames.fg_type))
+    return menus_text, "\n".join(hud_texts)
 
 
 def rates_text(target_fps, hud_fps) -> str:

@@ -123,7 +123,8 @@ The launcher is optional, but recommended: without it, nothing tells you when yo
 ## Frame rates
 
 Smooth UI's downloads run at 60 or 120 fps. With the tools, you can use any rate from 60 to 240 fps: the merger builds every screen for it from the game's files. You set the rates on the first run's page, or under Settings.  
-For new users, the default menu frame rate is set to your primary monitor's refresh rate. Change this if you play on a different monitor, or use a frame rate cap.
+For new users, the defaults come from your primary monitor's refresh rate and the game's frame rate limit and frame generation settings. Change them if you play on a different monitor, or use a cap outside the game (RTSS, your graphics driver).  
+Both pages warn you if the game's frame rate limit would make screens play below 75% speed, or if the game seems to use frame generation while the HUD's is set to Off.
 
 ### Menus
 
