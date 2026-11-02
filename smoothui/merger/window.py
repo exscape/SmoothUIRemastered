@@ -25,8 +25,11 @@ while the game runs.
 With --stale, the launcher opened it before starting the game. The window is the same, but it comes to the
 front, the card offers Merge and play, Play without merging (worded by what that costs, state.Severity) and
 Don't start the game, and a clean Merge and play exits at once (play). Only a button that says play starts the
-game: a row's buttons merge and stay open, and closing the window doesn't start it. While a merge runs, closing
+game: closing the window doesn't. While a merge runs, closing
 takes a warning, as the package, which may be half written, is then deleted.
+
+A row's buttons merge nothing: they mark a change (MergerWindow.changes), and the card's Merge applies them all
+in one merge. Closing the window forgets them.
 
 After the first scan, the update check (gui.find_updates) runs in a thread. A newer version of the tools
 shows as a wide button in place of the title, so that nothing moves when it appears: it opens the What's new
@@ -49,6 +52,7 @@ import traceback
 import webbrowser
 from dataclasses import replace
 from pathlib import Path
+from typing import NamedTuple
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import (
@@ -202,10 +206,6 @@ from .gui_texts import (
     REMOVE_TITLE,
     REPORT_COPIED,
     REPORT_LINK,
-    REVERT,
-    REVERT_GROUP,
-    REVERT_GROUP_NOTE,
-    REVERT_NOTE,
     SAVE,
     SAVE_ZIP,
     SCREENS_HEADING,
@@ -222,7 +222,10 @@ from .gui_texts import (
     STOP_MERGE,
     STOP_MERGE_TITLE,
     TITLE,
+    TO_OWN_COPY,
+    TO_SMOOTH,
     TURN_ON,
+    UNDO,
     UNKNOWN_FILES,
     UPDATE,
     UPDATE_AVAILABLE,
@@ -266,7 +269,7 @@ from .gui_texts import (
 from .installed import Status
 from .package import remove_package
 from .scan import PACKAGE_FOLDER, ScreenOff, is_package_folder, scan
-from .screens import group_name, screen_label
+from .screens import screen_label
 from .shortcut import create_shortcut, desktop_folder
 from .state import (
     FileState,
@@ -458,6 +461,14 @@ class Clickable(QLabel):
             self.on_click()
 
 
+class Change(NamedTuple):
+    """A row's change, until the next merge applies it"""
+    off: tuple = ()         # the copies not to merge any more: (path, mod)
+    on: tuple = ()          # those to merge again: (path, mod)
+    anyway: tuple = ()      # the left-out files to merge anyway
+    revert: tuple = ()      # the forced files of off, not to force any more
+
+
 class Root(QWidget):
     """The top-level window: its close button and first paint go to the MergerWindow"""
     def __init__(self, owner: MergerWindow):
@@ -493,6 +504,7 @@ class MergerWindow:
         # What status_card shows (see there)
         self.found = None
         self.scan_error = None
+        self.changes = {}       # what the rows' buttons chose, for the next merge: {row's path: Change}
         self.merges_now = {}    # the files the user chose not to merge that would merge now: {path: what changed}
         self.pool_started = False   # whether start_first_pool ran
         self.merged = None
@@ -973,6 +985,7 @@ class MergerWindow:
         self.game = game
         self.found = self.scan_error = self.merged = self.merge_error = None
         self.keep_order = False
+        self.changes = {}
         if self.busy == "scan":
             self.scan_again = True
             self.refresh()
@@ -1115,7 +1128,7 @@ class MergerWindow:
                            merged=self.merged, merge_error=self.merge_error, progress=self.progress,
                            update=self.update.version if self.update else None,
                            critical=self.critical_update(), update_search=self.update_search,
-                           merges_now=self.merges_now)
+                           merges_now=self.merges_now, changes=len(self.changes))
         if card == self.card:
             self.enable_buttons(True)
             return
@@ -1201,8 +1214,9 @@ class MergerWindow:
         """What the card's buttons do, by action (see gui_texts.Card); a button whose action isn't here
         isn't shown"""
         return {
-            "merge": self.merge,
-            "merge_and_play": lambda: self.merge(play=True),
+            "merge": self.merge_changes,
+            "merge_and_play": lambda: self.merge_changes(play=True),
+            "undo_changes": self.undo_changes,
             "merge_anyway": self.merge_anyway,
             "merge_anyway_and_play": lambda: self.merge_anyway(play=True),
             "play": (lambda: self.exit(PLAY)) if self.stale else self.play,
@@ -1233,7 +1247,7 @@ class MergerWindow:
         others = len(states) - len(rebuilt) - sum(len(members) for _, members in shown)
         notes = self.notes() if self.found else []
         content = ([(row, [(state, self.found.scan.files[state.path].shippers) for state in members])
-                    for row, members in shown], others, notes, rebuilt)
+                    for row, members in shown], others, notes, rebuilt, tuple(self.changes))
         merging, self.rows_merging = self.rows_merging, False
         if content == self.list_content and not merging:
             return
@@ -1286,6 +1300,8 @@ class MergerWindow:
         """A screen's row (or a group's: see screen_rows): its glyph, name, mod and status; a click shows its
         details, in the grid row below it, kept for them"""
         tone, status = row_status(state)
+        if change := self.changes.get(state.path):
+            tone, status = INFO, TO_OWN_COPY if change.off else TO_SMOOTH
         toggle = lambda: self.toggle_row(state.path)
         cells = [glyph(tone, on_click=toggle), label(row_name(state), on_click=toggle),
                  label(row_mods(state), tone="muted", on_click=toggle), label(status, on_click=toggle),
@@ -1319,12 +1335,13 @@ class MergerWindow:
             self.rows[path][1][4].setText("▸")
 
     def show_details(self, path):
-        """Below a screen's row: its file name, the full message, the other mods that change it, and Patch
-        anyway (a screen left out for its rescale's problems or known not to work, never for a failure; the
-        latter asks first) or its revert. For a group's row, both take every file of it left out so (or
-        forced): the group is merged whole or not at all, so forcing or reverting only some of them would
-        leave the others' choice to no effect. And Don't merge for a screen merged or left out (see dont_merge), or Turn
-        merging on again for one the user chose not to merge."""
+        """Below a screen's row: its file name, the full message, the other mods that change it, and its
+        buttons, which mark a change (Undo, once it has one): Use the smooth version anyway (a screen left out for
+        its rescale's problems or known not to work, never for a failure; the latter asks first). For a group's
+        row, it takes every file of it left out so: the group is merged whole or not at all, so forcing only some
+        of them would leave the others' choice to no effect. Use the mod's own copy for a screen merged or left
+        out (see dont_merge), which also stops forcing it; Use the smooth version for one the user chose not to
+        merge."""
         state, cells, row, members = self.rows[path]
         cells[4].setText("▾")
         frame = QFrame(objectName="details")
@@ -1346,29 +1363,29 @@ class MergerWindow:
         forced = [file.path for file in members if file.state == State.UP_TO_DATE and file.cause == "forced"]
         # A group with a file that can't be merged at all stays left out, forced or not
         failed = any(file.state == State.NOT_HELD and file.cause in ("failed", "mod failed") for file in members)
-        if left and not failed and known_broken:
+        if path in self.changes:
+            text, note, command = UNDO, "", lambda: self.undo_change(path)
+        elif left and not failed and known_broken:
             text, note = PATCH_ANYWAY, KNOWN_BROKEN_ANYWAY_NOTE
             question = known_broken_question(sorted({file.winner for file in members if file.state == State.NOT_HELD
                                                      and file.cause == "known broken"}, key=str.lower), row_name(state))
-            command = lambda: ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question, warning=True) and self.merge(
-                patch_anyway=left)
+            command = lambda: ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question, warning=True) and self.mark_change(
+                path, Change(anyway=tuple(left)))
         elif left and not failed:
             text, note = PATCH_ANYWAY, anyway_texts([file.reason for file in members if file.path in left])[0]
-            command = lambda: self.merge(patch_anyway=left)
-        elif forced:
-            text, note = ((REVERT_GROUP, REVERT_GROUP_NOTE.format(group=group_name(state.group))) if state.group
-                          else (REVERT, REVERT_NOTE.format(mod=state.winner)))
-            command = lambda: self.merge(revert=forced)
+            command = lambda: self.mark_change(path, Change(anyway=tuple(left)))
         else:
             text = None
         if text:
             actions.append((text, note, command))
-        if off:
+        if off and path not in self.changes:
             text, note = dont_merge_texts(off, state.group)
-            actions.append((text, note, lambda: self.turn_off(off)))
-        if chosen:
+            actions.append((text, note, lambda: self.turn_off(path, off, forced)))
+        if chosen and path not in self.changes:
             changed = next((self.merges_now[file.path] for file in members if file.path in self.merges_now), None)
-            actions.append((TURN_ON, turn_on_note(changed), lambda: self.turn_on(chosen)))
+            note = turn_on_note(changed, sorted({choice.mod for choice in chosen}, key=str.lower))
+            on = tuple(sorted((choice.path, choice.mod) for choice in chosen))
+            actions.append((TURN_ON, note, lambda: self.mark_change(path, Change(on=on))))
         widgets = []
         for text, note, command in actions:
             buttons = QHBoxLayout()
@@ -1444,6 +1461,7 @@ class MergerWindow:
             for problem in self.found.scan.problems:
                 log.warning(problem.message)
         self.merges_now = {}
+        self.keep_changes()
         self.try_merging()
         self.refresh()
         if self.play_when_scanned:
@@ -1635,10 +1653,49 @@ class MergerWindow:
 
     # ---- Merge, remove ----
 
-    def turn_off(self, off):
-        """Don't merge these copies of screens ((path, mod)), from today: saved in the settings, then merged
-        if the package holds any of them, else scanned again (nothing needs merging)"""
-        chosen = screens_off(self.settings)
+    def mark_change(self, path, change):
+        """A row's button: the card's Merge applies it, with the others"""
+        self.changes[path] = change
+        self.refresh()
+
+    def undo_change(self, path):
+        del self.changes[path]
+        self.refresh()
+
+    def undo_changes(self):
+        self.changes = {}
+        self.refresh()
+
+    def keep_changes(self):
+        """After a scan: forget the changes that no longer apply (e.g. that mod is gone)"""
+        if not self.changes:
+            return
+        if self.found is None or not self.found.scan.installed.usable:
+            self.changes = {}
+            return
+        states = {file.path: file for file in self.found.states}
+
+        def applies(change):
+            return (all(path in states and (states[path].winner or "").lower() == mod.lower() for path, mod in change.off)
+                    and all(path in self.found.scan.screens_off for path, _ in change.on)
+                    and all(path in states and states[path].state == State.NOT_HELD
+                            and states[path].cause in ("left out", "known broken") for path in change.anyway))
+        self.changes = {path: change for path, change in self.changes.items() if applies(change)}
+
+    def turn_off(self, row, off, forced):
+        """Use a mod's own copy of a row's screens (off: (path, mod)): a change if the package holds any of them,
+        else saved at once and scanned again (nothing needs merging)"""
+        paths = {path for path, _ in off}
+        if any(file.path in paths and file.state == State.UP_TO_DATE for file in self.found.states):
+            self.mark_change(row, Change(off=tuple(off), revert=tuple(forced)))
+        elif self.save_screens_off((*screens_off(self.settings), *self.new_choices(off))):
+            log.info(f"Merging turned off for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in off)}")
+            self.rescan()
+
+    def new_choices(self, off, chosen=None) -> tuple:
+        """The ScreenOffs of these copies ((path, mod)) from today, but for those already in chosen (default: the
+        settings')"""
+        chosen = screens_off(self.settings) if chosen is None else chosen
         known = {(choice.path, choice.mod.lower()) for choice in chosen}
         today = datetime.date.today().isoformat()
         copies = self.found.scan.files
@@ -1653,20 +1710,23 @@ class MergerWindow:
                 return ScreenOff(path, mod, today)
             return ScreenOff(path, mod, today, copy.size, copy.toc_entry.crc, reviews, tools)
 
-        new = tuple(choice(path, mod) for path, mod in off if (path, mod.lower()) not in known)
-        if self.save_screens_off((*chosen, *new)):
-            log.info(f"Merging turned off for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in off)}")
-            if merged:
-                self.merge()
-            else:
-                self.rescan()
+        return tuple(choice(path, mod) for path, mod in off if (path, mod.lower()) not in known)
 
-    def turn_on(self, chosen):
-        """Merge these screens again (ScreenOffs the settings hold): dropped from the settings, then merged"""
-        if self.save_screens_off(tuple(choice for choice in screens_off(self.settings) if choice not in chosen)):
-            log.info("Merging turned on again for: "
-                     + ", ".join(f"{screen_label(choice.path)} ({choice.mod})" for choice in sorted(chosen)))
-            self.merge()
+    def merge_changes(self, play=False):
+        """The card's Merge: save the changes' choices in the settings, then merge once with all of them"""
+        changes = list(self.changes.values())
+        off = sorted({copy for change in changes for copy in change.off})
+        on = {copy for change in changes for copy in change.on}
+        if off or on:
+            kept = tuple(choice for choice in screens_off(self.settings) if (choice.path, choice.mod) not in on)
+            if not self.save_screens_off((*kept, *self.new_choices(off, kept))):
+                return
+            for text, copies in (("off", off), ("on again", sorted(on))):
+                if copies:
+                    log.info(f"Merging turned {text} for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in copies)}")
+        self.changes = {}
+        self.merge(play, patch_anyway=[path for change in changes for path in change.anyway],
+                   revert=[path for change in changes for path in change.revert])
 
     def save_screens_off(self, chosen) -> bool:
         """Save the settings with these screens not to merge; a failure is said in a message box. (No settings

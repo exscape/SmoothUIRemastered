@@ -221,7 +221,7 @@ def merged_anyway(copy: str, reason: str | None, since: str = "") -> str:
     by its reason (see WHY): code that isn't checked often works, so that is said gently"""
     if reason == "code":
         return (f"merged anyway, as you chose{since}: {copy} {WHY['code']}. If something runs too fast or looks wrong, "
-                "revert it")
+                "use the mod's own copy")
     return f"merged anyway, as you chose{since}: {copy} {WHY.get(reason) or WHY['left out']}, so it may look or behave wrong in places"
 
 

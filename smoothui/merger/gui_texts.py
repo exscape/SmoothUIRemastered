@@ -73,35 +73,38 @@ STOP_MERGE = ("Merging isn't done yet. Closing now stops it halfway, so the merg
               "ones could break the game).\n\nOnly do this if the merger seems stuck.\n\nClose anyway?")
 # The list
 ALSO_CHANGED = "Also changed by {mods}; the game uses {mod}'s copy, which comes first in the load order."
-PATCH_ANYWAY = "Merge anyway"
+PATCH_ANYWAY = "Use the smooth version anyway"
 PATCH_ANYWAY_NOTE = "It may then look or behave wrong in places."
 # The card's button for every screen left out (anyway_button), and its question
-PATCH_ALL_ANYWAY = "Merge all anyway"
-PATCH_ANYWAY_TITLE = "Merge anyway?"
-PATCH_ANYWAY_QUESTION = ("Smooth UI can't fully merge these screens:\n\n{screens}\n\nMerge them anyway? They may then "
-                         "look or behave wrong in places. You can revert each one later, in its details in the list.")
+PATCH_ALL_ANYWAY = "Use the smooth versions anyway"
+PATCH_ANYWAY_TITLE = "Use the smooth version anyway?"
+PATCH_ANYWAY_QUESTION = ("Smooth UI can't fully merge these screens:\n\n{screens}\n\nUse the smooth versions anyway? They "
+                         "may then look or behave wrong in places. You can go back to the mods' own copies later, in "
+                         "each one's details in the list.")
 # The same, for screens left out only for code Smooth UI hasn't been checked with (see anyway_texts)
-PATCH_ANYWAY_CODE_NOTE = "This often works. If something then runs too fast or looks wrong, you can revert it here."
-PATCH_ANYWAY_CODE_QUESTION = ("These screens use code Smooth UI hasn't been checked with yet:\n\n{screens}\n\nMerge them "
-                              "anyway? This often works. If something then runs too fast or looks wrong, you can revert "
-                              "each one in its details in the list.")
+PATCH_ANYWAY_CODE_NOTE = "This often works. If something then runs too fast or looks wrong, you can go back to the mod's own copy here."
+PATCH_ANYWAY_CODE_QUESTION = ("These screens use code Smooth UI hasn't been checked with yet:\n\n{screens}\n\nUse the "
+                              "smooth versions anyway? This often works. If something then runs too fast or looks wrong, "
+                              "you can go back to the mods' own copies in each one's details in the list.")
 # The same, for a screen known not to work (in its details only, never on the card)
 KNOWN_BROKEN_ANYWAY_NOTE = "It is known not to work with Smooth UI, so it will most likely look or behave wrong."
 # {copies}: e.g. "modA's copy of Inventory is" (see known_broken_question)
 KNOWN_BROKEN_QUESTION = ("{copies} known not to work with Smooth UI.\n\n"
-                         "Merge it anyway? It will most likely look or behave wrong. You can revert it later, in "
-                         "its details in the list.")
+                         "Use the smooth version anyway? It will most likely look or behave wrong. You can go back "
+                         "to the mod's own copy later, in its details in the list.")
 # On a card that is otherwise fine
 KNOWN_BROKEN = "Left as they are, as they don't work with Smooth UI: {screens}."
-# The user's choice not to merge a mod's copy (in the details of a screen merged or left out), and its revert
-DONT_MERGE = "Don't merge it"
-DONT_MERGE_NOTE = "The game then uses {mod}'s own copy. You can turn merging on again here."
-DONT_MERGE_MOD = "Don't merge {mod}'s screens"
-DONT_MERGE_MOD_NOTE = "The game then uses {mod}'s own copies. You can turn merging on again here."
+# The user's choice not to merge a mod's copy (in the details of a screen merged or left out), and its reverse
+DONT_MERGE = "Use the mod's own copy"
+DONT_MERGE_NOTE = "The game then uses {mod}'s own copy, at its own frame rate. You can change this here."
+DONT_MERGE_MOD = "Use the mod's own copies"
+DONT_MERGE_MODS = "Use the mods' own copies"
+DONT_MERGE_MOD_NOTE = "The game then uses {mod}'s own copies, at their own frame rate. You can change this here."
 # For a group's row (see dont_merge_texts)
-DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files. You can turn merging on again here."
-TURN_ON = "Turn merging on again"
-TURNED_OFF = "Merging is turned off for: {screens}."
+DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files, at their own frame rate. You can change this here."
+TURN_ON = "Use the smooth version"
+TURN_ON_NOTE = "Keeps {mods} changes, at the higher frame rate."
+TURNED_OFF = "These use the mod's own copy: {screens}."
 # Screens that Smooth UI itself leaves out for a mod (a dont-merge line, see mod_reviews.py), by its reason; the
 # last, for a reason from newer tools. {screens}: how many (ALREADY_SMOOTH), or the first few, then how many more
 ALREADY_SMOOTH = "{screens} from {mod} already {verb} at a high frame rate: not merged."
@@ -110,14 +113,13 @@ SLOW = "{screens} from {mod} {verb} slowly, as {pronoun} made for a higher frame
 LEFT_OUT_FOR = "Not merged, as Smooth UI leaves them out for {mod}: {screens}."
 MAX_RULE_SCREENS = 3
 # The same, for those that a trial found would merge now (see turn_on_note)
-MERGES_NOW = "Turned off, but would now merge: {screens}. You can turn merging on again in its details."
+MERGES_NOW = "These use the mod's own copy, but would now merge: {screens}. You can use the smooth version in their details."
 MERGES_NOW_NOTE = "It would merge now: {what} {was} updated since."
-REVERT = "Revert to the mod's own copy"
-REVERT_NOTE = "The game then shows {mod}'s own copy, at its original frame rate."
-# The same, for a file in a group (e.g. the HUD): reverting one leaves the whole group out
-REVERT_GROUP = "Leave it out again"
-REVERT_GROUP_NOTE = "The {group} is then left out whole: the game shows it unpatched, at its original frame rate."
-# A group's row names its mods (see row_mods) while they fit in this many characters, else counts them
+# A row's change, until the next merge applies it (see MergerWindow.changes)
+TO_SMOOTH = "→ Smooth version"
+TO_OWN_COPY = "→ Mod's own copy"
+UNDO = "Undo"
+# A row names its mods (see row_mods) while they fit in this many characters, else counts or cuts them
 MAX_ROW_MODS = 30
 # A group's row: after the files that keep it out, instead of each file left out with them
 GROUP_LEFT_OUT = "The rest of the {group} is left out too, as it is merged whole or not at all."
@@ -227,7 +229,7 @@ OPEN_LOG_FOLDER = "Open log folder"
 class Card:
     """What the status card shows. A button is (label, action); the first one is the default. Actions:
     merge, merge_and_play, merge_anyway, merge_anyway_and_play, play, abort, remove, remove_and_play, rescan,
-    bug_report, smoothui_page, update.
+    undo_changes, bug_report, smoothui_page, update.
     (The notices also use files_page.)"""
     tone: str
     headline: str
@@ -380,7 +382,7 @@ def smoothui_build(installed, target_fps=None, hud_fps=None) -> str | None:
 def status_card(found: Check | None, *, stale: bool, busy: str | None = None, scan_error: str | None = None,
                 merged: BuildResult | None = None, merge_error: str | None = None,
                 progress: tuple[int, int] | None = None, update: str | None = None, critical: bool = False,
-                update_search: str | None = None, merges_now=()) -> Card:
+                update_search: str | None = None, merges_now=(), changes: int = 0) -> Card:
     """What the status card shows, from the window's state. found: the last check (None until one ends);
     stale: whether the launcher opened the window; busy: what runs in a thread ("scan", "build", "remove" or
     "update"); scan_error: why the last check failed; merged and merge_error: the result of the window's
@@ -388,7 +390,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
     update: a newer Smooth UI Tools version, if one was found (critical: a critical one); update_search: in
     stale mode, LOOKING or NOTHING_FOUND while or after looking for one (None: not looked for, or the check
     failed); merges_now: the files the user chose not to merge that would merge now (see
-    builder.merges_now).
+    builder.merges_now); changes: how many changes the rows' buttons marked, for the next merge.
 
     Outside stale mode, only the cards that are fine to play from have Play, first: up to date, or with
     screens that use their mods' own copies (left out, or merged without some fixes).
@@ -398,7 +400,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
     if busy == "update":
         fraction = progress[0] / progress[1] if progress and progress[1] else None
         return Card(NEUTRAL, DOWNLOADING_UPDATE.format(version=update), busy=True, progress=fraction)
-    card = _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_now)
+    card = _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_now, changes)
     if stale and not busy and found is not None and found.scan.installed.status == Status.UNKNOWN:
         if update:
             found_text = CRITICAL_UPDATE_FOUND if critical else UPDATE_FOUND
@@ -411,7 +413,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
     return card
 
 
-def _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_now=()) -> Card:
+def _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_now=(), changes=0) -> Card:
     if busy == "build":
         return _merging(stale, progress)
     if busy == "remove":
@@ -424,6 +426,10 @@ def _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_
     # Smooth UI can't be used now (by the scan after the merge): merging again would fail, so it isn't offered.
     # (Downloaded manifests or reviews that may change that make the window scan again, without the merge's result.)
     cant_merge = found is not None and not found.scan.installed.usable
+    if changes:
+        headline = f"{_count(changes, 'change')} not applied yet"
+        return Card(INFO, headline, (), (("Merge and play", "merge_and_play") if stale else ("Merge", "merge"),
+                                         ("Undo changes", "undo_changes"), *((DONT_START,) if stale else ())))
     if merge_error is not None:
         sentences = (_sentence(merge_error),)
         if cant_merge:
@@ -639,14 +645,14 @@ def row_status(file: FileState) -> tuple[str, str]:
             return WARNING, "Merged, fixes missing"
         if file.speed:
             return WARNING, "Merged, plays slowly"
-        return OK, "Merged anyway" if cause == "forced" else "Merged"
+        return (INFO, "Merged with warnings") if cause == "forced" else (OK, "Merged")
     if state == State.NOT_HELD and cause == "unchanged":
         if file.speed:
             return WARNING, "Plays slowly"
         return OK, f"Runs at {file.fps:g} fps" if file.fps else "High frame rate"
     if state == State.NOT_HELD:
         return {"known broken": (INFO, "Known not to work"),
-                "by choice": (INFO, "Turned off"),
+                "by choice": (INFO, "Mod's own copy"),
                 "by rule": (INFO, "High frame rate" if file.reason == mod_reviews.ALREADY_SMOOTH else
                             "Known not to work" if file.reason == mod_reviews.KNOWN_BROKEN else "Left out"),
                 "failed": (ERROR, "Can't merge"),
@@ -723,11 +729,11 @@ def row_label(file: FileState, members) -> str:
 
 def row_mods(file: FileState) -> str:
     """The mod a row names in the list (whose copy it uses, or used); for a group's row, its mods (see
-    screen_rows), or if they are too long for the list's column, their count (e.g. 3 HUD mods)"""
+    screen_rows), or if they are too long for the list's column, their count (e.g. 3 HUD mods); a longer name is cut (the details show it whole)"""
     text = file.winner or file.previous or ""
-    if file.group and len(text) > MAX_ROW_MODS:
-        return f"{len(text.split(', '))} {group_name(file.group)} mods"
-    return text
+    if len(text) <= MAX_ROW_MODS:
+        return text
+    return f"{len(text.split(', '))} {group_name(file.group)} mods" if file.group else f"{text[:MAX_ROW_MODS - 1]}…"
 
 
 def merging_status(patched: str | None) -> tuple[str, str]:
@@ -776,11 +782,11 @@ def game_screens(states: list[FileState], target_fps: int, others: bool) -> str:
     return f"{count}: built for {target_fps} fps from the game's files when you merge."
 
 
-def turn_on_note(changed: list[str] | None) -> str:
-    """The note by Turn merging on again; changed: what was updated since it was turned off, if a trial found
-    it would merge now (see state.changed_since_off). Without that, none."""
+def turn_on_note(changed: list[str] | None, mods: list[str]) -> str:
+    """The note by Use the smooth version, for the copies of mods; changed: what was updated since it was
+    turned off, if a trial found it would merge now (see state.changed_since_off)."""
     if not changed:
-        return ""
+        return TURN_ON_NOTE.format(mods=f"{mods[0]}'s" if len(mods) == 1 else "the mods'")
     return MERGES_NOW_NOTE.format(what=_join(changed), was="was" if len(changed) == 1 else "were")
 
 
@@ -796,10 +802,11 @@ def dont_merge_texts(off: list[tuple[str, str]], group: str | None) -> tuple[str
     """(the button, its note) for a row's Don't merge, which turns off off (see dont_merge); group: the row's"""
     mods = sorted({mod for _, mod in off}, key=str.lower)
     if group:
-        return DONT_MERGE, DONT_MERGE_GROUP_NOTE.format(mods=f"{mods[0]}'s" if len(mods) == 1 else "the mods'",
-                                                        group=group_name(group))
+        return (DONT_MERGE_MOD if len(mods) == 1 else DONT_MERGE_MODS,
+                DONT_MERGE_GROUP_NOTE.format(mods=f"{mods[0]}'s" if len(mods) == 1 else "the mods'",
+                                             group=group_name(group)))
     if len(off) > 1:
-        return DONT_MERGE_MOD.format(mod=mods[0]), DONT_MERGE_MOD_NOTE.format(mod=mods[0])
+        return DONT_MERGE_MOD, DONT_MERGE_MOD_NOTE.format(mod=mods[0])
     return DONT_MERGE, DONT_MERGE_NOTE.format(mod=mods[0])
 
 
