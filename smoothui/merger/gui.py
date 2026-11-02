@@ -23,8 +23,7 @@ what is missing, so the card says it is looking.
 
 One merger at a time (two would write the same files): a second one brings the first one's window to the
 front and exits at once, without touching the data folder (rotating the logs would cut the first one's).
-Started by the launcher, it exits with ABORT: the game mustn't start while the user may merge in the
-window that is open.
+Started by the launcher too: the game mustn't start while the user may merge in the window that is open.
 """
 
 from __future__ import annotations
@@ -42,7 +41,7 @@ from pathlib import Path
 
 from ..common import SmoothUIError
 from ..files import check_data_writable, make_dirs, rotate
-from ..launcher import ABORT, CLOSED, PLAY
+from ..launcher import CLOSED, PLAY
 from ..paths import APP_DIR, DATA_DIR, FROZEN
 from ..windows import MB_ICONERROR, bring_to_front, find_window, msg_box, only_instance
 from . import UPDATE_TOKEN_ENV, UPDATE_URL_ENV, self_update, tools_version
@@ -83,7 +82,7 @@ def main() -> int:
     if not only_instance(MUTEX):
         if (hwnd := find_window(TITLE, QT_WINDOW_CLASS)) is not None:
             bring_to_front(hwnd)
-        return ABORT if stale else CLOSED
+        return CLOSED
     if mo2_inside_game():
         msg_box(MO2_INSIDE_GAME[stale].format(folder=APP_DIR), MB_ICONERROR)
         return PLAY if stale else 1

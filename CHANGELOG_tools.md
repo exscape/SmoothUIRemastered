@@ -6,6 +6,7 @@ If the update fails: close the errors (likely two of them; the game starts anywa
 * Fixed: occasional crash on update from the launcher, see above
 * Added: allow disabling merging for screens that merged cleanly, just in case / for troubleshooting; show mod's default frame rate
 * Improved: warn in Settings when game settings (FPS limiter, frame generation settings) would cause slow-motion menus or HUD
+* Changed: if the launcher starts the merger, the game only starts when you click a button that contains "play" (e.g. "Merge and play"); not if you close the window, click "Don't merge", etc.
 
 This is marked as a critical update, as that is the only way I can reach some users: all older versions hide all non-critical updates when started by the launcher, which means most users still use the version they first downloaded.
 

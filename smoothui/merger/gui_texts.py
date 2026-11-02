@@ -69,14 +69,8 @@ REMOVE_TITLE = "Remove the merged patches?"
 REMOVE_QUESTION = "Remove the merged patches from your Mods folder? Their mods.settings entry stays."
 REMOVE_FAILED = "The merged patches can't be removed: {error}"
 STOP_MERGE_TITLE = "Stop merging?"
-# By stale mode (the game starts once the window closes)
-STOP_MERGE = {
-    False: ("Merging isn't done yet. Closing now stops it halfway, so the merged patches are deleted (half-written "
-            "ones could break the game).\n\nOnly do this if the merger seems stuck.\n\nClose anyway?"),
-    True: ("Merging isn't done yet. Closing now stops it halfway, so the merged patches are deleted (half-written "
-           "ones could break the game), and the game starts without them.\n\nOnly do this if the merger seems "
-           "stuck.\n\nClose anyway?"),
-}
+STOP_MERGE = ("Merging isn't done yet. Closing now stops it halfway, so the merged patches are deleted (half-written "
+              "ones could break the game).\n\nOnly do this if the merger seems stuck.\n\nClose anyway?")
 # The list
 ALSO_CHANGED = "Also changed by {mods}; the game uses {mod}'s copy, which comes first in the load order."
 PATCH_ANYWAY = "Merge anyway"
@@ -438,7 +432,7 @@ def _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_
             buttons = (PLAY_ANYWAY, DONT_START) if stale else (RESCAN, (WRITE_BUG_REPORT, "bug_report"))
         elif stale:
             play = PLAY_WITHOUT_MERGING[found.severity] if found and found.severity else "Play without merging"
-            buttons = (("Merge again", "merge_and_play"), (play, "play"), DONT_START)
+            buttons = (("Merge again and play", "merge_and_play"), (play, "play"), DONT_START)
         else:
             buttons = (("Merge again", "merge"), (WRITE_BUG_REPORT, "bug_report"))
         return Card(ERROR, "Merging failed", sentences, buttons)

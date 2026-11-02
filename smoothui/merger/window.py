@@ -24,9 +24,9 @@ while the game runs.
 
 With --stale, the launcher opened it before starting the game. The window is the same, but it comes to the
 front, the card offers Merge and play, Play without merging (worded by what that costs, state.Severity) and
-Don't start the game, and a clean merge exits at once (play). Closing the window means play; while a merge
-runs, only after a warning: the package, which may be half written, is then deleted, and the game starts
-without it.
+Don't start the game, and a clean Merge and play exits at once (play). Only a button that says play starts the
+game: a row's buttons merge and stay open, and closing the window doesn't start it. While a merge runs, closing
+takes a warning, as the package, which may be half written, is then deleted.
 
 After the first scan, the update check (gui.find_updates) runs in a thread. A newer version of the tools
 shows as a wide button in place of the title, so that nothing moves when it appears: it opens the What's new
@@ -90,7 +90,7 @@ from PySide6.QtWidgets import (
 
 from ..common import SmoothUIError, fail
 from ..files import stop_writes, write_file
-from ..launcher import ABORT, CLOSED, LAUNCHER_EXE, PLAY
+from ..launcher import CLOSED, LAUNCHER_EXE, PLAY
 from ..patcher.fixes import fix_consequence, fix_kind
 from ..paths import APP_DIR, FROZEN, REPO_ROOT
 from ..windows import (
@@ -703,8 +703,7 @@ class MergerWindow:
 
     def make_welcome(self):
         """The first run's page: what the merger does, the game folder, the HUD, the launcher. Continue saves
-        the settings. In stale mode, closing the window starts the game without them (the launcher opens the
-        merger again next time)."""
+        the settings; without them, the launcher opens the merger again next time."""
         page, layout = self.make_page()
         self.heading(layout, WELCOME_HEADING, 0, 17)
         layout.addWidget(label(WELCOME.format(folder=PACKAGE_FOLDER), wrap=True))
@@ -1207,7 +1206,7 @@ class MergerWindow:
             "merge_anyway": self.merge_anyway,
             "merge_anyway_and_play": lambda: self.merge_anyway(play=True),
             "play": (lambda: self.exit(PLAY)) if self.stale else self.play,
-            "abort": lambda: self.exit(ABORT),
+            "abort": lambda: self.exit(CLOSED),
             "remove": self.remove,
             "remove_and_play": lambda: self.remove(play=True),
             "rescan": self.rescan,
@@ -1352,14 +1351,14 @@ class MergerWindow:
             question = known_broken_question(sorted({file.winner for file in members if file.state == State.NOT_HELD
                                                      and file.cause == "known broken"}, key=str.lower), row_name(state))
             command = lambda: ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question, warning=True) and self.merge(
-                self.stale, patch_anyway=left)
+                patch_anyway=left)
         elif left and not failed:
             text, note = PATCH_ANYWAY, anyway_texts([file.reason for file in members if file.path in left])[0]
-            command = lambda: self.merge(self.stale, patch_anyway=left)
+            command = lambda: self.merge(patch_anyway=left)
         elif forced:
             text, note = ((REVERT_GROUP, REVERT_GROUP_NOTE.format(group=group_name(state.group))) if state.group
                           else (REVERT, REVERT_NOTE.format(mod=state.winner)))
-            command = lambda: self.merge(self.stale, revert=forced)
+            command = lambda: self.merge(revert=forced)
         else:
             text = None
         if text:
@@ -1658,7 +1657,7 @@ class MergerWindow:
         if self.save_screens_off((*chosen, *new)):
             log.info(f"Merging turned off for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in off)}")
             if merged:
-                self.merge(self.stale)
+                self.merge()
             else:
                 self.rescan()
 
@@ -1667,7 +1666,7 @@ class MergerWindow:
         if self.save_screens_off(tuple(choice for choice in screens_off(self.settings) if choice not in chosen)):
             log.info("Merging turned on again for: "
                      + ", ".join(f"{screen_label(choice.path)} ({choice.mod})" for choice in sorted(chosen)))
-            self.merge(self.stale)
+            self.merge()
 
     def save_screens_off(self, chosen) -> bool:
         """Save the settings with these screens not to merge; a failure is said in a message box. (No settings
@@ -1833,9 +1832,9 @@ class MergerWindow:
     def close(self):
         """The window's close button"""
         if self.busy == "build":
-            if not ask_yes_no(self.root, STOP_MERGE_TITLE, STOP_MERGE[self.stale], warning=True):
+            if not ask_yes_no(self.root, STOP_MERGE_TITLE, STOP_MERGE, warning=True):
                 return
-            log.warning("Closed while merging: deleting the package" + ("; the game starts" if self.stale else ""))
+            log.warning("Closed while merging: deleting the package")
             from ..parallel import kill_workers
             self.closing = True
             if self.pool is not None:
@@ -1844,7 +1843,7 @@ class MergerWindow:
             if self.pool is not None:   # again: the build's thread may have started new ones just before
                 kill_workers(self.pool)
             logging.shutdown()
-            os._exit(PLAY if self.stale else CLOSED)    # without waiting for the build's thread or the pool
+            end_process(CLOSED)     # without waiting for the build's thread or the pool
         self.exit(CLOSED)
 
     def delete_package_now(self):

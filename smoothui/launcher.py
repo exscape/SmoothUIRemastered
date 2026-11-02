@@ -41,11 +41,10 @@ LOG_FILE = "launcher.log"
 MERGER_EXE = "SmoothUIMerger.exe"
 LAUNCHER_EXE = "SmoothUILauncher.exe"
 
-# The merger's exit codes when the launcher opened it (--stale). 0 means its window was closed: the user
-# wants to play. Anything else means it crashed (an unhandled exception, or ended in Task Manager, gives 1).
+# The merger's exit codes when the launcher opened it (--stale). Only PLAY starts the game: a button that says
+# so. Any other code means it crashed (an unhandled exception, or ended in Task Manager, gives 1).
 PLAY = 10
-CLOSED = 0
-ABORT = 11
+CLOSED = 0          # its window was closed, or Don't start the game
 UPDATING = 12       # it is updating itself: don't start the game
 
 DETAILS = r"Details are in data\launcher.log."
@@ -195,11 +194,11 @@ def open_merger(log: Log) -> bool:
         text = log.failure("The merger can't be started", e)
         msg_box(f"Smooth UI Merger can't be started:\n\n{text}\n\nThe game starts anyway. {DETAILS}")
         return True
-    if code in (PLAY, CLOSED):
-        log(f"The merger says: play{' (its window was closed)' if code == CLOSED else ''}")
+    if code == PLAY:
+        log("The merger says: play")
         return True
-    if code in (ABORT, UPDATING):
-        log(f"The merger says: don't start the game ({'aborted' if code == ABORT else 'updating'})")
+    if code in (CLOSED, UPDATING):
+        log(f"The merger says: don't start the game ({'closed' if code == CLOSED else 'updating'})")
         return False
     log(f"The merger stopped unexpectedly (exit code {code})", "ERROR")
     msg_box(f"Smooth UI's merger stopped unexpectedly (exit code {code}).\n\nThe game starts anyway. {DETAILS}")
