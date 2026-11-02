@@ -49,6 +49,18 @@ def ms_since_process_start() -> float | None:
     return (now.value - created.value) / 10_000     # FILETIME ticks are 100 ns
 
 
+def end_process(code: int):
+    """End this process at once with this exit code, without the DLLs' shutdown (Qt's and Python's crashed
+    the merger now and then, so that the launcher saw a crash instead of the code). Elsewhere: os._exit"""
+    try:
+        kernel32 = ctypes.windll.kernel32
+    except AttributeError:
+        import os
+        os._exit(code)
+    kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+    kernel32.TerminateProcess(ctypes.c_void_p(kernel32.GetCurrentProcess()), code)
+
+
 def only_instance(name: str) -> bool:
     """Whether no other process holds the named mutex name. This one holds it from now on, until it ends
     (Windows then releases it, however it ends). True if Windows can't tell, and outside Windows."""

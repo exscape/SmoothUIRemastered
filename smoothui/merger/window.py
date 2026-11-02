@@ -95,6 +95,7 @@ from ..patcher.fixes import fix_consequence, fix_kind
 from ..paths import APP_DIR, FROZEN, REPO_ROOT
 from ..windows import (
     MB_ICONERROR,
+    end_process,
     ms_since_process_start,
     msg_box,
     refresh_rate,
@@ -1865,7 +1866,8 @@ class MergerWindow:
         if self.pool is not None:
             self.pool.shutdown(wait=False, cancel_futures=True)
         self.root.hide()
-        QApplication.exit(code)
+        logging.shutdown()
+        end_process(code)
 
     def callback_failed(self, kind, error, tb):
         """sys.excepthook: an exception in a slot (Qt would only print it)"""
