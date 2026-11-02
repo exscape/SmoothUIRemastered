@@ -427,25 +427,33 @@ def _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_
     # Smooth UI can't be used now (by the scan after the merge): merging again would fail, so it isn't offered.
     # (Downloaded manifests or reviews that may change that make the window scan again, without the merge's result.)
     cant_merge = found is not None and not found.scan.installed.usable
-    if changes:
-        headline = f"{_count(changes, 'change')} not applied yet"
-        return Card(INFO, headline, (), (("Merge and play", "merge_and_play") if stale else ("Merge", "merge"),
-                                         ("Undo changes", "undo_changes"), *((DONT_START,) if stale else ())))
-    if merge_error is not None:
+    if merge_error is not None:     # (Before the changes, which a failed merge keeps: its Merge again applies them)
         sentences = (_sentence(merge_error),)
         if cant_merge:
             installed = _sentence(found.scan.installed.message)
             sentences += (installed,) if installed.rstrip(".").lower() not in merge_error.lower() else ()
             buttons = (PLAY_ANYWAY, DONT_START) if stale else (RESCAN, (WRITE_BUG_REPORT, "bug_report"))
         elif stale:
-            play = PLAY_WITHOUT_MERGING[found.severity] if found and found.severity else "Play without merging"
-            buttons = (("Merge again and play", "merge_and_play"), (play, "play"), DONT_START)
+            buttons = (("Merge again and play", "merge_and_play"), (_play_without_merging(found), "play"), DONT_START)
         else:
             buttons = (("Merge again", "merge"), (WRITE_BUG_REPORT, "bug_report"))
         return Card(ERROR, "Merging failed", sentences, buttons)
+    if changes:
+        headline = f"{_count(changes, 'change')} not applied yet"
+        return Card(INFO, headline, (), (("Merge and play", "merge_and_play") if stale else ("Merge", "merge"),
+                                         ("Undo changes", "undo_changes"), *((DONT_START,) if stale else ())))
     if merged is not None:
         return _merged(merged, stale, cant_merge)
     return _checked(found, stale, merges_now)
+
+
+def _play_without_merging(found: Check | None) -> str:
+    """The button that plays without merging, by what that costs. Where a merge would replace Smooth UI's copy with a
+    mod's, that mod's changes are missing, which can break it: the card stays as it is, but the button says so."""
+    if not (found and found.severity):
+        return "Play without merging"
+    hides_mod = any(file.severity is not None and found.scan.files[file.path].hides_mod for file in found.states)
+    return PLAY_WITHOUT_MERGING[Severity.HIGH if hides_mod else found.severity]
 
 
 def _merging(stale, progress):
@@ -565,7 +573,7 @@ def _checked(found: Check, stale, merges_now=()):
             return Card(WARNING, "Another mod loads before the merged patches", _sentences(causes, [fix]),
                         (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
         severity = found.severity
-        buttons = ((("Merge and play", "merge_and_play"), (PLAY_WITHOUT_MERGING[severity], "play"), DONT_START) if stale
+        buttons = ((("Merge and play", "merge_and_play"), (_play_without_merging(found), "play"), DONT_START) if stale
                    else (("Merge", "merge"), RESCAN))
         return Card(TONES[severity], HEADLINES[severity], _sentences(causes, [COST[severity]] if severity in COST else []),
                     buttons)

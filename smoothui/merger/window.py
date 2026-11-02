@@ -29,7 +29,7 @@ game: closing the window doesn't. While a merge runs, closing
 takes a warning, as the package, which may be half written, is then deleted.
 
 A row's buttons merge nothing: they mark a change (MergerWindow.changes), and the card's Merge applies them all
-in one merge. Closing the window forgets them.
+in one merge. A merge that fails keeps them, for Merge again; closing the window forgets them.
 
 After the first scan, the update check (gui.find_updates) runs in a thread. A newer version of the tools
 shows as a wide button in place of the title, so that nothing moves when it appears: it opens the What's new
@@ -1678,19 +1678,25 @@ class MergerWindow:
             return
         states = {file.path: file for file in self.found.states}
 
+        def can_force(path):
+            """Still left out, or a merge that failed halfway left no manifest to say so"""
+            state = states.get(path)
+            return state is not None and self.found.scan.files[path].winner is not None and (
+                state.state in (State.NOT_BUILT, State.DAMAGED)
+                or (state.state == State.NOT_HELD and state.cause in ("left out", "known broken")))
+
         def applies(change):
             return (all(path in states and (states[path].winner or "").lower() == mod.lower() for path, mod in change.off)
                     and all(path in self.found.scan.screens_off for path, _ in change.on)
-                    and all(path in states and states[path].state == State.NOT_HELD
-                            and states[path].cause in ("left out", "known broken") for path in change.anyway))
+                    and all(can_force(path) for path in change.anyway))
         self.changes = {path: change for path, change in self.changes.items() if applies(change)}
 
     def turn_off(self, row, off):
-        """Use a mod's own copy of a row's screens (off: (path, mod)): a change if the package holds any of them or
-        is to (see builder.as_is_copies), else saved at once and scanned again (nothing needs merging)"""
+        """Use a mod's own copy of a row's screens (off: (path, mod)): a change if the package holds any of them
+        patched, else saved at once and scanned again (nothing needs merging: the game already gets the mod's own
+        copy, see builder.as_is_copies)"""
         paths = {path for path, _ in off}
-        if any(file.path in paths and (file.state == State.UP_TO_DATE or (file.smoothui_first and not file.group))
-               for file in self.found.states):
+        if any(file.path in paths and file.state == State.UP_TO_DATE for file in self.found.states):
             self.mark_change(row, Change(off=tuple(off)))
         elif self.save_screens_off((*screens_off(self.settings), *self.new_choices(off))):
             log.info(f"Merging turned off for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in off)}")
@@ -1717,7 +1723,8 @@ class MergerWindow:
         return tuple(choice(path, mod) for path, mod in off if (path, mod.lower()) not in known)
 
     def merge_changes(self, play=False):
-        """The card's Merge: save the changes' choices in the settings, then merge once with all of them"""
+        """The card's Merge: save the changes' choices in the settings, then merge once with all of them. They stay
+        until a merge succeeds (see merge), so that Merge again applies them too."""
         changes = list(self.changes.values())
         off = sorted({copy for change in changes for copy in change.off})
         on = {copy for change in changes for copy in change.on}
@@ -1728,7 +1735,6 @@ class MergerWindow:
             for text, copies in (("off", off), ("on again", sorted(on))):
                 if copies:
                     log.info(f"Merging turned {text} for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in copies)}")
-        self.changes = {}
         self.merge(play, patch_anyway=[path for change in changes for path in change.anyway])
 
     def save_screens_off(self, chosen) -> bool:
@@ -1751,7 +1757,8 @@ class MergerWindow:
         files = self.merged.files if self.merged is not None else self.found.states
         question = anyway_texts([file.reason for file in files if file.path in paths])[1]
         if paths and ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question.format(screens=screens), warning=True):
-            self.merge(play, patch_anyway=paths)
+            self.changes.update((path, Change(anyway=(path,))) for path in paths)
+            self.merge_changes(play)
 
     def merge(self, play=False, patch_anyway=()):
         """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once,
@@ -1779,6 +1786,7 @@ class MergerWindow:
                 log.error(f"Merging failed: {self.merge_error}")
             else:
                 self.merged = result
+                self.changes = {}
                 if play and result.clean:
                     if not self.critical_update():
                         self.exit(PLAY)

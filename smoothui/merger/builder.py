@@ -127,7 +127,8 @@ def as_is_copies(scan: Scan, files: list[PackageFile]) -> list[AsIs]:
 
 def _read_copy(source):
     """A mod's copy as a BundleEntry, or None if its bundle is damaged there. Only that: a file the patcher can't
-    read may well work in game."""
+    read may well work in game. Its path is spelled as the package's files are: a mod's bundle may have capitals or
+    forward slashes, which the package's metadata.store can't hold."""
     try:
         with open(source.file, "rb") as f:
             entry = read_entry(f, source.toc_entry)
@@ -135,7 +136,7 @@ def _read_copy(source):
     except (OSError, BundleError) as e:
         log.warning(f"{screen_label(source.path)}: {source.origin}'s copy can't be read, so it can't be used: {e}")
         return None
-    return entry
+    return entry._replace(path=source.path.replace("/", "\\"))
 
 
 def check_package(files: list[PackageFile], rescan: Scan, as_is=()) -> list[str]:

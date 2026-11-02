@@ -72,7 +72,8 @@ class State(Enum):
 class Severity(IntEnum):
     """What playing without building the package again costs"""
     LOW = 1         # nothing: only the merger's version changed since the build
-    MEDIUM = 2      # a mod's copy that the game loads isn't patched: it runs at its original frame rate
+    MEDIUM = 2      # a mod's copy that the game loads isn't patched: it runs at its original frame rate; or the
+                    # game loads Smooth UI's copy instead of a mod's, until a merge (see FileResult.hides_mod)
     HIGH = 3        # the package overrides a file with a copy that doesn't fit what is installed now (a mod
                     # updated or removed, another mod's copy wins, another Smooth UI build, a damaged
                     # package): that screen may look wrong, or that mod may not work at all
@@ -109,7 +110,6 @@ class FileState:
                                     # a frame rate above the target, so its animations play slowly
     reason: str | None = None       # NOT_HELD "left out", and UP_TO_DATE "forced": why its rescale has problems,
                                     # in a word (see WHY), if the build recorded it; "by rule": the rule's
-    smoothui_first: bool = False    # see scan.FileResult.smoothui_first
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,10 +294,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         in_toc = key in toc and not as_is
 
         def state(kind, message, severity=None, needs_build=None, cause=None, previous=None, fixes=(), key=key,
-                  origin=origin, reason=None, fps=None, speed=None, smoothui_first=file.smoothui_first):
+                  origin=origin, reason=None, fps=None, speed=None):
             needs_build = kind.needs_build if needs_build is None else needs_build
             states.append(FileState(key, kind, message, origin, severity, needs_build, cause, previous, fixes,
-                                    groups.get(key), fps, speed, reason, smoothui_first))
+                                    groups.get(key), fps, speed, reason))
 
         def overridden(file=file, copy=copy):
             """The package holds it (patched or as it is), but the game loads another mod's copy"""

@@ -103,6 +103,11 @@ class FileResult:
         return (shown is not None and is_smoothui_folder(shown.folder)
                 and any(not is_own_folder(mod.folder) for mod in self.shippers))
 
+    @property
+    def hides_mod(self) -> bool:
+        """Whether the game loads Smooth UI's copy now where a mod ships the file, so that mod's changes don't show"""
+        return self.smoothui_first and is_smoothui_folder(self.loaded.folder)
+
 
 class ScreenOff(NamedTuple):
     """The user's choice not to merge a mod's copy of a screen (see game.Settings.screens_off), and what it
