@@ -45,6 +45,7 @@ import json
 import logging
 import os
 import queue
+import signal
 import subprocess
 import sys
 import time
@@ -305,6 +306,9 @@ def run(game: Path | None, stale: bool, settings: Settings | None, calls: queue.
     app = make_app()
     window = MergerWindow(game, stale, settings, calls, log_records, updated_from=updated_from)
     sys.excepthook = window.callback_failed
+    # Ctrl-C in a terminal (from source). Python only sees it when Qt next runs Python code, and the default
+    # KeyboardInterrupt would then surface in a slot, in callback_failed. Deferred: this can interrupt any code.
+    signal.signal(signal.SIGINT, lambda *_: QTimer.singleShot(0, lambda: window.close(ask=False)))
     window.root.show()
     app.exec()
     return window.exit_code
@@ -1045,7 +1049,7 @@ class MergerWindow:
         from ..parallel import MAX_WORKERS, make_pool, warm_up, worker_count
         workers = worker_count(MAX_WORKERS)
         if workers > 1:
-            self.pool = make_pool(workers)
+            self.pool = make_pool(workers, ignore_ctrl_c=True)
             warm_up(self.pool, workers, "smoothui.patcher.patcher_core")
 
     # ---- What the window shows ----
@@ -1884,10 +1888,10 @@ class MergerWindow:
 
     # ---- Closing ----
 
-    def close(self):
-        """The window's close button"""
+    def close(self, ask=True):
+        """The window's close button; ask=False: Ctrl-C, which stops a merge without asking"""
         if self.busy == "build":
-            if not ask_yes_no(self.root, STOP_MERGE_TITLE, STOP_MERGE, warning=True):
+            if ask and not ask_yes_no(self.root, STOP_MERGE_TITLE, STOP_MERGE, warning=True):
                 return
             log.warning("Closed while merging: deleting the package")
             from ..parallel import kill_workers

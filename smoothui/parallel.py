@@ -18,6 +18,7 @@ import logging
 import logging.handlers
 import multiprocessing
 import os
+import signal
 import struct
 import sys
 import time
@@ -92,15 +93,16 @@ def worker_count(tasks: int) -> int:
     return max(1, min(physical_cores(), MAX_WORKERS, tasks))
 
 
-def make_pool(workers: int) -> ProcessPoolExecutor:
+def make_pool(workers: int, ignore_ctrl_c: bool = False) -> ProcessPoolExecutor:
     """A pool whose workers log like this process does (see run_logged). Callers that run several
-    builds (the GUI) can keep one and pass it in."""
+    builds (the GUI) can keep one and pass it in. ignore_ctrl_c: this process ends the workers itself, so
+    they needn't react to a terminal's Ctrl-C, which reaches them too (each would print a traceback)."""
     root = logging.getLogger()
     levels = {name: logger.level for name, logger in root.manager.loggerDict.items()
               if isinstance(logger, logging.Logger) and logger.level}
     levels[""] = root.level
     return ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
-                               initializer=_init_worker, initargs=(levels, _workers_job()))
+                               initializer=_init_worker, initargs=(levels, _workers_job(), ignore_ctrl_c))
 
 
 _job = None     # (name, handle) of the job _workers_job made, once
@@ -177,9 +179,11 @@ class _RecordList(list):
 _records = _RecordList()
 
 
-def _init_worker(levels, job=None):
+def _init_worker(levels, job=None, ignore_ctrl_c=False):
     """In each worker: join the job that ends it with the main process (see _workers_job), the main
     process's logger levels, and every record collected into _records"""
+    if ignore_ctrl_c:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
     if job:
         _join_job(job)
     root = logging.getLogger()
