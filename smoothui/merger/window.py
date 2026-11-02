@@ -1531,7 +1531,8 @@ class MergerWindow:
             self.update_search = LOOKING
             self.refresh()
         last_check = self.settings.last_update_check if self.settings else None
-        in_thread(self.calls, gui.find_updates, "updates_checked", waited_for, last_check)
+        pending = self.settings.pending_update if self.settings else None
+        in_thread(self.calls, gui.find_updates, "updates_checked", waited_for, last_check, pending)
 
     def card_offers_update(self) -> bool:
         """Stale mode, an unknown Smooth UI build: the card offers a newer version (see status_card), and
@@ -1548,8 +1549,8 @@ class MergerWindow:
         merge's result (at once, or once what runs now ends: a merge may not have used them)."""
         looking, self.update_search = self.update_search == LOOKING, None
         if found is not None:
-            self.save_check_time()
             self.update = found.update
+            self.save_check_time()
             if looking and found.update is None:
                 self.update_search = NOTHING_FOUND
             if found.downloaded and self.found is not None:
@@ -1562,10 +1563,11 @@ class MergerWindow:
         self.refresh()
 
     def save_check_time(self):
-        """Keep the time of the update check just made in the settings (see updates.RECENT)"""
+        """Keep the time of the update check just made, and what it found, in the settings (see updates.RECENT)"""
         if self.settings is None:
             return      # none saved yet: the game folder came from the test variable
-        settings = replace(self.settings, last_update_check=int(time.time()))
+        settings = replace(self.settings, last_update_check=int(time.time()),
+                           pending_update=self.update.version if self.update else None)
         try:
             save_settings(settings, gui.DATA_DIR)
         except SmoothUIError as e:

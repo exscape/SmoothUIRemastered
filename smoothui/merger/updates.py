@@ -2,8 +2,8 @@
 manifests, which it downloads into data\\manifests\\ (release_manifest_paths reads them from there at once).
 
 One request to GitHub's API lists every release with its assets (unauthenticated: 60 requests an hour per
-address, so never more than one per check, and none within RECENT of the last one: the window keeps
-its time in the settings). Two kinds of release count:
+address, so never more than one per check, and none within RECENT of the last one, unless that one found an
+update not installed yet, so that it still shows: the window keeps both in the settings). Two kinds of release count:
 - the tools: tag tools-vX.Y.Z, published (no draft, no pre-release), with one .zip asset;
 - the manifests: tag "manifests", one long-lived release holding the manifests of every Smooth UI release
   (<version>.json), so that a Smooth UI release reaches the merger without a tools release. It also holds
@@ -101,12 +101,14 @@ def releases_url() -> str:
     return os.environ.get(UPDATE_URL_ENV) or RELEASES_URL
 
 
-def check(data_dir: Path, *, timeout: float = TIMEOUT, last_check: float | None = None) -> Found | None:
+def check(data_dir: Path, *, timeout: float = TIMEOUT, last_check: float | None = None,
+          pending: str | None = None) -> Found | None:
     """Look for a newer tools release, and download new manifests into data_dir\\manifests\\. Within
     RECENT of last_check (the last successful check, Unix time; None: never, or not to be taken into account),
-    nothing is asked or found. None if the check failed or was skipped (logged)."""
+    nothing is asked or found, unless pending (the version that check found) is newer than this one. None if the
+    check failed or was skipped (logged)."""
     url = releases_url()
-    if last_check is not None and _recent(time.time() - last_check):
+    if last_check is not None and not _is_newer(pending) and _recent(time.time() - last_check):
         return None
     try:
         current = tools_version()
@@ -367,6 +369,13 @@ def _set_time(path: Path, asset: Asset):
         os.utime(path, (asset.updated, asset.updated))
     except (OSError, OverflowError, ValueError) as e:
         log.info(f"Update check: couldn't set the time of {asset.name}: {e}")
+
+
+def _is_newer(version: str | None) -> bool:
+    try:
+        return version is not None and _version_tuple(version) > _version_tuple(tools_version())
+    except ValueError:      # (an edited settings file)
+        return False
 
 
 def _recent(age: float) -> bool:

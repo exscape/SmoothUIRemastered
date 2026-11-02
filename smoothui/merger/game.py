@@ -68,6 +68,7 @@ class Settings:
     # HUD's rate (see hud_fps); None: the HUD at the installed build's rate
     hud_game_fps: int | None = None
     hud_fg: int = 1
+    pending_update: str | None = None       # the newer version the last check found, if any (see updates.check)
 
     @property
     def hud_fps(self) -> int | None:
@@ -124,6 +125,9 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
         last_check = settings.get("last_update_check")
         if last_check is not None and type(last_check) is not int:
             raise TypeError(f"last_update_check is {last_check!r}, not a whole number")
+        pending = settings.get("pending_update")
+        if pending is not None and not isinstance(pending, str):
+            raise TypeError(f"pending_update is {pending!r}, not text")
         smooth_hud = settings.get("smooth_hud", True)
         if not isinstance(smooth_hud, bool):
             raise TypeError(f"smooth_hud is {smooth_hud!r}, not true or false")
@@ -146,7 +150,7 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
                                 f"{round(game_fps / fg)} fps, not from {HUD_LOWEST} to "
                                 f"{FPS_RANGES['hud_fps'][1]}")
         return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off, target_fps,
-                        game_fps, fg)
+                        game_fps, fg, pending_update=pending)
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
 
@@ -177,6 +181,8 @@ def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
               "smooth_hud": settings.smooth_hud}
     if settings.last_update_check is not None:
         fields["last_update_check"] = settings.last_update_check
+    if settings.pending_update is not None:
+        fields["pending_update"] = settings.pending_update
     if settings.target_fps is not None:
         fields["target_fps"] = settings.target_fps
     if settings.hud_game_fps is not None:
