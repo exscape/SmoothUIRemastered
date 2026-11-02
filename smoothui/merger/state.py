@@ -90,8 +90,9 @@ class FileState:
     cause: str | None = None    # why, in a word, for the window to group files by: for CHANGED, "smoothui" or
                                 # "merger" (updated since the build), "fps" (the file's frame rate changed
                                 # since; also NOT_BUILT's cause), "updated" (the mod's copy changed),
-                                # "load order" (another mod's copy wins now) or "setting" (its group was
-                                # turned off since the build); for NOT_BUILT, "setting" if its group was turned on
+                                # "load order" (another mod's copy wins now), "smoothui first" (the game shows
+                                # Smooth UI's copy, where the package should hold the mod's as it is) or "setting"
+                                # (its group was turned off since the build); for NOT_BUILT, "setting" if its group was turned on
                                 # since the build; for NOT_HELD, the status the manifest records (see
                                 # WHY), "turned off" (its group is), "by choice" (the user
                                 # chose not to merge it, or a file of its group; also CHANGED's and
@@ -108,6 +109,7 @@ class FileState:
                                     # a frame rate above the target, so its animations play slowly
     reason: str | None = None       # NOT_HELD "left out", and UP_TO_DATE "forced": why its rescale has problems,
                                     # in a word (see WHY), if the build recorded it; "by rule": the rule's
+    smoothui_first: bool = False    # see scan.FileResult.smoothui_first
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,7 +187,7 @@ def not_merged(status: str, copy: str, mod: str, *, reason: str | None = None, g
     if status == "group left out":
         return (f"not merged, as the {group_name(group)} is merged whole or not at all"
                 + (f", and {kept_out_by}." if kept_out_by else "."))
-    return f"{copy} {WHY.get(reason) or WHY.get(status, status)}, so it isn't merged."
+    return f"{copy} {WHY.get(reason) or WHY.get(status, status)}, {_NOT_MERGED}"
 
 
 def left_out_by_rule(choice, group: str | None = None, held: bool = False) -> str:
@@ -286,15 +288,31 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         winner = file.winner
         origin = winner.origin if winner else None
 
+        record_off = not_held.get(key, {})
+        as_is = bool(record_off.get("as_is"))       # the package holds the mod's copy unpatched
+        copy = winner or result.off_copies.get(key)
+        in_toc = key in toc and not as_is
+
         def state(kind, message, severity=None, needs_build=None, cause=None, previous=None, fixes=(), key=key,
-                  origin=origin, reason=None, fps=None, speed=None):
+                  origin=origin, reason=None, fps=None, speed=None, smoothui_first=file.smoothui_first):
             needs_build = kind.needs_build if needs_build is None else needs_build
             states.append(FileState(key, kind, message, origin, severity, needs_build, cause, previous, fixes,
-                                    groups.get(key), fps, speed, reason))
+                                    groups.get(key), fps, speed, reason, smoothui_first))
+
+        def overridden(file=file, copy=copy):
+            """The package holds it (patched or as it is), but the game loads another mod's copy"""
+            loaded = file.loaded.folder if file.loaded else "another mod"
+            if own_entry:
+                state(State.OVERRIDDEN, f"the game uses {loaded}'s copy: it has Priority 0 too, and its name sorts "
+                      "first. Give it a priority above 0 (in mods.settings or your mod manager), then scan again",
+                      Severity.MEDIUM, origin=copy.origin)
+            else:
+                state(State.OVERRIDDEN, f"the game uses {loaded}'s copy, as the merged patches' mods.settings entry "
+                      "is missing or changed: merge again", Severity.MEDIUM, needs_build=True, origin=copy.origin)
 
         if file.undetermined:
             state(State.UNDETERMINED, "the load order doesn't decide which mod's copy the game uses (see the problems)")
-        elif toc_problem and (key in held or (manifest is None and winner is not None)):
+        elif toc_problem and (key in held or as_is or (manifest is None and winner is not None)):
             state(State.DAMAGED, f"the merged patches can't be used ({toc_problem}): merge again", Severity.HIGH)
         elif groups.get(key) in result.groups_off:
             name = group_name(groups[key])
@@ -304,29 +322,47 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                       f"it: merge again. {shows}", Severity.MEDIUM, needs_build=True, cause="setting")
             else:
                 state(State.NOT_HELD, f"merging the {name} is turned off in the settings. {shows}", cause="turned off")
+        elif as_is and (key not in toc or (toc[key][1].size, toc[key][1].crc) != (record_off.get("output_size"),
+                                                                                  record_off.get("output_crc32"))):
+            state(State.DAMAGED, "the merged patches are damaged: merge again", Severity.HIGH)
+        elif as_is and copy is None:
+            after = file.loaded_without_package
+            state(State.NO_LONGER_NEEDED, f"{record_off['mod']} no longer changes it: merge again (the game then uses "
+                  f"{_copy_name(after.folder) if after else 'no copy'})", Severity.HIGH, previous=record_off["mod"])
+        elif as_is and not same_copy(record_off, copy):
+            cause, text = _changed(record_off, copy)
+            state(State.CHANGED, f"{text}: merge again", Severity.HIGH, cause=cause, previous=record_off.get("mod"),
+                  origin=copy.origin)
+        elif as_is and not (file.loaded and is_package_folder(file.loaded.folder)):
+            overridden()
+        elif (file.smoothui_first and copy is not None and copy.toc_entry is not None and key not in held and not as_is
+              and key not in groups and (key in result.screens_off or record_off)
+              and not (record_off.get("cant_hold") and same_copy(record_off, copy))):
+            state(State.CHANGED, f"the game uses Smooth UI's copy, not {copy.origin}'s: merge again", Severity.MEDIUM,
+                  cause="smoothui first", origin=copy.origin)
         elif key in result.screens_off and result.screens_off[key].reason is not None:
             choice = result.screens_off[key]
-            text = left_out_by_rule(choice, groups.get(key), held=key in toc)
-            shows = _shows(file, choice.mod, groups.get(key))
-            if key in toc:
+            text = left_out_by_rule(choice, groups.get(key), held=in_toc)
+            shows = _shows(file, choice.mod, groups.get(key), held=key in toc)
+            if in_toc:
                 state(State.CHANGED, f"{text} {shows}", Severity.MEDIUM, needs_build=True, cause="by rule",
                       reason=choice.reason, origin=choice.mod)
             else:
                 state(State.NOT_HELD, f"{text} {shows}", cause="by rule", reason=choice.reason, origin=choice.mod)
         elif key in result.screens_off:
             choice = result.screens_off[key]
-            shows = _shows(file, choice.mod, groups.get(key))
+            shows = _shows(file, choice.mod, groups.get(key), held=key in toc)
             # The same for each of a group's files (the chosen one too), so that they are told as one
             what = (f"merging the {group_name(groups[key])} is turned off: you chose not to merge {choice.mod}'s "
                     f"copy of {screen_name(choice.path)}{f' (on {choice.since})' if choice.since else ''}"
                     if key in groups else
                     f"merging {choice.mod}'s copy is turned off{f' (since {choice.since})' if choice.since else ''}")
-            if key in toc:
+            if in_toc:
                 state(State.CHANGED, f"{what}, but the merged patches hold it: merge again. {shows}",
                       Severity.MEDIUM, needs_build=True, cause="by choice", origin=choice.mod)
             else:
                 state(State.NOT_HELD, f"{what}. {shows}", cause="by choice", origin=choice.mod)
-        elif key in toc:
+        elif in_toc:
             record = held.get(key)
             entry = toc[key][1]
             if record is None:
@@ -347,14 +383,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 cause, text = _changed(record, winner)
                 state(State.CHANGED, f"{text}: merge again", Severity.HIGH, cause=cause, previous=record.get("mod"))
             elif not (file.loaded and is_package_folder(file.loaded.folder)):
-                loaded = file.loaded.folder if file.loaded else "another mod"
-                if own_entry:
-                    state(State.OVERRIDDEN, f"the game uses {loaded}'s copy: it has Priority 0 too, and its name sorts "
-                          "first. Give it a priority above 0 (in mods.settings or your mod manager), then scan again",
-                          Severity.MEDIUM)
-                else:
-                    state(State.OVERRIDDEN, f"the game uses {loaded}'s copy, as the merged patches' mods.settings entry "
-                          "is missing or changed: merge again", Severity.MEDIUM, needs_build=True)
+                overridden()
             elif record.get("forced"):
                 since = f" on {record['forced_since']}" if record.get("forced_since") else ""
                 fixes = tuple(record.get("fixes_not_applied") or ())
@@ -375,8 +404,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         elif winner is None:
             state(State.NOTHING_TO_DO, f"no other mod changes it: the game uses {_copy_name(file.loaded.folder)}"
                   if file.loaded else "no mod has it")
-        elif key in not_held:
-            # The package doesn't hold it, so the game shows the winning copy, unpatched
+        elif key in not_held and record_off["status"] not in ("by choice", "by rule"):
+            # The game shows the winning copy, unpatched (whether the package holds it as it is or not)
             record = not_held[key]
             if fps_changed(key):
                 state(State.CHANGED, f"{FPS_CHANGED}: merge again", Severity.MEDIUM, cause="fps")
@@ -404,8 +433,10 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                                   kept_out_by=kept_out_by)
                 # The same for each of a group's files left out with it, so that they are told as one
                 shows = _shows(file, origin, group if status == "group left out" else None, result.fps_of(key),
-                               installed.fps)
-                state(State.NOT_HELD, f"{text} {shows}", cause=status, reason=record.get("reason"))
+                               installed.fps, held=as_is)
+                if shows == _CHANGES_DONT_SHOW.format(mod=origin) and text.endswith(_NOT_MERGED):
+                    text, shows = f"{text[:-1]}, and its changes don't show.", ""
+                state(State.NOT_HELD, f"{text} {shows}".rstrip(), cause=status, reason=record.get("reason"))
         elif manifest is None and manifest_problem is None:
             state(State.NOT_BUILT, f"{_copy_of(origin)} isn't merged yet", Severity.MEDIUM)
         elif fps_changed(key):
@@ -470,12 +501,12 @@ def changed_since_off(result: Scan) -> dict[str, list[str]]:
 def carried_force(result: Scan) -> tuple[list[str], list[str]]:
     """The files the package holds because the last build forced them (see policy.decide), to force again
     in the next build: those whose copy is still the one it forced. And a note for each other one, which
-    isn't forced, so that the user decides again."""
+    isn't forced, so that the user decides again. Not one that is off now (see Scan.screens_off), which is decided."""
     folder = next((mod.folder for mod in result.order if is_package_folder(mod.folder)), PACKAGE_FOLDER)
     manifest, _ = _read_manifest(result.mods_dir / folder / PACKAGE_MANIFEST)
     force, notes = [], []
     for key, record in sorted((manifest or {}).get("files", {}).items()):
-        if not record.get("forced"):
+        if not record.get("forced") or key in result.screens_off:
             continue
         file = result.files.get(key)
         if file is not None and file.winner is not None and same_copy(record, file.winner):
@@ -533,12 +564,21 @@ def _copy_of(origin):
     return "the game's own copy" if origin == GAME_FILES else f"{origin}'s copy"
 
 
-def _shows(file, origin, group=None, fps=None, release_fps=None):
+_CHANGES_DONT_SHOW = "{mod}'s changes don't show."
+_NOT_MERGED = "so it isn't merged."
+
+
+def _shows(file, origin, group=None, fps=None, release_fps=None, held=False):
     """What the game shows for a file while the package doesn't hold it, as a sentence: its own copy (the
     game's or its mod's; origin: that mod, if known), said of group if given (see original_frame_rate), or
-    another copy that comes first (Smooth UI's own, or a compat patch's). fps: the rate it is merged for, if
-    not release_fps, the installed Smooth UI's (Smooth UI's own copy then plays slowly, or less smoothly)"""
+    another copy that comes first (Smooth UI's own, then without the mod's changes, or a compat patch's). fps: the
+    rate it is merged for, if not release_fps, the installed Smooth UI's (Smooth UI's own copy then plays slowly, or
+    less smoothly); held: the package holds the mod's copy as it is, or will once merged again"""
+    if held:
+        return original_frame_rate(group)
     shown = file.loaded_without_package
+    if shown and is_smoothui_folder(shown.folder) and origin not in (None, GAME_FILES):
+        return _CHANGES_DONT_SHOW.format(mod=origin)
     if shown and shown.folder != origin and (is_smoothui_folder(shown.folder) or COMPAT_PATCH.fullmatch(shown.folder)):
         if fps and fps != release_fps and is_smoothui_folder(shown.folder):
             effect = (f": it plays at {fps / release_fps:.0%} speed" if fps < release_fps

@@ -16,9 +16,10 @@
   all of them: never a mix. A file a mod adds to a group's folder is one of the group's (see
   scan.Scan.group_of).
 
-A file left out isn't in the package, so the game loads the copy it would load without the package: the
-mod's own copy at its original frame rate, or the copy of a mod (Smooth UI's own, a compat patch) that
-comes before it in the load order.
+A file left out isn't patched, so the game shows the mod's own copy at its original frame rate, or a compat
+patch's that comes before it in the load order. Where Smooth UI's own copy comes first, the package holds the
+mod's copy as it is, so that the mod's changes still show (see builder.as_is_copies; a group's files are never
+Smooth UI's). Only a copy whose bundle is damaged can't be held: then the game shows Smooth UI's.
 
 decide() is cheap and pure: a GUI can call it again with other choices without patching again.
 """
@@ -28,6 +29,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from enum import Enum
+from typing import NamedTuple
 
 from ..build.release import ReleasePatch
 from ..common import fail
@@ -82,6 +84,15 @@ class Issue:
         return self.kind != IssueKind.FIX
 
 
+class AsIs(NamedTuple):
+    """A mod's copy that isn't merged, which the package holds unpatched, as the game would load Smooth UI's
+    copy otherwise (see builder.as_is_copies)"""
+    path: str               # profile key
+    source: SourceFile
+    entry: object | None    # the copy as a BundleEntry; None if it can't be read: then the package can't hold it
+    status: str             # its status in the manifest (see package_manifest)
+
+
 @dataclass(frozen=True, slots=True)
 class PackageFile:
     """One file the package could hold: a file Smooth UI patches, whose winning copy is another mod's"""
@@ -92,6 +103,7 @@ class PackageFile:
     result: dict | None = None      # patch_files' result for it, unless it failed
     error: str | None = None        # FAILED: why; GROUP_LEFT_OUT: why the group can't be merged whole
     fallback: str | None = None     # the mod whose copy the game loads unless the package holds this file
+                                    # (its own mod's, once the package holds its copy as it is: see build_package)
     group: str | None = None        # the group it is in, if any (see build/profile.py's Group)
 
     @property
@@ -220,6 +232,8 @@ class PackageFile:
     def _fallback(self):
         """The copy the game shows unless the package holds the file, when it isn't the file's own"""
         if is_smoothui_folder(self.fallback):
+            if self.mod == GAME_FILES:
+                return "Smooth UI's own copy"
             return f"Smooth UI's own copy, without {self.mod}'s changes (it comes first in the load order)"
         if COMPAT_PATCH.fullmatch(self.fallback):
             return f"the copy of {self.fallback} (a Smooth UI compat patch)"

@@ -23,10 +23,11 @@ from ..common import fail, profile_key
 from ..files import make_dirs
 from ..patcher.patcher_core import RuleIssues
 from ..paths import DATA_DIR
+from ..witcher3.bundle import BundleError, read_entry
 from ..witcher3.mods_settings import read_mods_settings, write_entry
 from .game import MODS_SETTINGS_BACKUP
 from .package import Written, record_path, write_package
-from .policy import FileStatus, PackageFile, decide
+from .policy import AsIs, FileStatus, PackageFile, decide
 from .scan import PACKAGE_FOLDER, Scan, entry_needed, is_package_folder, scan
 from .screens import file_name, screen_label
 
@@ -89,7 +90,7 @@ class Installation:
 
 
 def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_dir: Path | None = None,
-            data_dir: Path | None = DATA_DIR) -> Installation:
+            data_dir: Path | None = DATA_DIR, as_is=()) -> Installation:
     """Write the package into the game's Mods\\ folder and give it its mods.settings entry (the file at
     mods_settings; its old content goes to MODS_SETTINGS_BACKUP in data_dir first, if it changes). The
     file is only written if another mod (not mod0000_MergedFiles) loads before the package. With
@@ -101,7 +102,7 @@ def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_
     record = record_path(data_dir, result.mods_dir) if data_dir is not None and out_dir is None else None
     written = write_package(package_dir, result.installed, files, record, reviews_sha256=result.reviews.sha256,
                             groups_off=result.groups_off, screens_off=result.screens_off,
-                            rates=(result.target_fps, result.hud_fps))
+                            rates=(result.target_fps, result.hud_fps), as_is=as_is)
     if out_dir is not None or written.empty:
         return Installation(package_dir, written, None)
     backup = None
@@ -113,26 +114,58 @@ def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_
     return Installation(package_dir, written, write_entry(mods_settings, PACKAGE_FOLDER, backup=backup))
 
 
-def check_package(files: list[PackageFile], rescan: Scan) -> list[str]:
+def as_is_copies(scan: Scan, files: list[PackageFile]) -> list[AsIs]:
+    """The mods' copies that aren't merged, but that the game wouldn't load, as Smooth UI's copy comes first:
+    the package holds them as they are, as a mod is installed for its changes. So the game gets what it would if
+    the mod came first. Not a group's: it is merged whole or not at all, and Smooth UI doesn't ship the HUD."""
+    copies = [(file.path, file.source, file.status.value) for file in files if not file.status.included]
+    copies += [(key, copy, "by rule" if scan.screens_off[key].reason else "by choice")
+               for key, copy in scan.off_copies.items()]
+    return [AsIs(path, source, _read_copy(source), status) for path, source, status in copies
+            if path not in scan.group_of and scan.files[path].smoothui_first and source.toc_entry is not None]
+
+
+def _read_copy(source):
+    """A mod's copy as a BundleEntry, or None if its bundle is damaged there. Only that: a file the patcher can't
+    read may well work in game."""
+    try:
+        with open(source.file, "rb") as f:
+            entry = read_entry(f, source.toc_entry)
+        entry.content()
+    except (OSError, BundleError) as e:
+        log.warning(f"{screen_label(source.path)}: {source.origin}'s copy can't be read, so it can't be used: {e}")
+        return None
+    return entry
+
+
+def check_package(files: list[PackageFile], rescan: Scan, as_is=()) -> list[str]:
     """Problems with an installed package, from a scan made after it was installed: each file it holds must
-    be loaded from it, and still come from the same copy (else a mod changed while it was built)."""
+    be loaded from it, and still come from the same copy (else a mod changed while it was built). as_is: the
+    copies it holds as they are (see as_is_copies)."""
     if not rescan.installed.usable:
         return [f"the merged patches can't be checked: {rescan.installed.message}"]
     problems = []
-    for file in files:
-        if not file.status.included:
-            continue
-        found = rescan.files.get(file.path)
+
+    def loads_it(path) -> bool:
+        """Whether the game loads a file from the package; else the problem is said"""
+        found = rescan.files.get(path)
         loaded = found.loaded if found else None
-        label = screen_label(file.path)
         if loaded is None:
-            problems.append(f"{label}: the game doesn't see the merged patches")
+            problems.append(f"{screen_label(path)}: the game doesn't see the merged patches")
         elif not is_package_folder(loaded.folder):
-            problems.append(f"{label}: the game uses {loaded.folder}'s copy, which comes before the merged patches. "
-                            "Give it a priority above 0 (in mods.settings or your mod manager)")
-        elif found.winner != file.source:
-            problems.append(f"{label}: {file.mod}'s copy changed while merging (or another mod's copy is used now): "
-                            "merge again")
+            problems.append(f"{screen_label(path)}: the game uses {loaded.folder}'s copy, which comes before the merged "
+                            "patches. Give it a priority above 0 (in mods.settings or your mod manager)")
+        else:
+            return True
+        return False
+
+    for file in files:
+        if file.status.included and loads_it(file.path) and rescan.files[file.path].winner != file.source:
+            problems.append(f"{screen_label(file.path)}: {file.mod}'s copy changed while merging (or another mod's copy "
+                            "is used now): merge again")
+    for copy in as_is:
+        if copy.entry is not None:
+            loads_it(copy.path)
     return problems
 
 
@@ -189,10 +222,13 @@ def build_package(game_path: Path, mods_settings: Path, *, force=(), out_dir: Pa
         progress(0, total)
     patch = patch_winners(before, pool=pool, on_file=file_done)
     files = decide(before, patch, force=force)
-    installation = install(before, files, mods_settings, out_dir=out_dir, data_dir=data_dir)
+    as_is = as_is_copies(before, files)
+    held = {copy.path for copy in as_is if copy.entry is not None}
+    files = [replace(file, fallback=file.mod) if file.path in held else file for file in files]
+    installation = install(before, files, mods_settings, out_dir=out_dir, data_dir=data_dir, as_is=as_is)
     # (With the same reviews: the update check may download new ones meanwhile, which the package wasn't made with)
     check_problems = [] if out_dir is not None else check_package(
-        files, scan(game_path, mods_settings, **{**scan_options, "reviews": before.reviews}))
+        files, scan(game_path, mods_settings, **{**scan_options, "reviews": before.reviews}), as_is)
     return BuildResult(before, files, installation, check_problems, compat_notes(before, files))
 
 

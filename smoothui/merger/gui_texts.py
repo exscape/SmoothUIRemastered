@@ -113,7 +113,7 @@ SLOW = "{screens} from {mod} {verb} slowly, as {pronoun} made for a higher frame
 LEFT_OUT_FOR = "Not merged, as Smooth UI leaves them out for {mod}: {screens}."
 MAX_RULE_SCREENS = 3
 # The same, for those that a trial found would merge now (see turn_on_note)
-MERGES_NOW = "These use the mod's own copy, but would now merge: {screens}. You can use the smooth version in their details."
+MERGES_NOW = "These aren't merged, but would merge now: {screens}. You can use the smooth version in their details."
 MERGES_NOW_NOTE = "It would merge now: {what} {was} updated since."
 # A row's change, until the next merge applies it (see MergerWindow.changes)
 TO_SMOOTH = "→ Smooth version"
@@ -310,6 +310,7 @@ CAUSES = {
     "setting": "The \"Smooth HUD\" setting changed since the last merge.",
     "by choice": "Your choice of screens not to merge changed since the last merge.",
     "by rule": "Smooth UI's list of screens not to merge changed since the last merge.",
+    "smoothui first": "The game uses Smooth UI's copy of some screens, without your mods' changes.",
 }
 # What a Smooth UI that can't be used costs, beyond the mods' screens (by installed.Status)
 RISKS = {
@@ -660,7 +661,8 @@ def row_status(file: FileState) -> tuple[str, str]:
                 "turned off": (OK, "Turned off")}.get(cause, (ERROR, "Left out"))
     if state == State.CHANGED:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
-                "load order": (WARNING, "Load order changed"), "fps": (WARNING, "Frame rate changed"),
+                "load order": (WARNING, "Load order changed"), "smoothui first": (WARNING, "Uses Smooth UI's copy"),
+                "fps": (WARNING, "Frame rate changed"),
                 "setting": (WARNING, "Setting changed"),
                 "by choice": (WARNING, "Setting changed"), "by rule": (WARNING, "Rules changed")}.get(cause, (WARNING, "Mod updated"))
     if state == State.NOT_BUILT and cause in ("setting", "by choice", "by rule", "fps"):

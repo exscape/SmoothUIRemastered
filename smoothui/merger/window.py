@@ -466,7 +466,6 @@ class Change(NamedTuple):
     off: tuple = ()         # the copies not to merge any more: (path, mod)
     on: tuple = ()          # those to merge again: (path, mod)
     anyway: tuple = ()      # the left-out files to merge anyway
-    revert: tuple = ()      # the forced files of off, not to force any more
 
 
 class Root(QWidget):
@@ -1153,7 +1152,8 @@ class MergerWindow:
                 self.card_buttons = None
             if buttons:
                 self.card_buttons = row = QWidget()
-                if self.stale:      # stacked, at full width, so that each always fits
+                stacked = self.stale or len(buttons) > 3
+                if stacked:         # at full width, so that each always fits
                     layout = QVBoxLayout(row)
                     layout.setSpacing(6)
                     for index, (text, action) in enumerate(buttons):
@@ -1165,7 +1165,7 @@ class MergerWindow:
                     for index, (text, action) in reversed(list(enumerate(buttons))):
                         layout.addWidget(button(text, actions[action], primary=index == 0 and card.default))
                 layout.setContentsMargins(0, 4, 0, 0)
-                self.card_grid.addWidget(row, 3, 0 if self.stale else 1, 1, 2 if self.stale else 1)
+                self.card_grid.addWidget(row, 3, 0 if stacked else 1, 1, 2 if stacked else 1)
         self.enable_buttons(True)
 
     def show_bar(self, card):
@@ -1301,7 +1301,7 @@ class MergerWindow:
         details, in the grid row below it, kept for them"""
         tone, status = row_status(state)
         if change := self.changes.get(state.path):
-            tone, status = INFO, TO_OWN_COPY if change.off else TO_SMOOTH
+            tone, status = INFO, (TO_OWN_COPY if change.off else TO_SMOOTH)
         toggle = lambda: self.toggle_row(state.path)
         cells = [glyph(tone, on_click=toggle), label(row_name(state), on_click=toggle),
                  label(row_mods(state), tone="muted", on_click=toggle), label(status, on_click=toggle),
@@ -1360,7 +1360,6 @@ class MergerWindow:
         actions = []    # (text, note, command)
         left = [file.path for file in members if file.state == State.NOT_HELD and file.cause in ("left out", "known broken")]
         known_broken = any(file.state == State.NOT_HELD and file.cause == "known broken" for file in members)
-        forced = [file.path for file in members if file.state == State.UP_TO_DATE and file.cause == "forced"]
         # A group with a file that can't be merged at all stays left out, forced or not
         failed = any(file.state == State.NOT_HELD and file.cause in ("failed", "mod failed") for file in members)
         if path in self.changes:
@@ -1380,7 +1379,7 @@ class MergerWindow:
             actions.append((text, note, command))
         if off and path not in self.changes:
             text, note = dont_merge_texts(off, state.group)
-            actions.append((text, note, lambda: self.turn_off(path, off, forced)))
+            actions.append((text, note, lambda: self.turn_off(path, off)))
         if chosen and path not in self.changes:
             changed = next((self.merges_now[file.path] for file in members if file.path in self.merges_now), None)
             note = turn_on_note(changed, sorted({choice.mod for choice in chosen}, key=str.lower))
@@ -1682,12 +1681,13 @@ class MergerWindow:
                             and states[path].cause in ("left out", "known broken") for path in change.anyway))
         self.changes = {path: change for path, change in self.changes.items() if applies(change)}
 
-    def turn_off(self, row, off, forced):
-        """Use a mod's own copy of a row's screens (off: (path, mod)): a change if the package holds any of them,
-        else saved at once and scanned again (nothing needs merging)"""
+    def turn_off(self, row, off):
+        """Use a mod's own copy of a row's screens (off: (path, mod)): a change if the package holds any of them or
+        is to (see builder.as_is_copies), else saved at once and scanned again (nothing needs merging)"""
         paths = {path for path, _ in off}
-        if any(file.path in paths and file.state == State.UP_TO_DATE for file in self.found.states):
-            self.mark_change(row, Change(off=tuple(off), revert=tuple(forced)))
+        if any(file.path in paths and (file.state == State.UP_TO_DATE or (file.smoothui_first and not file.group))
+               for file in self.found.states):
+            self.mark_change(row, Change(off=tuple(off)))
         elif self.save_screens_off((*screens_off(self.settings), *self.new_choices(off))):
             log.info(f"Merging turned off for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in off)}")
             self.rescan()
@@ -1725,8 +1725,7 @@ class MergerWindow:
                 if copies:
                     log.info(f"Merging turned {text} for: {', '.join(f'{screen_label(path)} ({mod})' for path, mod in copies)}")
         self.changes = {}
-        self.merge(play, patch_anyway=[path for change in changes for path in change.anyway],
-                   revert=[path for change in changes for path in change.revert])
+        self.merge(play, patch_anyway=[path for change in changes for path in change.anyway])
 
     def save_screens_off(self, chosen) -> bool:
         """Save the settings with these screens not to merge; a failure is said in a message box. (No settings
@@ -1750,11 +1749,10 @@ class MergerWindow:
         if paths and ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question.format(screens=screens), warning=True):
             self.merge(play, patch_anyway=paths)
 
-    def merge(self, play=False, patch_anyway=(), revert=()):
+    def merge(self, play=False, patch_anyway=()):
         """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once,
         unless a critical update is known by then (it fixes a bug that may have made this build wrong): the
-        window stays open, with its notice. patch_anyway: files to force too; revert: forced files not to
-        force (see build)"""
+        window stays open, with its notice. patch_anyway: files to force too (see build)"""
         self.set_busy("build")
         self.merged = self.merge_error = self.progress = None
         self.keep_order = True
@@ -1783,11 +1781,11 @@ class MergerWindow:
                         return
                     log.warning("Merged, but not playing yet: a critical update of Smooth UI Tools is available")
             self.rescan(keep_result=True)
-        in_thread(self.calls, self.build, finished, play, patch_anyway, revert)
+        in_thread(self.calls, self.build, finished, play, patch_anyway)
 
-    def build(self, play=False, patch_anyway=(), revert=()):
-        """Build the package, forcing what the last build forced (the same copies), and patch_anyway, but
-        not revert. Its progress goes to the window as it goes (merged_file, progressed). Then new workers
+    def build(self, play=False, patch_anyway=()):
+        """Build the package, forcing what the last build forced (the same copies, unless turned off since), and
+        patch_anyway. Its progress goes to the window as it goes (merged_file, progressed). Then new workers
         for the next merge, unless the game starts now (play, the build is clean, and no critical update is
         known; one found just after this keeps the old workers, which still work)."""
         # Imported here: the patcher takes a while to import, and only a build needs it
@@ -1811,9 +1809,6 @@ class MergerWindow:
         if patch_anyway:
             log.info(f"Patching anyway, as you chose: {', '.join(screen_label(path) for path in patch_anyway)}")
             force += [path for path in patch_anyway if path not in force]
-        if reverted := [path for path in revert if path in force]:
-            log.info(f"Reverting to the unpatched screens, as you chose: {', '.join(map(screen_label, reverted))}")
-            force = [path for path in force if path not in reverted]
         result = None
         try:
             result = build_package(self.game, settings, force=force, **off, pool=self.pool, data_dir=gui.DATA_DIR,

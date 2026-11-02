@@ -201,8 +201,9 @@ def show_build(result):
     log.info("Merged patches", extra=HEADING)
     installation = result.installation
     held = sum(file.status.included for file in result.files)
+    as_is = installation.written.as_is
     if not installation.written.empty:
-        log.info(f"Wrote {installation.package_dir} ({held} screen(s))")
+        log.info(f"Wrote {installation.package_dir} ({held} screen(s)" + (f", and {as_is} mods' copies as they are)" if as_is else ")"))
     elif installation.written.removed:
         log.info(f"Nothing to merge, so there are no merged patches ({installation.package_dir} removed, if it was "
                  "there); mods.settings left as it is")

@@ -1,4 +1,5 @@
-"""The package: the merger's own mod folder in Mods\\ (scan.PACKAGE_FOLDER), holding the patched files.
+"""The package: the merger's own mod folder in Mods\\ (scan.PACKAGE_FOLDER), holding the patched files, and the
+mods' copies it holds as they are (see builder.as_is_copies).
 
 Its files, all written by files.py's rules:
 - content\\blob0.bundle and content\\metadata.store: the files the package holds (none, if it holds none)
@@ -51,9 +52,14 @@ class Written(NamedTuple):
     removed: bool = False       # it holds no files, and its folder is gone (or never was there)
 
     @property
+    def as_is(self) -> int:
+        """How many mods' copies it holds as they are"""
+        return sum(bool(record.get("as_is")) for record in self.manifest["not_held"].values())
+
+    @property
     def empty(self) -> bool:
         """Whether it holds no files, so there is no package"""
-        return not self.manifest["files"]
+        return not self.manifest["files"] and not self.as_is
 
 
 def record_path(data_dir: Path, mods_dir: Path) -> Path:
@@ -64,22 +70,23 @@ def record_path(data_dir: Path, mods_dir: Path) -> Path:
 
 
 def write_package(package_dir: Path, installed: Installed, files: list[PackageFile], record: Path | None = None, *,
-                  reviews_sha256: str | None, groups_off=(), screens_off=(), rates=(None, None)) -> Written:
+                  reviews_sha256: str | None, groups_off=(), screens_off=(), rates=(None, None), as_is=()) -> Written:
     """Write the package into package_dir (created if needed), replacing what it held: the files in files
     that are to be included (see policy.FileStatus.included), and a manifest recording files (see
     package_manifest). installed: the Smooth UI build they were patched for; reviews_sha256: the reviews of
     mods' code they were patched with (see mod_reviews.py); groups_off and screens_off: the groups and
     files turned off (see scan.Scan.groups_off and screens_off; the latter is a dict); rates: the menus' and the
-    HUD's frame rates they were patched for (see scan.Scan.target_fps; None: installed's). If none is to be
-    included, remove the package instead, and write the manifest to record (see above), if given; else delete
-    record."""
+    HUD's frame rates they were patched for (see scan.Scan.target_fps; None: installed's); as_is: the mods'
+    copies to hold as they are (see policy.AsIs). If it would hold no files, remove the package instead, and write
+    the manifest to record (see above), if given; else delete record."""
     package_dir = Path(package_dir)
     content = package_dir / "content"
     previous = _read_manifest(package_dir / PACKAGE_MANIFEST)
     delete_file(package_dir / PACKAGE_MANIFEST)
     included = sorted((file for file in files if file.status.included), key=lambda file: file.path)
-    manifest = package_manifest(installed, files, previous, reviews_sha256, groups_off, screens_off, rates)
-    if not included:
+    manifest = package_manifest(installed, files, previous, reviews_sha256, groups_off, screens_off, rates, as_is)
+    entries = [*(file.entry for file in included), *(copy.entry for copy in as_is if copy.entry is not None)]
+    if not entries:
         removed, unknown = remove_package(package_dir)
         log.info("Nothing to merge: " + ("removed the merged patches" if removed else "their folder stays, as it holds other files"))
         if record is not None:
@@ -87,11 +94,11 @@ def write_package(package_dir: Path, installed: Installed, files: list[PackageFi
             write_file(record, _manifest_bytes(manifest))
         return Written(manifest, unknown, removed)
 
-    bundle, store = pack_entries((file.entry for file in included), BUNDLE)
+    bundle, store = pack_entries(entries, BUNDLE)
     make_dirs(content)
     write_file(content / BUNDLE, bundle)
     write_file(content / STORE, store)
-    log.info(f"Wrote {content / BUNDLE} ({len(included)} files, {len(bundle) / 2**20:.1f} MiB) and its {STORE}")
+    log.info(f"Wrote {content / BUNDLE} ({len(entries)} files, {len(bundle) / 2**20:.1f} MiB) and its {STORE}")
     write_file(package_dir / PACKAGE_MANIFEST, _manifest_bytes(manifest))
     if record is not None:
         delete_file(record)
@@ -134,7 +141,7 @@ def same_copy(record: dict, source) -> bool:
 
 
 def package_manifest(installed: Installed, files: list[PackageFile], previous: dict | None = None,
-                     reviews_sha256: str | None = None, groups_off=(), screens_off=(), rates=(None, None)) -> dict:
+                     reviews_sha256: str | None = None, groups_off=(), screens_off=(), rates=(None, None), as_is=()) -> dict:
     """What the package holds, and what it was built from: for each file it holds, the copy it was patched
     from (to tell whether that changed without reading it) and the output (to tell whether the package
     is intact); for each other file, why it isn't there, and the copy that was decided on (and for one left
@@ -186,6 +193,13 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
                 not_held[file.path]["reasons"] = [issue.message for issue in file.issues if issue.review in file.known_broken]
                 # Whether it still is, once the reviews of mods' code change (see state.package_state)
                 not_held[file.path]["known_broken"] = file.known_broken
+    for copy in as_is:     # (It keeps its status: only where the game gets it from differs)
+        record = not_held.setdefault(copy.path, {"mod": copy.source.origin, "status": copy.status})
+        record.update(bundle=copy.source.file.name, source_size=copy.source.size, source_crc32=copy.source.toc_entry.crc)
+        if copy.entry is None:
+            record["cant_hold"] = True
+        else:
+            record.update(as_is=True, output_size=copy.entry.size, output_crc32=copy.entry.crc)
     return {
         "format": PACKAGE_MANIFEST_FORMAT,
         "tools_version": tools_version(),
@@ -208,7 +222,7 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
         "not_held": not_held,
         # The groups turned off (see scan.Scan.groups_off): their files are in neither of the above
         "groups_off": sorted(groups_off),
-        # The files the user chose not to merge (see scan.Scan.screens_off): in neither either
+        # The files the user chose not to merge (see scan.Scan.screens_off): in neither either, unless held as they are
         "screens_off": sorted(screens_off),
         # Which of those our rules left out (a dont-merge line, see mod_reviews.py), and why: not the user's choice
         "screens_off_by_rule": {key: choice.reason for key, choice in sorted(dict(screens_off).items()) if choice.reason},

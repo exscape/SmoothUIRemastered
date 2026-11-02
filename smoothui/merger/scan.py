@@ -95,6 +95,14 @@ class FileResult:
         """The mod whose copy the game loads where the package doesn't hold the file"""
         return next((mod for mod in self.shippers if not is_package_folder(mod.folder)), None)
 
+    @property
+    def smoothui_first(self) -> bool:
+        """Whether a mod ships it, but without the package, the game loads Smooth UI's copy. Then the package
+        holds the mod's copy as it is, if it isn't merged (see builder.as_is_copies)."""
+        shown = self.loaded_without_package
+        return (shown is not None and is_smoothui_folder(shown.folder)
+                and any(not is_own_folder(mod.folder) for mod in self.shippers))
+
 
 class ScreenOff(NamedTuple):
     """The user's choice not to merge a mod's copy of a screen (see game.Settings.screens_off), and what it
