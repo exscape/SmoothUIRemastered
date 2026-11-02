@@ -101,11 +101,11 @@ KNOWN_BROKEN_QUESTION = ("{copies} known not to work with Smooth UI.\n\n"
 KNOWN_BROKEN = "Left as they are, as they don't work with Smooth UI: {screens}."
 # The user's choice not to merge a mod's copy (in the details of a screen merged or left out), and its revert
 DONT_MERGE = "Don't merge it"
-DONT_MERGE_NOTE = "The game then uses {mod}'s own copy{fps}. You can turn merging on again here."
+DONT_MERGE_NOTE = "The game then uses {mod}'s own copy. You can turn merging on again here."
 DONT_MERGE_MOD = "Don't merge {mod}'s screens"
-DONT_MERGE_MOD_NOTE = "The game then uses {mod}'s own copies{fps}. You can turn merging on again here."
+DONT_MERGE_MOD_NOTE = "The game then uses {mod}'s own copies. You can turn merging on again here."
 # For a group's row (see dont_merge_texts)
-DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files{fps}. You can turn merging on again here."
+DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files. You can turn merging on again here."
 TURN_ON = "Turn merging on again"
 TURNED_OFF = "Merging is turned off for: {screens}."
 # Screens that Smooth UI itself leaves out for a mod (a dont-merge line, see mod_reviews.py), by its reason; the
@@ -798,17 +798,15 @@ def known_broken_question(mods: list[str], screen: str) -> str:
     return KNOWN_BROKEN_QUESTION.format(copies=copies)
 
 
-def dont_merge_texts(off: list[tuple[str, str]], group: str | None, fps: float | None = None) -> tuple[str, str]:
-    """(the button, its note) for a row's Don't merge, which turns off off (see dont_merge); group: the row's;
-    fps: the frame rate of those copies, if known"""
+def dont_merge_texts(off: list[tuple[str, str]], group: str | None) -> tuple[str, str]:
+    """(the button, its note) for a row's Don't merge, which turns off off (see dont_merge); group: the row's"""
     mods = sorted({mod for _, mod in off}, key=str.lower)
-    fps = f" ({fps:g} fps)" if fps else ""
     if group:
         return DONT_MERGE, DONT_MERGE_GROUP_NOTE.format(mods=f"{mods[0]}'s" if len(mods) == 1 else "the mods'",
-                                                        group=group_name(group), fps=fps)
+                                                        group=group_name(group))
     if len(off) > 1:
-        return DONT_MERGE_MOD.format(mod=mods[0]), DONT_MERGE_MOD_NOTE.format(mod=mods[0], fps=fps)
-    return DONT_MERGE, DONT_MERGE_NOTE.format(mod=mods[0], fps=fps)
+        return DONT_MERGE_MOD.format(mod=mods[0]), DONT_MERGE_MOD_NOTE.format(mod=mods[0])
+    return DONT_MERGE, DONT_MERGE_NOTE.format(mod=mods[0])
 
 
 def dont_merge(members: list[FileState], states: list[FileState]) -> list[tuple[str, str]]:

@@ -38,7 +38,6 @@ from ..patcher.swf import (
     SWF_HEADER_SIZE,
     SWF_SIGS,
     SWF_UNCOMPRESSED_SIGS,
-    header_fps,
 )
 
 log = logging.getLogger(__name__)
@@ -267,15 +266,6 @@ def replace_swf(redswf: bytes | bytearray, swf: bytes | bytearray) -> bytes:
         raise RedSwfError(f"replacing the SWF failed verification: {'; '.join(problems)}")
     log.debug(f"Replaced the SWF: {len(old.swf)} -> {len(swf)} bytes, .redswf {len(old.data)} -> {len(out)} bytes")
     return out
-
-
-def swf_fps(redswf: bytes | bytearray) -> float | None:
-    """The frame rate in the header of the SWF in a .redswf; None if it can't be read"""
-    swf = RedSwf(redswf).swf
-    body = swf[SWF_HEADER_SIZE:]
-    if swf[:3] in SWF_COMPRESSED_SIGS:
-        body = zlib.decompressobj().decompress(body, 64)    # the header is at most 21 bytes
-    return header_fps(body)
 
 
 def swf_sha256(redswf: bytes | bytearray) -> str:

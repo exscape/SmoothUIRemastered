@@ -273,7 +273,6 @@ from .state import (
     State,
     carried_force,
     changed_since_off,
-    original_frame_rate,
 )
 
 log = logging.getLogger(__name__)
@@ -1320,27 +1319,6 @@ class MergerWindow:
             discard(self.details.pop(path)[0])
             self.rows[path][1][4].setText("▸")
 
-    def original_fps(self, paths) -> float | None:
-        """The frame rate in the headers of the mods' copies of these files, which the game uses when they
-        aren't merged; None if they differ, or it can't be told (then the texts just don't say it)"""
-        import struct
-        import zlib
-
-        from ..witcher3.redswf import swf_fps
-        scan = self.found.scan
-        rates = set()
-        for path in paths:
-            copy = scan.off_copies.get(path) or scan.files[path].winner
-            shown = scan.files[path].loaded_without_package
-            if copy is None or shown is None or shown.folder != copy.origin:
-                return None
-            try:
-                rates.add(swf_fps(copy.read()))
-            except (OSError, ValueError, struct.error, zlib.error, SmoothUIError) as e:     # only a detail in a text
-                log.warning(f"The frame rate of {screen_label(path)} can't be read: {e}")
-                return None
-        return rates.pop() if len(rates) == 1 else None
-
     def show_details(self, path):
         """Below a screen's row: its file name, the full message, the other mods that change it, and Patch
         anyway (a screen left out for its rescale's problems or known not to work, never for a failure; the
@@ -1358,9 +1336,7 @@ class MergerWindow:
         off = dont_merge(members, self.found.states)
         chosen = {self.found.scan.screens_off[file.path] for file in members
                   if file.cause == "by choice" and file.path in self.found.scan.screens_off}
-        fps = self.original_fps([*(path for path, _ in off), *(choice.path for choice in chosen)])
-        message = state.message.replace(original_frame_rate(state.group), original_frame_rate(state.group, fps))
-        layout.addWidget(label(capitalized(message) + (":" if state.fixes else ""), wrap=True))
+        layout.addWidget(label(capitalized(state.message) + (":" if state.fixes else ""), wrap=True))
         for name in state.fixes:
             layout.addWidget(label(f"•  {fix_text(name)}", wrap=True))
         if not state.group and (also := also_changed(self.found.scan.files[path], state.winner)):
@@ -1389,7 +1365,7 @@ class MergerWindow:
         if text:
             actions.append((text, note, command))
         if off:
-            text, note = dont_merge_texts(off, state.group, fps)
+            text, note = dont_merge_texts(off, state.group)
             actions.append((text, note, lambda: self.turn_off(off)))
         if chosen:
             changed = next((self.merges_now[file.path] for file in members if file.path in self.merges_now), None)
