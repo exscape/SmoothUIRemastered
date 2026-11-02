@@ -118,6 +118,7 @@ from .game import (
     GAME_PATH_ENV,
     GameFolder,
     Settings,
+    default_game_fps,
     find_games,
     frame_settings,
     game_command,
@@ -743,8 +744,7 @@ class MergerWindow:
         """What the frame rate section shows: (the menus' rate, the rate in gameplay, the frame generation
         multiplier), as saved. Not saved: the installed build's rate; on the first run, the menus' is the
         display's refresh rate or the game's frame rate limit, the lower (within FPS_RANGES), and the rate in
-        gameplay that, at most 96 (a safe guess: a HUD built too high plays slowly, one built a little low still
-        looks smooth) and at most the limit, with the game's frame generation."""
+        gameplay game.default_game_fps, with the game's frame generation."""
         installed = self.found.scan.installed if self.found else None
         release = installed.fps if installed and installed.usable else None
         hz = refresh_rate() if self.settings is None else None
@@ -758,7 +758,8 @@ class MergerWindow:
             return menus, self.settings.hud_game_fps, self.settings.hud_fg
         if self.settings:
             return menus, release or min(menus, 96), 1
-        return menus, min(menus, 96, cap or 96), min(frames.fg, FG_MULTIPLIERS[-1]) if frames else 1
+        fg = min(frames.fg, FG_MULTIPLIERS[-1]) if frames else 1
+        return menus, default_game_fps(menus, fg, cap), fg
 
     def make_help(self):
         """The help page: the versions, how to set the tools up, reporting a bug, the data folder, the licenses"""

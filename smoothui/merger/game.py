@@ -91,6 +91,13 @@ def hud_rate(game_fps: int, fg: int) -> tuple[int, float, str]:
     return rate, rendered / rate, "ok" if rendered >= lowest else "slowed"
 
 
+def default_game_fps(menus: int, fg: int, cap: int | None) -> int:
+    """The rate in gameplay to suggest on the first run: 96 (a safe guess: a HUD built too high plays slowly, one
+    built a little low still looks smooth), or with more frame generation what gives the HUD's lowest rate, 48
+    rendered; at most the menus' rate and the game's limit (cap, None: none)."""
+    return min(menus, max(96, FPS_RANGES["hud_fps"][0] * fg), cap or menus)
+
+
 def groups_off(settings: Settings | None) -> frozenset[str]:
     """The groups of files (see build/profile.py's Group) the merger leaves out, as the settings say (None:
     their defaults): the HUD, unless Smooth HUD is on"""
