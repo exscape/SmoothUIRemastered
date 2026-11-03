@@ -123,6 +123,9 @@ UNDO = "Undo"
 MAX_ROW_MODS = 30
 # A group's row: after the files that keep it out, instead of each file left out with them
 GROUP_LEFT_OUT = "The rest of the {group} is left out too, as it is merged whole or not at all."
+# A group's row names this many files; the others are in the log (see group_log_lines)
+MAX_GROUP_FILES = 2
+MORE_GROUP_FILES = "And {count} {others}: see the log."
 
 DELETE_FAILED = "The merged patches can't be deleted: {error}\n\nDelete the folder {folder} yourself before you play."
 FAILED = "Smooth UI Merger failed:\n\n{error}\n\nDetails are in data\\{log}."
@@ -711,16 +714,38 @@ def _group_message(members: list[FileState]) -> str:
     some keep it out, only theirs: the others are left out as the group is, which is what matters."""
     keep_out = [file for file in members if file.cause != "group left out"]
     if keep_out and len(keep_out) < len(members):
-        return "\n\n".join([*(f"•  {file_name(file.path)}: {file.message}"
-                              for file in sorted(keep_out, key=lambda file: (row_rank(file), file.path))),
-                            f"•  {GROUP_LEFT_OUT.format(group=group_name(members[0].group))}"])
+        return "\n\n".join([*_file_lines(keep_out), f"•  {GROUP_LEFT_OUT.format(group=group_name(members[0].group))}"])
     common = Counter(file.message for file in members).most_common(1)[0][0]
-    others = sorted((file for file in members if file.message != common), key=lambda file: (row_rank(file), file.path))
+    others = [file for file in members if file.message != common]
     if not others:
         return common
     rest = len(members) - len(others)
-    return "\n\n".join([*(f"•  {file_name(file.path)}: {file.message}" for file in others),
-                      f"•  {'The other file' if rest == 1 else f'The other {rest} files'}: {common}"])
+    return "\n\n".join([*_file_lines(others), f"•  {'The other file' if rest == 1 else f'The other {rest} files'}: {common}"])
+
+
+def _file_lines(files: list[FileState]) -> list[str]:
+    """A line per file, the worst first, but at most MAX_GROUP_FILES: then a line for how many more there are"""
+    files = sorted(files, key=lambda file: (row_rank(file), file.path))
+    lines = [f"•  {file_name(file.path)}: {file.message}" for file in files[:MAX_GROUP_FILES]]
+    more = len(files) - MAX_GROUP_FILES
+    if more > 0:
+        lines.append(f"•  {MORE_GROUP_FILES.format(count=more, others='other' if more == 1 else 'others')}")
+    return lines
+
+
+def group_log_lines(states: list[FileState]) -> list[tuple[str, str]]:
+    """What every file of a group says, as (its row's tone, a line for the log), as the group's row names only
+    some of them. Files that say the same are one line, by name unless they are the whole group."""
+    groups = {}
+    for state in states:
+        if state.group:
+            groups.setdefault(state.group, {}).setdefault(state.message, []).append(state)
+    lines = []
+    for group, messages in groups.items():
+        for message, files in messages.items():
+            names = _count(len(files), "file") if len(messages) == 1 else ", ".join(file_name(file.path) for file in files)
+            lines.append((row_status(min(files, key=row_rank))[0], f"{group_name(group)} ({names}): {message}"))
+    return lines
 
 
 def row_name(file: FileState) -> str:

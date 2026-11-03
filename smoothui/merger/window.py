@@ -250,6 +250,7 @@ from .gui_texts import (
     dont_merge,
     dont_merge_texts,
     game_screens,
+    group_log_lines,
     hud_advice,
     known_broken_question,
     left_out,
@@ -1463,6 +1464,8 @@ class MergerWindow:
                 log.warning(f"Smooth UI: {self.found.scan.installed.message}")
             for problem in self.found.scan.problems:
                 log.warning(problem.message)
+            for tone, line in group_log_lines(self.found.states):
+                log.log(logging.WARNING if tone in (ERROR, WARNING) else logging.INFO, line)
         self.merges_now = {}
         self.keep_changes()
         self.try_merging()
