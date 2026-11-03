@@ -8,7 +8,7 @@
 working_dir = 'E:\Temp\Witcher3Modding\work'
 
 # Optional: game directory to use when installing mod builds and launching the game (--install, --launch)
-game_path = 'D:\Games\The Witcher 3 Remastered'
+game_path = 'D:\Games\The Witcher 3 Dev'
 
 
 

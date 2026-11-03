@@ -219,6 +219,19 @@ def is_game_folder(folder: Path) -> bool:
         return False
 
 
+def check_active_setup(game: Path, mods_settings: Path):
+    """For development only, on a PC with two game folders that take turns: the inactive one has its exe renamed,
+    and the other's Documents folder is set aside. Merging there would mix its mods with the active one's
+    mods.settings, so this fails (SmoothUIError). Any other PC never has both signs, so it never fails there."""
+    documents = Path(mods_settings).parent
+    try:
+        if ((Path(game) / GAME_EXE.with_name(f"{GAME_EXE.name}.off")).is_file()
+                and any(documents.with_name(f"{documents.name}_{setup}").is_dir() for setup in ("DEV", "PLAY"))):
+            fail(f"{to_windows(game)} isn't the active setup: switch to it with w3-profile.sh")
+    except OSError:
+        pass
+
+
 def mo2_inside_game() -> bool:
     """Whether Mod Organizer 2 started this process (its virtual file system is loaded) from a folder inside
     a game folder: MO2 may then move the tools' own new files (settings, logs) to its overwrite folder or an

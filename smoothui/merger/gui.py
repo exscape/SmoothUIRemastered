@@ -49,6 +49,7 @@ from .game import (
     GAME_PATH_ENV,
     MODS_SETTINGS_ENV,
     Settings,
+    check_active_setup,
     game_path,
     load_settings,
     mo2_inside_game,
@@ -173,6 +174,7 @@ def start_scan(game: Path, calls: queue.Queue, off=None):
     """Check (state.check) in a thread; off: the scan options from the settings (see game.scan_options)"""
     def work():
         start = time.perf_counter()
+        check_active_setup(game, mods_settings())
         found = check(game, mods_settings(), data_dir=DATA_DIR, **(off or {}))
         return found, time.perf_counter() - start
     calls.put(("scanning", ()))

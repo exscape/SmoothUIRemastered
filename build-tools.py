@@ -54,7 +54,7 @@ ZIP_FOLDER = "Smooth UI Tools"          # the folder at the root of a release zi
 WORK_DIR = ROOT / "build" / "nuitka"    # Nuitka's build folders and reports, and the version file
 COMPANY = "Aeluwas"
 PRODUCT = "Smooth UI Remastered"
-INSTALL_FOLDER = "Smooth UI Tools"      # for --install: the tools' folder in the game folder
+INSTALL_FOLDER = "_Extras/Smooth UI Tools"      # for --install: the tools' folder in the game folder
 CONFIG = ROOT / "config" / "config.toml"
 
 # The version file, at the path of smoothui/merger/, whose VERSION_FILE it is: a frozen tool has no config.toml

@@ -19,7 +19,7 @@ from ..paths import DATA_DIR
 from ..witcher3.user_files import mods_settings_path
 from . import updates
 from .builder import build_package
-from .game import FPS_RANGES, load_settings, scan_options
+from .game import FPS_RANGES, check_active_setup, load_settings, scan_options
 from .installed import is_smoothui_folder
 from .load_order import Group
 from .scan import is_package_folder
@@ -75,6 +75,7 @@ def main():
     if game_path is None:
         fail("no game folder: give --game-path, or set game_path in config/config.toml")
     mods_settings = args.mods_settings or mods_settings_path()
+    check_active_setup(game_path, mods_settings)
     if args.build:
         build(args, game_path, mods_settings)
     else:
