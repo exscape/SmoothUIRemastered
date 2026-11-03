@@ -1,12 +1,15 @@
 # v0.9.5
-**Note:** The old versions have a bug during updates (about 10% of the time).  
+**Note:** All previous versions can randomly fail during updates (about 10% of the time).  
 If the update fails: close the errors (likely two of them; the game starts anyway), then start SmoothUIMerger.exe directly to update again. You can also re-download from Nexus Mods, just this once.
 
-* **Critical fix:** Fix update check for launcher-only users, who never saw any update notices before
+* **Critical fix:** Fix update notices for launcher-only users, who never saw them before
 * Fixed: occasional crash on update from the launcher, see above
-* Added: allow disabling merging for screens that merged cleanly, just in case / for troubleshooting; show mod's default frame rate
-* Improved: warn in Settings when game settings (FPS limiter, frame generation settings) would cause slow-motion menus or HUD
-* Changed: if the launcher starts the merger, the game only starts when you click a button that contains "play" (e.g. "Merge and play"); not if you close the window, click "Don't merge", etc.
+* Fixed: screens that aren't merged now **keep the mod's changes**, including the mod's frame rate. Previously, if Smooth UI's folder came first in the load order, the game used Smooth UI's copy instead, without the mod's changes.
+* Changed: if the launcher starts the merger, the game now only starts when you click a button that says "play" (e.g. "Merge and play")
+* Changed: buttons in the screen list no longer merge right away: changes that need a merge are marked, and one merge applies them all (or undo them first)
+* Changed: "Use the smooth version" and "Use the mod's own copy" replace "Merge anyway", "Don't merge", "Turn merging on again" and "Revert". "Merged anyway" is now "Merged with warnings".
+* Added: You can choose to "Use the mod's own copy" for screens that merged cleanly, for troubleshooting
+* Added: warn in Settings when game settings (FPS limiter, frame generation settings) would cause slow-motion menus or HUD
 
 This is marked as a critical update, as that is the only way I can reach some users: all older versions hide all non-critical updates when started by the launcher, which means most users still use the version they first downloaded.
 

@@ -163,6 +163,8 @@ When the merger starts, it asks GitHub whether a newer version of Smooth UI Tool
 Updating is automatic: the merger downloads the new version, checks it, closes, and opens again in the new version.  
 If the update fails, the old version stays as it was; you can then download the new version from [Nexus Mods](https://www.nexusmods.com/witcher3/mods/15202).
 
+Note that the **launcher** never goes online; you only get notified when the merger starts.
+
 **Privacy:** the check is a standard web request to GitHub, which can see your IP address. The **only** other thing sent is the current tools version (as `SmoothUITools/X.Y.Z`). Nothing whatsoever is sent to me (the developer).  
 **To turn it off:** untick "Check for updates when the merger starts" under **Settings** in the merger. The merger then never goes online at all.
 
