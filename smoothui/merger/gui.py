@@ -181,10 +181,10 @@ def start_scan(game: Path, calls: queue.Queue, off=None):
 
 def find_updates(waited_for: bool, last_check, pending):
     """The update check (updates.check), in a thread; last_check, pending: when the last one was, and the
-    version it found (settings). When the
-    game waits for it (stale mode, an unknown Smooth UI build): a shorter timeout, and even right after another
-    check (the scan has just found something that check may not have known). None when run from source: an
-    update would replace the repo's files with the tools' (and downloads aren't read from there anyway)."""
+    version it found (settings). When the game waits for it (stale mode, an unknown Smooth UI build): a shorter
+    timeout, and even right after another check (the scan has just found something that check may not have
+    known). None when run from source: an update would replace the repo's files with the tools' (and downloads
+    aren't read from there anyway)."""
     if not FROZEN:
         log.info("Update check: skipped (run from source)")
         return None

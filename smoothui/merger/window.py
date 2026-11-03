@@ -1570,7 +1570,7 @@ class MergerWindow:
 
     def card_offers_update(self) -> bool:
         """Stale mode, an unknown Smooth UI build: the card offers a newer version (see status_card), and
-        no notice does"""
+        the update button doesn't"""
         return self.stale and self.found is not None and self.found.scan.installed.status == Status.UNKNOWN
 
     def critical_update(self) -> bool:
@@ -1614,8 +1614,8 @@ class MergerWindow:
             self.update_now()
 
     def update_now(self):
-        """Update now (the notice, What's new, stale mode's card): download and unpack the new version in a
-        thread, then start it as the helper (self_update.py) and exit"""
+        """Update now (What's new, stale mode's card): download and unpack the new version in a thread, then
+        start it as the helper (self_update.py) and exit"""
         update = self.update
         if update is None or self.busy:
             return
@@ -1762,8 +1762,8 @@ class MergerWindow:
 
     def merge(self, play=False, patch_anyway=()):
         """Build the package in a thread, then scan again; with play (stale mode), a clean build plays at once,
-        unless a critical update is known by then (it fixes a bug that may have made this build wrong): the
-        window stays open, with its notice. patch_anyway: files to force too (see build)"""
+        unless a critical update is known by then: the window stays open, with its update button.
+        patch_anyway: files to force too (see build)"""
         self.set_busy("build")
         self.merged = self.merge_error = self.progress = None
         self.keep_order = True

@@ -8,10 +8,9 @@ update not installed yet, so that it still shows: the window keeps both in the s
 - the manifests: tag "manifests", one long-lived release holding the manifests of every Smooth UI release
   (<version>.json), so that a Smooth UI release reaches the merger without a tools release. It also holds
   the reviews of mods' code (mod_reviews.MOD_REVIEWS), downloaded whenever it differs from the downloaded
-  copy: that copy is used instead of the shipped one.
+  copy: the newer of that and the shipped one is used (mod_reviews.path).
 A newer tools release whose notes have a line starting "Critical fix:" (or "Critical update:", "Critical bug
-fix:"; CRITICAL) makes the update critical: it fixes a bug that makes packages wrong, so the window says so
-louder (see the release checklist).
+fix:"; CRITICAL) makes the update critical: the window says so louder (see the release checklist).
 Assets are downloaded from their download links (which don't count against the limit), and each must match
 the SHA-256 GitHub lists for it.
 
