@@ -1,5 +1,5 @@
 {
- "created_at": "2026-10-30T16:27:10+00:00",
+ "created_at": "2026-11-05T11:38:01+00:00",
  "created_mod_version": "v0.3.3-60fps",
  "files": {
   "gameplay/gui_new/swf/alchemy/panel_alchemy.redswf": {
@@ -7963,10 +7963,10 @@
    "fps": 60.0,
    "game_copy": "merger-only",
    "group": "hud",
-   "output_crc32": 2155808215,
-   "output_sha256": "559243ec3ee0b7f2c7168a91a93c8221506136ecd8457085e6636081b4a4b6c4",
-   "output_size": 67535,
-   "output_swf_sha256": "f6a6f45b87543b6a8967c20fee7edd9ae37545a5fbdc53cf718f880a5424dcbe",
+   "output_crc32": 3993547059,
+   "output_sha256": "659a032a573bdb1b164d7785ecd17369337512f142bfe58b4c39acf8a61d4b87",
+   "output_size": 70003,
+   "output_swf_sha256": "184ae39280df4b23f9965e09f591b1c5d08b6f09eb8d53c471239ecc52f0d397",
    "report": {
     "exclude": [
      {
@@ -7987,17 +7987,37 @@
      2,
      3
     ],
-    "include": [],
+    "include": [
+     {
+      "matched": [
+       23
+      ],
+      "pattern": "^DefaultStatusIndicator$"
+     }
+    ],
     "increments": [],
     "new_fps": 60.0,
     "old_fps": 24.0,
     "patched": {
-     "frame_scripts": 2,
+     "frame_scripts": 3,
      "gotos": 1,
      "increments": 0
     },
     "ratio": "5/2",
-    "rules": [],
+    "rules": [
+     {
+      "holds": [
+       7,
+       8
+      ],
+      "matched": [
+       23
+      ],
+      "pattern": "^DefaultStatusIndicator$",
+      "ratio": "15/2",
+      "speed": "1/3"
+     }
+    ],
     "source_fps": 24.0,
     "sprites": [
      {
@@ -8018,17 +8038,27 @@
       "class": "DefaultStatusIndicator",
       "frames": 101,
       "id": 23,
-      "reasons": [
-       "computed gotoAndStop() in StatusIndicator.updatePosition",
-       "totalFrames read in StatusIndicator.updatePosition"
-      ],
-      "stretched": false
+      "interpolation": {
+       "bytes": 9100,
+       "motion": 254.77,
+       "snapped": 0,
+       "steps": 100
+      },
+      "new_frames": 758,
+      "speed": "1/3",
+      "stretched": true
      }
     ],
     "target_fps": 60.0,
     "unlinked_classes": [],
     "unmet_rules": [],
-    "warnings": []
+    "warnings": [
+     {
+      "hash": "9c107ce5",
+      "key": "stretched-frame-property StatusIndicator.updatePosition",
+      "message": "totalFrames used in scaleform.clik.controls.StatusIndicator.updatePosition on stretched clips [23]"
+     }
+    ]
    },
    "source_crc32": 3726908670,
    "source_sha256": "9c54f418c4d4be653f84770a332a0c353d35a690d7d28823cfe673690ab8e312",
@@ -8039,10 +8069,10 @@
    "fps": 60.0,
    "game_copy": "merger-only",
    "group": "hud",
-   "output_crc32": 3259813713,
-   "output_sha256": "12e8c2de68f99f269d73182517343a6653c8b05adea8586dae7904f9102dc2e9",
-   "output_size": 61084,
-   "output_swf_sha256": "99195171e37101868f4df2b1a113a825a801747b582faf198bcf06de9b4ec634",
+   "output_crc32": 3325103644,
+   "output_sha256": "c866c9574dfefedf900324b952c988955420add1e416d4adcc2de031fe652314",
+   "output_size": 63592,
+   "output_swf_sha256": "0b8f10dfa2a2291f06756d95c649f899580a03f2d601e0369cff89ed8c0977b5",
    "report": {
     "exclude": [
      {
@@ -8063,28 +8093,52 @@
      2,
      3
     ],
-    "include": [],
+    "include": [
+     {
+      "matched": [
+       9
+      ],
+      "pattern": "^DefaultStatusIndicator$"
+     }
+    ],
     "increments": [],
     "new_fps": 60.0,
     "old_fps": 24.0,
     "patched": {
-     "frame_scripts": 0,
+     "frame_scripts": 1,
      "gotos": 0,
      "increments": 0
     },
     "ratio": "5/2",
-    "rules": [],
+    "rules": [
+     {
+      "holds": [
+       7,
+       8
+      ],
+      "matched": [
+       9
+      ],
+      "pattern": "^DefaultStatusIndicator$",
+      "ratio": "15/2",
+      "speed": "1/3"
+     }
+    ],
     "source_fps": 24.0,
     "sprites": [
      {
       "class": "DefaultStatusIndicator",
       "frames": 101,
       "id": 9,
-      "reasons": [
-       "computed gotoAndStop() in StatusIndicator.updatePosition",
-       "totalFrames read in StatusIndicator.updatePosition"
-      ],
-      "stretched": false
+      "interpolation": {
+       "bytes": 9162,
+       "motion": 254.76,
+       "snapped": 0,
+       "steps": 100
+      },
+      "new_frames": 758,
+      "speed": "1/3",
+      "stretched": true
      },
      {
       "class": null,
@@ -8098,7 +8152,13 @@
     "target_fps": 60.0,
     "unlinked_classes": [],
     "unmet_rules": [],
-    "warnings": []
+    "warnings": [
+     {
+      "hash": "9c107ce5",
+      "key": "stretched-frame-property StatusIndicator.updatePosition",
+      "message": "totalFrames used in scaleform.clik.controls.StatusIndicator.updatePosition on stretched clips [9]"
+     }
+    ]
    },
    "source_crc32": 13770237,
    "source_sha256": "0b7dfad6345b72f855f592c547fa42918cd066d8953c26f1b33ea727f607bab8",
@@ -9191,10 +9251,10 @@
    "fps": 60.0,
    "game_copy": "merger-only",
    "group": "hud",
-   "output_crc32": 2738510310,
-   "output_sha256": "14a7b7d363f2f584e2a0ab3c09e23911516c62dad414abdb3d26c027b4fb9107",
-   "output_size": 67461,
-   "output_swf_sha256": "2592aef7f05170df5c129bc9f6b824b4eae2520f84daa87dfd8f87dc7f3028bb",
+   "output_crc32": 1012706673,
+   "output_sha256": "80bb82447fb750c729578f2bd70d26b25fb6a1a751608c8e9102fa2504b80e29",
+   "output_size": 70045,
+   "output_swf_sha256": "fdfe043f891f9db8e06b073b164cbec4688f602f5702cb9c6ad9be1df75d444c",
    "report": {
     "exclude": [
      {
@@ -9215,28 +9275,52 @@
      2,
      3
     ],
-    "include": [],
+    "include": [
+     {
+      "matched": [
+       20
+      ],
+      "pattern": "^DefaultStatusIndicator$"
+     }
+    ],
     "increments": [],
     "new_fps": 60.0,
     "old_fps": 24.0,
     "patched": {
-     "frame_scripts": 0,
+     "frame_scripts": 1,
      "gotos": 0,
      "increments": 0
     },
     "ratio": "5/2",
-    "rules": [],
+    "rules": [
+     {
+      "holds": [
+       7,
+       8
+      ],
+      "matched": [
+       20
+      ],
+      "pattern": "^DefaultStatusIndicator$",
+      "ratio": "15/2",
+      "speed": "1/3"
+     }
+    ],
     "source_fps": 24.0,
     "sprites": [
      {
       "class": "DefaultStatusIndicator",
       "frames": 101,
       "id": 20,
-      "reasons": [
-       "computed gotoAndStop() in StatusIndicator.updatePosition",
-       "totalFrames read in StatusIndicator.updatePosition"
-      ],
-      "stretched": false
+      "interpolation": {
+       "bytes": 9800,
+       "motion": 254.21,
+       "snapped": 0,
+       "steps": 100
+      },
+      "new_frames": 758,
+      "speed": "1/3",
+      "stretched": true
      },
      {
       "class": null,
@@ -9250,7 +9334,13 @@
     "target_fps": 60.0,
     "unlinked_classes": [],
     "unmet_rules": [],
-    "warnings": []
+    "warnings": [
+     {
+      "hash": "9c107ce5",
+      "key": "stretched-frame-property StatusIndicator.updatePosition",
+      "message": "totalFrames used in scaleform.clik.controls.StatusIndicator.updatePosition on stretched clips [20]"
+     }
+    ]
    },
    "source_crc32": 156194279,
    "source_sha256": "dbb7e58cc5c8214be056dfc26b565d411baeea3f02f4a0514b6d7b3dce6eef0a",
@@ -9696,10 +9786,10 @@
    "fps": 60.0,
    "game_copy": "merger-only",
    "group": "hud",
-   "output_crc32": 3790321588,
-   "output_sha256": "4b4dd00ec978d92ead3a73ccbaf3052d8ccf27013a73a4a2686f1be0607995f9",
-   "output_size": 254331,
-   "output_swf_sha256": "d1f3e08d011b4338339c294922192c572cc5d0d77437184138f7060753f910eb",
+   "output_crc32": 3133819826,
+   "output_sha256": "f4b6c0af19d54f3ebc6156f938fb0280c8c373002badd5c13faaec412a7ce3df",
+   "output_size": 271415,
+   "output_swf_sha256": "6bc7a27a8456dbd346ddae6dd2b0a7c375d9a9b686159c41fc45db4a3167f590",
    "report": {
     "exclude": [
      {
@@ -9720,17 +9810,61 @@
      2,
      3
     ],
-    "include": [],
+    "include": [
+     {
+      "matched": [
+       54,
+       60,
+       63,
+       79
+      ],
+      "pattern": "^(Health|Stamina|Toxicity|LockedToxicity)StatusIndicator$"
+     },
+     {
+      "matched": [
+       47
+      ],
+      "pattern": "^BackgroundHealthIndicator$"
+     }
+    ],
     "increments": [],
     "new_fps": 60.0,
     "old_fps": 24.0,
     "patched": {
-     "frame_scripts": 8,
+     "frame_scripts": 13,
      "gotos": 0,
      "increments": 0
     },
     "ratio": "5/2",
-    "rules": [],
+    "rules": [
+     {
+      "holds": [
+       7,
+       8
+      ],
+      "matched": [
+       54,
+       60,
+       63,
+       79
+      ],
+      "pattern": "^(Health|Stamina|Toxicity|LockedToxicity)StatusIndicator$",
+      "ratio": "15/2",
+      "speed": "1/3"
+     },
+     {
+      "holds": [
+       7,
+       8
+      ],
+      "matched": [
+       47
+      ],
+      "pattern": "^BackgroundHealthIndicator$",
+      "ratio": "15/2",
+      "speed": "1/3"
+     }
+    ],
     "source_fps": 24.0,
     "sprites": [
      {
@@ -9826,11 +9960,15 @@
       "class": "BackgroundHealthIndicator",
       "frames": 100,
       "id": 47,
-      "reasons": [
-       "computed gotoAndStop() in StatusIndicator.updatePosition",
-       "totalFrames read in StatusIndicator.updatePosition"
-      ],
-      "stretched": false
+      "interpolation": {
+       "bytes": 6472,
+       "motion": 119.85,
+       "snapped": 0,
+       "steps": 99
+      },
+      "new_frames": 750,
+      "speed": "1/3",
+      "stretched": true
      },
      {
       "class": "hud_wolfstatbars_fla.HealthBar_21",
@@ -9850,31 +9988,43 @@
       "class": "HealthStatusIndicator",
       "frames": 101,
       "id": 54,
-      "reasons": [
-       "computed gotoAndStop() in StatusIndicator.updatePosition",
-       "totalFrames read in StatusIndicator.updatePosition"
-      ],
-      "stretched": false
+      "interpolation": {
+       "bytes": 6617,
+       "motion": 254.2,
+       "snapped": 0,
+       "steps": 100
+      },
+      "new_frames": 758,
+      "speed": "1/3",
+      "stretched": true
      },
      {
       "class": "LockedToxicityStatusIndicator",
       "frames": 101,
       "id": 60,
-      "reasons": [
-       "computed gotoAndStop() in StatusIndicator.updatePosition",
-       "totalFrames read in StatusIndicator.updatePosition"
-      ],
-      "stretched": false
+      "interpolation": {
+       "bytes": 6218,
+       "motion": 110.1,
+       "snapped": 0,
+       "steps": 100
+      },
+      "new_frames": 758,
+      "speed": "1/3",
+      "stretched": true
      },
      {
       "class": "ToxicityStatusIndicator",
       "frames": 101,
       "id": 63,
-      "reasons": [
-       "computed gotoAndStop() in StatusIndicator.updatePosition",
-       "totalFrames read in StatusIndicator.updatePosition"
-      ],
-      "stretched": false
+      "interpolation": {
+       "bytes": 6218,
+       "motion": 110.1,
+       "snapped": 0,
+       "steps": 100
+      },
+      "new_frames": 758,
+      "speed": "1/3",
+      "stretched": true
      },
      {
       "class": null,
@@ -9913,11 +10063,15 @@
       "class": "StaminaStatusIndicator",
       "frames": 101,
       "id": 79,
-      "reasons": [
-       "computed gotoAndStop() in StatusIndicator.updatePosition",
-       "totalFrames read in StatusIndicator.updatePosition"
-      ],
-      "stretched": false
+      "interpolation": {
+       "bytes": 13279,
+       "motion": 115.83,
+       "snapped": 0,
+       "steps": 100
+      },
+      "new_frames": 758,
+      "speed": "1/3",
+      "stretched": true
      },
      {
       "class": "hud_wolfstatbars_fla.Skull_13",
@@ -10064,7 +10218,13 @@
     "target_fps": 60.0,
     "unlinked_classes": [],
     "unmet_rules": [],
-    "warnings": []
+    "warnings": [
+     {
+      "hash": "9c107ce5",
+      "key": "stretched-frame-property StatusIndicator.updatePosition",
+      "message": "totalFrames used in scaleform.clik.controls.StatusIndicator.updatePosition on stretched clips [47, 54, 60, 63, 79]"
+     }
+    ]
    },
    "source_crc32": 4054339603,
    "source_sha256": "925372f9e4c029a2d219732e445aee31b7a3b97e65fd1c6f6a089ec87752d7ad",
@@ -13711,8 +13871,8 @@
  },
  "manifest_format": 2,
  "output_zip": "SmoothUIRemastered_v0.3.3-60fps.zip",
- "patcher_commit": "0e7ec2a149327a8c3d177a7d1bb6525f283d907c",
- "patcher_uncommitted_changes": false,
+ "patcher_commit": "4755de56f0791d776378de2d3f63cb102471aeff",
+ "patcher_uncommitted_changes": true,
  "requires": [
   "fix:gwent-3d-bug-fix",
   "fix:gwent-card-fx-filter-fix",
@@ -13723,6 +13883,7 @@
   "fix:gwent-speed-options",
   "fix:hub-tab-hover-fix",
   "setting:exclude",
+  "setting:include",
   "setting:source-fps",
   "setting:speed",
   "setting:group"
