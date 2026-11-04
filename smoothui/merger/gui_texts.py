@@ -164,6 +164,9 @@ FG_OFF = "Off"
 HUD_FPS_NOTE = "Enter a typical low on an FPS counter, not the peak: at 70-90 fps, enter about 70."
 FPS_UNSURE = "If unsure, enter less: too low only looks less smooth, too high plays slowly."
 FPS_LINK = "How to choose ↗"
+# The optional fixes (see requires.OPTIONAL_FIXES), on the settings page below the frame rates
+OPTIONAL_HEADING = "Optional changes"
+OPTIONAL_FIXES_TEXTS = {"health-bar-glow-fix": "Remove the brighter glow/outline from the health bar"}
 # What the HUD is built for, by game.hud_rate's level ({rendered}: the rate the game renders in gameplay;
 # {generated}: how frame generation makes it, if on)
 HUD_ADVICE = {
@@ -311,6 +314,7 @@ CAUSES = {
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
     "group left out": "The HUD only works if all of it is merged, so it is left out.",
     "setting": "The \"Smooth HUD\" setting changed since the last merge.",
+    "optional": "The optional changes in the settings changed since the last merge.",
     "by choice": "Your choice of screens not to merge changed since the last merge.",
     "by rule": "Smooth UI's list of screens not to merge changed since the last merge.",
     "smoothui first": "The game uses Smooth UI's copy of some screens, without your mods' changes.",
@@ -674,7 +678,7 @@ def row_status(file: FileState) -> tuple[str, str]:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
                 "load order": (WARNING, "Load order changed"), "smoothui first": (WARNING, "Uses Smooth UI's copy"),
                 "fps": (WARNING, "Frame rate changed"),
-                "setting": (WARNING, "Setting changed"),
+                "setting": (WARNING, "Setting changed"), "optional": (WARNING, "Setting changed"),
                 "by choice": (WARNING, "Setting changed"), "by rule": (WARNING, "Rules changed")}.get(cause, (WARNING, "Mod updated"))
     if state == State.NOT_BUILT and cause in ("setting", "by choice", "by rule", "fps"):
         return WARNING, {"by rule": "Rules changed", "fps": "Frame rate changed"}.get(cause, "Setting changed")

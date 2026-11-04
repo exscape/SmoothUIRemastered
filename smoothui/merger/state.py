@@ -30,6 +30,7 @@ from .. import mod_reviews
 from ..common import SmoothUIError
 from ..files import read_file
 from ..paths import DATA_DIR
+from ..requires import OPTIONAL_FIXES
 from ..witcher3.mod_bundles import list_bundles, read_bundle_tocs
 from ..witcher3.mods_settings import ModSettings
 from ..witcher3.source_file import GAME_FILES
@@ -93,7 +94,8 @@ class FileState:
                                 # since; also NOT_BUILT's cause), "updated" (the mod's copy changed),
                                 # "load order" (another mod's copy wins now), "smoothui first" (the game shows
                                 # Smooth UI's copy, where the package should hold the mod's as it is) or "setting"
-                                # (its group was turned off since the build); for NOT_BUILT, "setting" if its group was turned on
+                                # (its group was turned off since the build) or "optional" (an optional fix for
+                                # it was chosen or dropped since); for NOT_BUILT, "setting" if its group was turned on
                                 # since the build; for NOT_HELD, the status the manifest records (see
                                 # WHY), "turned off" (its group is), "by choice" (the user
                                 # chose not to merge it, or a file of its group; also CHANGED's and
@@ -262,6 +264,13 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
         """Whether the package was built for another frame rate for this file (a Smooth UI update tells first)"""
         built = built_fps[1] if groups.get(key) == "hud" else built_fps[0]
         return manifest is not None and rebuilt != "smoothui" and built != result.fps_of(key)
+
+    built_optional = set((manifest or {}).get("optional_fixes", ()))
+
+    def optional_changed(key):
+        """Whether an optional fix for this file was chosen or dropped since the package was built"""
+        return any(OPTIONAL_FIXES[fix] == key for fix in built_optional ^ result.optional_fixes if fix in OPTIONAL_FIXES)
+
     # New reviews of mods' code (downloaded since the build) may let a screen that was left out be merged
     reviews = result.reviews
     reviews_changed = (manifest or {}).get("mod_reviews_sha256") != reviews.sha256
@@ -370,6 +379,9 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.DAMAGED, f"the merged patches are damaged ({why}): merge again", Severity.HIGH)
             elif fps_changed(key):
                 state(State.CHANGED, f"{FPS_CHANGED}: merge again", Severity.HIGH, needs_build=True, cause="fps")
+            elif winner is not None and optional_changed(key):
+                state(State.CHANGED, "the optional changes in the settings changed: merge again", Severity.MEDIUM,
+                      needs_build=True, cause="optional")
             elif winner is None:
                 after = file.loaded_without_package
                 state(State.NO_LONGER_NEEDED, f"{record['mod']} no longer changes it: merge again (the game then uses "
@@ -471,7 +483,7 @@ def _whole_groups(result: Scan, states: list[FileState]) -> list[FileState]:
     for file in states:
         group = file.group
         # (Turned off or on, by the setting or the user's choice, is the whole group: not mixed)
-        if group in loaded_groups and file.severity == Severity.MEDIUM and file.cause not in ("setting", "by choice", "by rule"):
+        if group in loaded_groups and file.severity == Severity.MEDIUM and file.cause not in ("setting", "by choice", "by rule", "optional"):
             file = replace(file, severity=Severity.HIGH,
                            message=f"{file.message} (until then, the {group_name(group)} is part patched, part not: "
                            "its animations play at the wrong speeds)")

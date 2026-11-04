@@ -1,7 +1,8 @@
 """Fixes for bugs in the game's own SWFs (present without any mod) or caused by the rescale, and features
 Smooth UI adds to them.
 
-A profile enables them per file, with "fix: NAME" (see config/profile_default.txt). Each fix is a
+A profile enables them per file, with "fix: NAME" (see config/profile_default.txt), or the user does in the
+merger's settings (see requires.OPTIONAL_FIXES). Each fix is a
 module here, with NAME, KIND, CONSEQUENCE, apply(swf: SwfEdit) -> FixResult and optionally PHASE (see
 swf_edit.py: most fixes run before the rescale). apply raises CantApply if the file isn't as the fix
 expects, and returns no sprites if there is nothing to fix (the bug is fixed in this version of the file).
@@ -28,6 +29,7 @@ from . import (
     gwent_frost_flicker_fix,
     gwent_rain_loop_fix,
     gwent_speed_options,
+    health_bar_glow_fix,
     hub_tab_hover_fix,
 )
 from .swf_edit import (
@@ -41,7 +43,7 @@ from .swf_edit import (
 
 FIXES = {fix.NAME: fix for fix in (gwent_3d_bug_fix, gwent_card_fx_filter_fix, gwent_coin_shadow_fix, gwent_fog_intro_fix,
                                    gwent_frost_flicker_fix, gwent_rain_loop_fix, gwent_speed_options,
-                                   hub_tab_hover_fix)}
+                                   health_bar_glow_fix, hub_tab_hover_fix)}
 if set(FIXES) != FIX_NAMES:
     raise RuntimeError(f"requires.py's FIX_NAMES must list exactly the fixes: {', '.join(sorted(FIXES))}")
 

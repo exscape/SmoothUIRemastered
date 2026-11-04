@@ -154,6 +154,8 @@ class Scan:
     # mods' copies too); None if the installed Smooth UI can't be used
     target_fps: int | None = None
     hud_fps: int | None = None
+    # The optional fixes to apply (see requires.OPTIONAL_FIXES)
+    optional_fixes: frozenset[str] = frozenset()
     # The files whose winner is the game's own copy, and why: {profile key: "merger-only" (no download holds
     # it), "fps" (the menus' rate isn't the installed build's) or "game" (the game's copy changed since the
     # installed build's release)}
@@ -199,11 +201,12 @@ def entry_needed(order: list[Mod], ours: ModSettings | None) -> bool:
 
 
 def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screens_off=(),
-         target_fps: int | None = None, hud_fps: int | None = None,
+         target_fps: int | None = None, hud_fps: int | None = None, optional_fixes=frozenset(),
          modio_root: Path | None = None, manifests=None, reviews: ModReviews | None = None) -> Scan:
     """Scan the game's Mods\\ folder, with the load order from mods_settings (the path of mods.settings).
     groups_off: see Scan.groups_off; screens_off: the user's ScreenOffs (see Scan.screens_off); target_fps
-    and hud_fps: see Scan.target_fps (None: the installed build's rate); reviews: the reviews of mods' code,
+    and hud_fps: see Scan.target_fps (None: the installed build's rate); optional_fixes: see
+    Scan.optional_fixes; reviews: the reviews of mods' code,
     for the dont-merge lines in them (None: mod_reviews.load()'s), kept in Scan.reviews.
 
     modio_root is the folder holding mod.io's mods (default: found from %PUBLIC%); manifests ({version:
@@ -282,7 +285,7 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     from_game = {key: merger_only[key] for key, file in files.items() if file.winner is not None and file.winner is game.get(key)}
     return Scan(mods_dir, installed, order, files, problems, group_of=group_of, groups_off=frozenset(groups_off),
                 screens_off=off_now, off_copies=off_copies, reviews=reviews, target_fps=target_fps, hud_fps=hud_fps,
-                from_game=from_game)
+                optional_fixes=frozenset(optional_fixes), from_game=from_game)
 
 
 def _screens_off(files, group_of, screens_off, reviews) -> dict[str, ScreenOff]:

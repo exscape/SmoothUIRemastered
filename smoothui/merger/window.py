@@ -200,6 +200,8 @@ from .gui_texts import (
     OPEN_DATA,
     OPEN_LICENSES,
     OPEN_LOG_FOLDER,
+    OPTIONAL_FIXES_TEXTS,
+    OPTIONAL_HEADING,
     PATCH_ANYWAY,
     PATCH_ANYWAY_TITLE,
     REMOVE_FAILED,
@@ -743,6 +745,11 @@ class MergerWindow:
         self.update_box = QCheckBox(CHECK_UPDATES.replace("&", "&&"))
         layout.addWidget(self.update_box)
         self.rates = RateSection(self, layout, self.update_save)
+        self.heading(layout, OPTIONAL_HEADING)
+        self.optional_boxes = {fix: QCheckBox(text.replace("&", "&&")) for fix, text in OPTIONAL_FIXES_TEXTS.items()}
+        for box in self.optional_boxes.values():
+            self.rates.hud_box.toggled.connect(box.setEnabled)     # (All of them are for the HUD's files)
+            layout.addWidget(box)
         self.heading(layout, GAME_HEADING)
         self.settings_chooser = GameChooser(self, lambda folder: None)
         layout.addWidget(self.settings_chooser.widget)
@@ -927,6 +934,9 @@ class MergerWindow:
         self.update_box.setChecked(self.check_updates)
         self.rates.show(*self.shown_rates(), self.smooth_hud,
                         unset=self.settings and (self.settings.target_fps, self.settings.hud_game_fps))
+        for fix, box in self.optional_boxes.items():
+            box.setChecked(fix in self.optional_fixes)
+            box.setEnabled(self.rates.hud_box.isChecked())
         self.find_game_folders()
         self.show_page(self.settings_page)
 
@@ -938,25 +948,29 @@ class MergerWindow:
             return
         new_folder = folder is not None and not same_folder(folder, self.game)
         rates = self.rates.values()
+        optional = frozenset(fix for fix, box in self.optional_boxes.items() if box.isChecked())
         old = (self.settings.smooth_hud, self.settings.target_fps, self.settings.hud_game_fps,
                self.settings.hud_fg) if self.settings else None
-        if folder is not None and (new_folder or rates != old or self.update_box.isChecked() != self.check_updates):
+        if folder is not None and (new_folder or rates != old or optional != self.optional_fixes
+                                   or self.update_box.isChecked() != self.check_updates):
             before = scan_options(self.settings)
-            if not self.save_game(folder, self.settings_chooser, self.update_box.isChecked(), rates):
+            if not self.save_game(folder, self.settings_chooser, self.update_box.isChecked(), rates, optional):
                 return
             if new_folder or scan_options(self.settings) != before:
                 self.change_game(folder)
         self.show_page(self.main_page)
 
-    def save_game(self, folder, chooser, check_updates=None, rates=None) -> bool:
-        """Save the settings with the game folder, check_updates and rates (see RateSection.values; None: as
-        they are); a failure is said in chooser"""
+    def save_game(self, folder, chooser, check_updates=None, rates=None, optional_fixes=None) -> bool:
+        """Save the settings with the game folder, check_updates, rates (see RateSection.values) and
+        optional_fixes (None: as they are); a failure is said in chooser"""
         check_updates = self.check_updates if check_updates is None else check_updates
         base = self.settings or Settings(folder)
         if rates is not None:
             smooth_hud, target_fps, hud_game_fps, hud_fg = rates
             base = replace(base, smooth_hud=smooth_hud, target_fps=target_fps, hud_game_fps=hud_game_fps,
                            hud_fg=hud_fg)
+        if optional_fixes is not None:
+            base = replace(base, optional_fixes=optional_fixes)
         settings = replace(base, game_path=folder, check_updates=check_updates)
         smooth_hud = settings.smooth_hud
         try:
@@ -969,7 +983,8 @@ class MergerWindow:
                  f"HUD merging {'on' if smooth_hud else 'off'}; frame rates: menus "
                  f"{settings.target_fps or 'as installed'}, HUD {settings.hud_fps or 'as installed'}"
                  + (f" ({settings.hud_game_fps} fps in gameplay, frame generation {settings.hud_fg}x)"
-                    if settings.hud_game_fps else ""))
+                    if settings.hud_game_fps else "")
+                 + f"; optional changes: {', '.join(sorted(settings.optional_fixes)) or 'none'}")
         self.settings = settings
         return True
 
@@ -980,6 +995,10 @@ class MergerWindow:
     @property
     def smooth_hud(self) -> bool:
         return self.settings.smooth_hud if self.settings else True
+
+    @property
+    def optional_fixes(self) -> frozenset[str]:
+        return self.settings.optional_fixes if self.settings else frozenset()
 
     def change_game(self, game):
         """Use another game folder, or the same one with a changed setting the scan depends on: scan it, after

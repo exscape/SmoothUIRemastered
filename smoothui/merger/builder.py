@@ -23,6 +23,7 @@ from ..common import fail, profile_key
 from ..files import make_dirs
 from ..patcher.patcher_core import RuleIssues
 from ..paths import DATA_DIR
+from ..requires import OPTIONAL_FIXES
 from ..witcher3.bundle import BundleError, read_entry
 from ..witcher3.mods_settings import read_mods_settings, write_entry
 from .game import MODS_SETTINGS_BACKUP
@@ -36,8 +37,8 @@ log = logging.getLogger(__name__)
 
 def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> ReleasePatch:
     """Patch the winning copy of each file (see scan.FileResult.winner) with the installed Smooth UI
-    build's settings at the scan's frame rate for it (see Scan.fps_of), plus the dont-stretch lines for its
-    mod, hiding the warnings reviewed for it (both in the scan's reviews, see mod_reviews.py). pool and on_file
+    build's settings at the scan's frame rate for it (see Scan.fps_of), plus the optional fixes chosen for it
+    and the dont-stretch lines for its mod, hiding the warnings reviewed for it (both in the scan's reviews, see mod_reviews.py). pool and on_file
     are as for patch_as_release."""
     installed = result.installed
     if not installed.usable:
@@ -55,7 +56,9 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
              f"({e!r}): update them")
     settings = {}
     for source in sources:
-        settings[source.path] = replace(profile[source.path], target_fps=result.fps_of(source.path))
+        optional = tuple(fix for fix in sorted(result.optional_fixes) if OPTIONAL_FIXES[fix] == source.path)
+        settings[source.path] = replace(profile[source.path], target_fps=result.fps_of(source.path),
+                                        fixes=profile[source.path].fixes + optional)
         if result.reviews and (extra := result.reviews.dont_stretch(source.origin, file_name(source.path),
                                                                      result.group_of.get(source.path))):
             settings[source.path] = replace(settings[source.path], exclude=settings[source.path].exclude + extra)
@@ -102,7 +105,8 @@ def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_
     record = record_path(data_dir, result.mods_dir) if data_dir is not None and out_dir is None else None
     written = write_package(package_dir, result.installed, files, record, reviews_sha256=result.reviews.sha256,
                             groups_off=result.groups_off, screens_off=result.screens_off,
-                            rates=(result.target_fps, result.hud_fps), as_is=as_is)
+                            rates=(result.target_fps, result.hud_fps), as_is=as_is,
+                            optional_fixes=result.optional_fixes)
     if out_dir is not None or written.empty:
         return Installation(package_dir, written, None)
     backup = None

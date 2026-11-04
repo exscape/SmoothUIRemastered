@@ -134,7 +134,8 @@ def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
 
 
 def _rates(found: Check) -> str:
-    return f"Frame rates: menus {found.scan.target_fps} fps, HUD {found.scan.hud_fps} fps"
+    optional = f"; optional changes: {', '.join(sorted(found.scan.optional_fixes))}" if found.scan.optional_fixes else ""
+    return f"Frame rates: menus {found.scan.target_fps} fps, HUD {found.scan.hud_fps} fps{optional}"
 
 
 def _game_rates() -> str:

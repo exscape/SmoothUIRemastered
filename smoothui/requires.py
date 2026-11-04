@@ -17,8 +17,12 @@ FIX_NAMES = frozenset({
     "gwent-frost-flicker-fix",
     "gwent-rain-loop-fix",
     "gwent-speed-options",
+    "health-bar-glow-fix",
     "hub-tab-hover-fix",
 })
+# The fixes the user can choose in the merger's settings: {name: profile key of the file}. No profile or
+# manifest names them, so no release requires them.
+OPTIONAL_FIXES = {"health-bar-glow-fix": "gameplay/gui_new/swf/hud/hud_wolfstatbars.redswf"}
 # The profile's settings (see config/profile_default.txt), less "fix:" (each fix is its own requirement).
 # "group": a release with a group of files it doesn't ship, which the merger builds (see build/main.py)
 SETTING_NAMES = frozenset({"speed", "include", "exclude", "source-fps", "group"})

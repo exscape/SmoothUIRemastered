@@ -70,21 +70,23 @@ def record_path(data_dir: Path, mods_dir: Path) -> Path:
 
 
 def write_package(package_dir: Path, installed: Installed, files: list[PackageFile], record: Path | None = None, *,
-                  reviews_sha256: str | None, groups_off=(), screens_off=(), rates=(None, None), as_is=()) -> Written:
+                  reviews_sha256: str | None, groups_off=(), screens_off=(), rates=(None, None), as_is=(),
+                  optional_fixes=()) -> Written:
     """Write the package into package_dir (created if needed), replacing what it held: the files in files
     that are to be included (see policy.FileStatus.included), and a manifest recording files (see
     package_manifest). installed: the Smooth UI build they were patched for; reviews_sha256: the reviews of
     mods' code they were patched with (see mod_reviews.py); groups_off and screens_off: the groups and
     files turned off (see scan.Scan.groups_off and screens_off; the latter is a dict); rates: the menus' and the
     HUD's frame rates they were patched for (see scan.Scan.target_fps; None: installed's); as_is: the mods'
-    copies to hold as they are (see policy.AsIs). If it would hold no files, remove the package instead, and write
+    copies to hold as they are (see policy.AsIs); optional_fixes: see scan.Scan.optional_fixes. If it would hold no files, remove the package instead, and write
     the manifest to record (see above), if given; else delete record."""
     package_dir = Path(package_dir)
     content = package_dir / "content"
     previous = _read_manifest(package_dir / PACKAGE_MANIFEST)
     delete_file(package_dir / PACKAGE_MANIFEST)
     included = sorted((file for file in files if file.status.included), key=lambda file: file.path)
-    manifest = package_manifest(installed, files, previous, reviews_sha256, groups_off, screens_off, rates, as_is)
+    manifest = package_manifest(installed, files, previous, reviews_sha256, groups_off, screens_off, rates, as_is,
+                                optional_fixes)
     entries = [*(file.entry for file in included), *(copy.entry for copy in as_is if copy.entry is not None)]
     if not entries:
         removed, unknown = remove_package(package_dir)
@@ -141,7 +143,8 @@ def same_copy(record: dict, source) -> bool:
 
 
 def package_manifest(installed: Installed, files: list[PackageFile], previous: dict | None = None,
-                     reviews_sha256: str | None = None, groups_off=(), screens_off=(), rates=(None, None), as_is=()) -> dict:
+                     reviews_sha256: str | None = None, groups_off=(), screens_off=(), rates=(None, None), as_is=(),
+                     optional_fixes=()) -> dict:
     """What the package holds, and what it was built from: for each file it holds, the copy it was patched
     from (to tell whether that changed without reading it) and the output (to tell whether the package
     is intact); for each other file, why it isn't there, and the copy that was decided on (and for one left
@@ -218,6 +221,8 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
         },
         # The reviews of mods' code used (see mod_reviews.py): new ones may let a screen that was left out be merged
         "mod_reviews_sha256": reviews_sha256,
+        # The optional fixes chosen (see scan.Scan.optional_fixes); older packages: none
+        "optional_fixes": sorted(optional_fixes),
         "files": held,
         "not_held": not_held,
         # The groups turned off (see scan.Scan.groups_off): their files are in neither of the above

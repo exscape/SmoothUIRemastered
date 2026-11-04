@@ -25,6 +25,7 @@ from typing import NamedTuple
 from ..common import SmoothUIError, fail, to_native, to_windows
 from ..files import make_dirs, read_file, write_file
 from ..paths import APP_DIR, DATA_DIR
+from ..requires import OPTIONAL_FIXES
 from ..windows import module_loaded
 from ..witcher3.user_files import FrameSettings, mods_settings_path, read_frame_settings
 from .scan import ScreenOff
@@ -69,6 +70,7 @@ class Settings:
     hud_game_fps: int | None = None
     hud_fg: int = 1
     pending_update: str | None = None       # the newer version the last check found, if any (see updates.check)
+    optional_fixes: frozenset[str] = frozenset()    # the fixes the user chose (see requires.OPTIONAL_FIXES)
 
     @property
     def hud_fps(self) -> int | None:
@@ -111,10 +113,11 @@ def screens_off(settings: Settings | None) -> tuple[ScreenOff, ...]:
 
 def scan_options(settings: Settings | None) -> dict:
     """scan.scan's options from the settings (None: their defaults): what they turn off (groups_off,
-    screens_off) and the frame rates. The scan also reads the reviews in use, whose dont-merge lines turn off
-    more."""
+    screens_off), the frame rates and the optional fixes. The scan also reads the reviews in use, whose
+    dont-merge lines turn off more."""
     return {"groups_off": groups_off(settings), "screens_off": screens_off(settings),
-            "target_fps": settings.target_fps if settings else None, "hud_fps": settings.hud_fps if settings else None}
+            "target_fps": settings.target_fps if settings else None, "hud_fps": settings.hud_fps if settings else None,
+            "optional_fixes": settings.optional_fixes if settings else frozenset()}
 
 
 def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
@@ -156,8 +159,13 @@ def load_settings(data_dir: Path = DATA_DIR) -> Settings | None:
                 raise TypeError(f"hud_game_fps {game_fps} with hud_fg {fg} can't be built for: the game renders "
                                 f"{round(game_fps / fg)} fps, not from {HUD_LOWEST} to "
                                 f"{FPS_RANGES['hud_fps'][1]}")
+        optional = settings.get("optional_fixes", [])
+        if not isinstance(optional, list):
+            raise TypeError(f"optional_fixes is {optional!r}, not a list")
+        # (A name these tools don't know is from newer ones, or a fix since removed)
+        optional = frozenset(name for name in optional if isinstance(name, str) and name in OPTIONAL_FIXES)
         return Settings(to_native(settings["game_path"]), check_updates, last_check, smooth_hud, off, target_fps,
-                        game_fps, fg, pending_update=pending)
+                        game_fps, fg, pending_update=pending, optional_fixes=optional)
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         fail(f"{path} can't be read: {e}")
 
@@ -194,6 +202,8 @@ def save_settings(settings: Settings, data_dir: Path = DATA_DIR):
         fields["target_fps"] = settings.target_fps
     if settings.hud_game_fps is not None:
         fields |= {"hud_game_fps": settings.hud_game_fps, "hud_fg": settings.hud_fg}
+    if settings.optional_fixes:
+        fields["optional_fixes"] = sorted(settings.optional_fixes)
     if settings.screens_off:
         fields["not_merged"] = [{"screen": choice.path, "mod": choice.mod, "since": choice.since,
                                  **({"size": choice.size, "crc32": choice.crc32} if choice.size is not None else {}),

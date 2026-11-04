@@ -147,6 +147,13 @@ The HUD has two settings of its own, since gameplay usually runs slower than men
 - **Frame rate in gameplay:** enter a typical low on an FPS counter, not the peak: at 70-90 fps, enter about 70. As with menus, too high plays slowly, while too low only looks a little less smooth.
 - **Frame generation:** the multiplier, if you use DLSS or FSR frame generation. Otherwise, leave it off. Enter the frame rate you see, including generated frames: the HUD needs the rate before frame generation, so the tools divide by the multiplier for you.
 
+### Optional changes
+
+These change how something looks, so they're off unless you choose them. Merge again after changing one.  
+Right now, there's only one:
+
+- **Remove the brighter glow/outline from the health bar (strictly a matter of taste, so off by default)
+
 ### Mods that already run at 100+ fps
 
 Screens from mods that already run at 100 fps or more (e.g. UI Remastered at 120 fps) are kept as they are, but Smooth UI's additions (e.g. Gwent speed options) are still applied. If your frame rate is lower than theirs, they play slowly, and the merger marks them "Plays slowly" (when they're below 85% speed). The tools don't cause this; they just warn you about it.  
