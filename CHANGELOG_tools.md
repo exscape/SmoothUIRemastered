@@ -1,3 +1,10 @@
+# v0.9.6
+
+* Added: smoother HUD bars: horse stamina/fear, breath, health (on regeneration), etc.
+* Added: optional changes. Currently only one: "remove the brighter glow/outline from the health bar". This is off by default.
+* Changed: if one screen fails to merge entirely, the entire mod is no longer left out; only the failed screen remains at the mod's original frame rate.
+* Improved: allow further mods to patch via more lenient patching: should resolve "texture chunk X: data size Y doesn't match the chunk (Z bytes after the header)" for the few mods that triggers it.
+
 # v0.9.5
 **Note:** All previous versions can randomly fail during updates (about 10% of the time).  
 If the update fails: close the errors (likely two of them; the game starts anyway), then start SmoothUIMerger.exe directly to update again. You can also re-download from Nexus Mods, just this once.
