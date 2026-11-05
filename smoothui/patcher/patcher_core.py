@@ -85,8 +85,7 @@ def patch_files(inputs, profile, *, on_file=None, pool=None):
 
     A file fails on any exception: input the patcher can't read, doesn't support or misunderstands
     (e.g. a failed verification), or a bug. The other files are still patched, so that all problems
-    are reported, but the caller must treat any failure as a failure of the whole mod: never leave a
-    failed file out and ship the rest.
+    are reported; what a failure means for them is the caller's to decide.
     """
     resolve_dev_target(profile)
     jobs = [(source, profile[source.path]) for source in inputs]
@@ -165,7 +164,7 @@ def _patch_file(source, settings, body_hook=None):
         entry = make_entry(source.path, out)
         # As the bundle's table of contents records it, so an installed build can be identified without reading it
         hashes["output_crc32"] = entry.crc
-    except Exception as e:  # noqa: BLE001 (see patch_files: the caller fails the mod)
+    except Exception as e:  # noqa: BLE001 (see patch_files)
         return {**result, "status": "failed", "error": _failure_message(e)}
     finally:
         clear_parse_cache()

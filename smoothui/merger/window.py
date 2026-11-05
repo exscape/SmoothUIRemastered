@@ -1373,7 +1373,7 @@ class MergerWindow:
         layout.setContentsMargins(12, 6, 12, 10)
         layout.setSpacing(6)
         layout.addWidget(label(row_label(state, members), tone="muted", wrap=True))
-        off = dont_merge(members, self.found.states)
+        off = dont_merge(members)
         chosen = {self.found.scan.screens_off[file.path] for file in members
                   if file.cause == "by choice" and file.path in self.found.scan.screens_off}
         layout.addWidget(label(capitalized(state.message) + (":" if state.fixes else ""), wrap=True))
@@ -1385,7 +1385,7 @@ class MergerWindow:
         left = [file.path for file in members if file.state == State.NOT_HELD and file.cause in ("left out", "known broken")]
         known_broken = any(file.state == State.NOT_HELD and file.cause == "known broken" for file in members)
         # A group with a file that can't be merged at all stays left out, forced or not
-        failed = any(file.state == State.NOT_HELD and file.cause in ("failed", "mod failed") for file in members)
+        failed = any(file.state == State.NOT_HELD and file.cause == "failed" for file in members)
         if path in self.changes:
             text, note, command = UNDO, "", lambda: self.undo_change(path)
         elif left and not failed and known_broken:

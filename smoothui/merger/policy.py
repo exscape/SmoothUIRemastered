@@ -1,8 +1,7 @@
 """Which patched files go into the package, and what to tell the user about each file.
 
-- A file that fails to patch (any exception) leaves out its mod: every file whose copy would come from it.
-  A failure means the patcher can't handle that mod's files, so its others are suspect too. This can't
-  be overridden.
+- A file that fails to patch (any exception) is left out, and this can't be overridden. The mod's other
+  files aren't affected: a mix of patched and unpatched copies of one mod's screens all have the mod's changes.
 - A fix that can't apply keeps nothing out: the file is used without the fix, and the user is told what
   that means (the fix's CONSEQUENCE).
 - Other problems with a rescale (a setting that wasn't followed or no longer matches, an unreviewed
@@ -54,8 +53,7 @@ class FileStatus(Enum):
     UNCHANGED = "unchanged"         # nothing changed it: its own frame rate is kept (at or above the target, or
                                     # already rescaled, see patcher_core.ALREADY_RESCALED_FPS), and each of its
                                     # fixes wasn't needed (or can't apply): not needed in the package
-    FAILED = "failed"               # couldn't be patched, so its mod is left out
-    MOD_FAILED = "mod failed"       # left out, as another file of its mod couldn't be patched
+    FAILED = "failed"               # couldn't be patched, so it isn't in the package (it can't be forced)
     GROUP_LEFT_OUT = "group left out"   # left out, as its group can't be merged whole (see the module's doc)
 
     @property
@@ -173,7 +171,7 @@ class PackageFile:
     @property
     def to_report(self) -> bool:
         """Whether it is worth a bug report: left out for a problem (not known not to work), or failed"""
-        return self.status in (FileStatus.LEFT_OUT, FileStatus.FAILED, FileStatus.MOD_FAILED)
+        return self.status in (FileStatus.LEFT_OUT, FileStatus.FAILED)
 
     def explain(self, label: str | None = None) -> str:
         """What happened to the file, for the user, in short: if it isn't patched as Smooth UI would, why (in
@@ -201,10 +199,10 @@ class PackageFile:
 
     def _details(self):
         """The technical reasons, for the log: the warnings' reviews (see mod_reviews.py), the settings'
-        problems, the failure, the fixes that can't apply; none for a file left out with its group or its mod"""
+        problems, the failure, the fixes that can't apply; none for a file left out with its group"""
         if self.status == FileStatus.FAILED:
             return self.error
-        if self.status in (FileStatus.GROUP_LEFT_OUT, FileStatus.MOD_FAILED):
+        if self.status == FileStatus.GROUP_LEFT_OUT:
             return None
         shown = self.issues
         if self.status == FileStatus.KNOWN_BROKEN:
@@ -252,7 +250,6 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
         fail(f"not a file the merged patches could hold: {', '.join(unknown)}")
 
     issues = _issues(patch)
-    failed_mods = {result["origin"] for result in patch.failed}
     files = []
     for path in sorted(results):
         status, result = results[path]
@@ -266,9 +263,7 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
         if status == FileStatus.UNCHANGED:
             # Not rescaled, so its rescale settings (which then match nothing) and warnings don't apply
             file_issues = [issue for issue in file_issues if issue.kind == IssueKind.FIX]
-        if source.origin in failed_mods:
-            status = FileStatus.MOD_FAILED
-        elif status == FileStatus.PATCHED and any(issue.keeps_out for issue in file_issues):
+        if status == FileStatus.PATCHED and any(issue.keeps_out for issue in file_issues):
             known_broken = any(issue.kind == IssueKind.KNOWN_BROKEN for issue in file_issues)
             status = (FileStatus.FORCED if path in force else
                       FileStatus.KNOWN_BROKEN if known_broken else FileStatus.LEFT_OUT)

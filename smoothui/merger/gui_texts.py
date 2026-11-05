@@ -99,7 +99,6 @@ DONT_MERGE = "Use the mod's own copy"
 DONT_MERGE_NOTE = "The game then uses {mod}'s own copy, at its own frame rate. You can change this here."
 DONT_MERGE_MOD = "Use the mod's own copies"
 DONT_MERGE_MODS = "Use the mods' own copies"
-DONT_MERGE_MOD_NOTE = "The game then uses {mod}'s own copies, at their own frame rate. You can change this here."
 # For a group's row (see dont_merge_texts)
 DONT_MERGE_GROUP_NOTE = "The game then uses {mods} {group} files, at their own frame rate. You can change this here."
 TURN_ON = "Use the smooth version"
@@ -499,8 +498,8 @@ def _merged(result: BuildResult, stale, cant_merge):
     causes = []
     for file in result.files:
         status = file.status.value
-        if status in ("left out", "failed", "mod failed", "group left out"):
-            causes.append(("failed" if status == "mod failed" else status, _who(file.mod, file)))
+        if status in ("left out", "failed", "group left out"):
+            causes.append((status, _who(file.mod, file)))
         elif file.fixes_not_applied:
             causes.append(("fixes", _who(file.mod, file)))
     notes = []
@@ -631,7 +630,7 @@ def _report(causes, fixes=True) -> list[str]:
     """The card's request for a bug report, for causes ((key, mod), see _sentences): for screens left out, or
     (fixes) merged without some fixes; not for a group left out alone (another cause keeps it out)"""
     keys = {key for key, _ in causes}
-    return [REPORT_MODS] if keys & {"left out", "failed", "mod failed"} or (fixes and "fixes" in keys) else []
+    return [REPORT_MODS] if keys & {"left out", "failed"} or (fixes and "fixes" in keys) else []
 
 
 def _unusable(installed, stale):
@@ -672,7 +671,7 @@ def row_status(file: FileState) -> tuple[str, str]:
                 "by rule": (INFO, "High frame rate" if file.reason == mod_reviews.ALREADY_SMOOTH else
                             "Known not to work" if file.reason == mod_reviews.KNOWN_BROKEN else "Left out"),
                 "failed": (ERROR, "Can't merge"),
-                "mod failed": (ERROR, "Mod left out"), "group left out": (WARNING, "Left out with its group"),
+                "group left out": (WARNING, "Left out with its group"),
                 "turned off": (OK, "Turned off")}.get(cause, (ERROR, "Left out"))
     if state == State.CHANGED:
         return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
@@ -844,24 +843,17 @@ def dont_merge_texts(off: list[tuple[str, str]], group: str | None) -> tuple[str
         return (DONT_MERGE_MOD if len(mods) == 1 else DONT_MERGE_MODS,
                 DONT_MERGE_GROUP_NOTE.format(mods=f"{mods[0]}'s" if len(mods) == 1 else "the mods'",
                                              group=group_name(group)))
-    if len(off) > 1:
-        return DONT_MERGE_MOD, DONT_MERGE_MOD_NOTE.format(mod=mods[0])
     return DONT_MERGE, DONT_MERGE_NOTE.format(mod=mods[0])
 
 
-def dont_merge(members: list[FileState], states: list[FileState]) -> list[tuple[str, str]]:
+def dont_merge(members: list[FileState]) -> list[tuple[str, str]]:
     """What a row's "Don't merge" turns off, as (path, mod): its files that are merged, or left out and keeping
     it out (for its rescale's problems, or a failure; not known not to work, which doesn't warn), in mods' copies
-    (not the game's). For a mod that failed, every screen of it (all are left out); in a group's row (members:
-    the row's files), the files that keep the group out, or all its mods' copies if it's merged. None: the row
-    has no such button."""
-    found = [file for file in members if file.winner not in (None, GAME_FILES) and (
-             file.state == State.UP_TO_DATE
-             or (file.state == State.NOT_HELD and file.cause in ("left out", "failed", "mod failed")))]
-    failed = {file.winner.lower() for file in found if file.cause in ("failed", "mod failed")}
-    found += [file for file in states if file.state == State.NOT_HELD and file.cause in ("failed", "mod failed")
-              and file.winner and file.winner.lower() in failed]
-    return sorted({(file.path, file.winner) for file in found})
+    (not the game's). In a group's row (members: the row's files), the files that keep the group out, or all its
+    mods' copies if it's merged. None: the row has no such button."""
+    return sorted({(file.path, file.winner) for file in members if file.winner not in (None, GAME_FILES) and (
+                   file.state == State.UP_TO_DATE
+                   or (file.state == State.NOT_HELD and file.cause in ("left out", "failed")))})
 
 
 def _screens(sentence, files) -> tuple[str, ...]:
@@ -908,8 +900,6 @@ def _cause(file: FileState) -> str:
     """The CAUSES key for a file in a check"""
     if file.state == State.OVERRIDDEN:
         return "entry" if file.needs_build else "overridden"
-    if file.cause == "mod failed":
-        return "failed"
     return file.cause or file.state.value
 
 

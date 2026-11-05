@@ -169,6 +169,7 @@ WHY = {
     "changes": "changes the screen in a way Smooth UI doesn't expect",
     "left out": "isn't fully supported by Smooth UI",
     "known broken": "is known not to work with Smooth UI",
+    "failed": "makes the merger fail",
 }
 
 
@@ -180,12 +181,8 @@ GAME_UPDATED = "the game was updated since this Smooth UI's release"
 def not_merged(status: str, copy: str, mod: str, *, reason: str | None = None, group: str | None = None,
                kept_out_by: str | None = None) -> str:
     """Why a copy (e.g. "modA's copy") of mod isn't merged, for the user: by its status (as for WHY, or
-    "failed", "mod failed", "group left out") and reason. A group's file left out with it: kept_out_by, why
-    the group is (e.g. "hud_buffs can't be merged")."""
-    if status == "failed":
-        return f"{copy} makes the merger fail, so none of {mod}'s screens are merged."
-    if status == "mod failed":
-        return f"another of {mod}'s screens makes the merger fail, so none of them are merged."
+    "group left out") and reason. A group's file left out with it: kept_out_by, why the group is (e.g.
+    "hud_buffs can't be merged")."""
     if status == "group left out":
         return (f"not merged, as the {group_name(group)} is merged whole or not at all"
                 + (f", and {kept_out_by}." if kept_out_by else "."))

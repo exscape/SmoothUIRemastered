@@ -68,9 +68,8 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
 def merges_now(result: Scan, keys, *, pool=None) -> list[str]:
     """Which of keys, files the user chose not to merge (see Scan.screens_off), would merge now: their copies
     (Scan.off_copies) patched as a build would, as a trial (nothing is written), without anything that would
-    leave them out. Each one alone: the rest of its group is the build's to check, once it is turned on; and
-    another file of its mod that fails (left out as "mod failed") is one that stays turned off. pool: as for
-    patch_winners."""
+    leave them out. Each one alone: the rest of its group is the build's to check, once it is turned on. pool: as
+    for patch_winners."""
     keys = [key for key in keys if key in result.off_copies]
     if not keys:
         return []
@@ -78,9 +77,7 @@ def merges_now(result: Scan, keys, *, pool=None) -> list[str]:
                     group_of={key: result.group_of[key] for key in keys if key in result.group_of},
                     screens_off={}, off_copies={})
     patch = patch_winners(trial, pool=pool, on_file=lambda *args, **kwargs: None)
-    return [file.path for file in decide(trial, patch)
-            if file.status in (FileStatus.PATCHED, FileStatus.UNCHANGED)
-            or (file.status == FileStatus.MOD_FAILED and not any(issue.keeps_out for issue in file.issues))]
+    return [file.path for file in decide(trial, patch) if file.status in (FileStatus.PATCHED, FileStatus.UNCHANGED)]
 
 
 @dataclass(slots=True)

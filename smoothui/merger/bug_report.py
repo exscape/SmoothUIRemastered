@@ -193,7 +193,7 @@ def _not_fully_merged(found: Check) -> list[str]:
     blanks for the user to fill in (their versions aren't on disk)"""
     mods = {}
     for file in found.states:
-        if file.winner and ((file.state == State.NOT_HELD and file.cause in ("left out", "failed", "mod failed"))
+        if file.winner and ((file.state == State.NOT_HELD and file.cause in ("left out", "failed"))
                             or (file.state == State.UP_TO_DATE and (file.cause == "forced" or file.fixes))):
             mods.setdefault(file.winner.lower(), file.winner)
     if not mods:
