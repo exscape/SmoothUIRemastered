@@ -74,7 +74,8 @@ class Severity(IntEnum):
     """What playing without building the package again costs"""
     LOW = 1         # nothing: only the merger's version changed since the build
     MEDIUM = 2      # a mod's copy that the game loads isn't patched: it runs at its original frame rate; or the
-                    # game loads Smooth UI's copy instead of a mod's, until a merge (see FileResult.hides_mod)
+                    # game loads Smooth UI's copy instead of a mod's, until a merge (see FileResult.hides_mod); or
+                    # an optional change the user made doesn't show yet
     HIGH = 3        # the package overrides a file with a copy that doesn't fit what is installed now (a mod
                     # updated or removed, another mod's copy wins, another Smooth UI build, a damaged
                     # package): that screen may look wrong, or that mod may not work at all
@@ -175,6 +176,7 @@ WHY = {
 
 # A file's frame rate changed in the settings since the last build
 FPS_CHANGED = "the frame rate changed"
+OPTIONAL_CHANGED = "an optional change was turned on or off"
 GAME_UPDATED = "the game was updated since this Smooth UI's release"
 
 
@@ -376,9 +378,6 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.DAMAGED, f"the merged patches are damaged ({why}): merge again", Severity.HIGH)
             elif fps_changed(key):
                 state(State.CHANGED, f"{FPS_CHANGED}: merge again", Severity.HIGH, needs_build=True, cause="fps")
-            elif winner is not None and optional_changed(key):
-                state(State.CHANGED, "an optional change was turned on or off: merge again", Severity.MEDIUM,
-                      needs_build=True, cause="optional")
             elif winner is None:
                 after = file.loaded_without_package
                 state(State.NO_LONGER_NEEDED, f"{record['mod']} no longer changes it: merge again (the game then uses "
@@ -393,6 +392,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.CHANGED, f"{text}: merge again", Severity.HIGH, cause=cause, previous=record.get("mod"))
             elif not (file.loaded and is_package_folder(file.loaded.folder)):
                 overridden()
+            elif optional_changed(key):
+                state(State.CHANGED, f"{OPTIONAL_CHANGED}: merge again", Severity.MEDIUM, cause="optional")
             elif record.get("forced"):
                 since = f" on {record['forced_since']}" if record.get("forced_since") else ""
                 fixes = tuple(record.get("fixes_not_applied") or ())
@@ -428,6 +429,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                                       or (record["status"] == "known broken" and not still_broken(record))):
                 state(State.CHANGED, "the merger was updated since this screen was left out: merge again, as it may "
                       "merge it now", Severity.MEDIUM, cause="merger")
+            elif record["status"] == "unchanged" and optional_changed(key):     # The fix may change this copy
+                state(State.CHANGED, f"{OPTIONAL_CHANGED}: merge again", Severity.MEDIUM, cause="optional")
             elif record["status"] == "unchanged":
                 fps, speed = record.get("fps"), record.get("speed")
                 runs = f"runs at {fps:g} fps" if fps else "runs at a high frame rate"

@@ -267,7 +267,11 @@ PLAY_WITHOUT_MERGING = {
     Severity.MEDIUM: "Play without merging (screens not merged)",
     Severity.LOW: "Play without merging",
 }
-TONES = {Severity.HIGH: ERROR, Severity.MEDIUM: WARNING, Severity.LOW: INFO}
+# The same where only an optional change is waiting: every screen is merged, but the change doesn't show yet
+OPTIONAL_HEADLINE = "Merge to apply your change"
+OPTIONAL_COST = "Until you merge, the game keeps the previous look."
+OPTIONAL_PLAY = "Play without merging (change not applied)"
+TONES ={Severity.HIGH: ERROR, Severity.MEDIUM: WARNING, Severity.LOW: INFO}
 
 # Causes are keyed by FileState.cause, or its state's value, and by policy.FileStatus's values, with "fixes"
 # for a copy merged without some fixes. The card names no screens: the list below it does. Those about
@@ -459,7 +463,14 @@ def _play_without_merging(found: Check | None) -> str:
     if not (found and found.severity):
         return "Play without merging"
     hides_mod = any(file.severity is not None and found.scan.files[file.path].hides_mod for file in found.states)
+    if not hides_mod and _only_optional(found):
+        return OPTIONAL_PLAY
     return PLAY_WITHOUT_MERGING[Severity.HIGH if hides_mod else found.severity]
+
+
+def _only_optional(found: Check) -> bool:
+    """Whether a merge is only asked for to apply an optional change"""
+    return all(file.cause == "optional" for file in found.states if file.severity is not None)
 
 
 def _merging(stale, progress):
@@ -581,6 +592,8 @@ def _checked(found: Check, stale, merges_now=()):
         severity = found.severity
         buttons = ((("Merge and play", "merge_and_play"), (_play_without_merging(found), "play"), DONT_START) if stale
                    else (("Merge", "merge"), RESCAN))
+        if _only_optional(found):
+            return Card(TONES[severity], OPTIONAL_HEADLINE, _sentences(causes, [OPTIONAL_COST]), buttons)
         return Card(TONES[severity], HEADLINES[severity], _sentences(causes, [COST[severity]] if severity in COST else []),
                     buttons)
 
