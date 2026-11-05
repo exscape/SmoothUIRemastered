@@ -16,9 +16,11 @@ the same way, and are written back as 164) holding one CSwfResource chunk (the S
   then   the chunks, contiguous and in export order, up to the end of the file. Each chunk is
          0x00 | properties | u16 0 | class specific body, where a property is
          u16 name | u16 type | u32 size (including itself) | value.
-         The CSwfResource body is: u32 length | SWF file (CFX/CWS/GFX/FWS) | trailer.
-         The CSwfTexture body is a 28-byte header (u32 0 | u32 1 | u32 width | u32 height |
-         u32 pitch | u32 data_size | u32 16), then data_size bytes of DXT data.
+         The CSwfResource body is: u32 length | SWF file (CFX/CWS/GFX/FWS) | trailer. The trailer is
+         normally a second u32 length | data: empty in cooked files, the source SWF in uncooked ones.
+         The CSwfTexture body is a 24-byte header (u32 0 | u32 1 | u32 width | u32 height |
+         u32 pitch | u32 data_size), then data_size bytes of DXT data, with one more u32: a 16 before
+         the data in cooked files (export flags 0x2000), a 0 after it in uncooked ones (flags 0).
 
 The only absolute offsets are in the exports table, so a replacement rebuilds the SWF chunk, then
 rewrites the exports table (offsets, sizes, CRCs), the two size fields in the header, and the header
@@ -54,7 +56,7 @@ OFF_EXPORTS_CRC = SLOTS_START + T_EXPORTS * SLOT_SIZE + 8
 HEADER_CRC_PLACEHOLDER = 0xDEADBEEF
 EXPORT_ROW = struct.Struct("<HHIIIII")
 KNOWN_CLASSES = ("CSwfResource", "CSwfTexture")
-TEXTURE_HEADER_SIZE, TEXTURE_DATA_SIZE_OFFSET = 28, 20
+TEXTURE_OVERHEAD, TEXTURE_DATA_SIZE_OFFSET = 28, 20     # the overhead: the header and the extra u32
 
 
 class RedSwfError(ValueError):
@@ -80,7 +82,8 @@ class Export(NamedTuple):
 
 
 class RedSwf:
-    """A parsed .redswf. Raises RedSwfError for anything that isn't exactly as expected."""
+    """A parsed .redswf. Raises RedSwfError for anything that isn't as expected, except for what stale and
+    texture_problems record."""
 
     def __init__(self, data: bytes | bytearray):
         self.data = d = bytes(data)
@@ -142,6 +145,7 @@ class RedSwf:
         if len(swf_chunks) != 1:
             raise RedSwfError(f"expected exactly 1 CSwfResource chunk, found {len(swf_chunks)}")
         self.swf_chunk = swf_chunks[0]
+        self.texture_problems = []
         for i, chunk in enumerate(self.chunks):
             body_offset = self._skip_properties(i, chunk)
             if i == self.swf_chunk:
@@ -192,15 +196,16 @@ class RedSwf:
             pos += size - 4
 
     def _check_texture_body(self, i: int, chunk: Export, pos: int):
-        """Check that the texture header and data exactly fill the chunk. Texture chunks are copied
-        as is, so they must not contain anything unexplained (such as an absolute offset)."""
+        """Record it if the texture header and data don't exactly fill the chunk. Tolerated, as texture
+        chunks are copied as is (seen in a mod with 4 extra zero bytes, which works in game)."""
         end = chunk.offset + chunk.size
-        if pos + TEXTURE_HEADER_SIZE > end:
-            raise RedSwfError(f"texture chunk {i} is too short")
+        if pos + TEXTURE_OVERHEAD > end:
+            self.texture_problems.append(f"Texture chunk {i} is too short")
+            return
         (data_size,) = struct.unpack_from("<I", self.data, pos + TEXTURE_DATA_SIZE_OFFSET)
-        if pos + TEXTURE_HEADER_SIZE + data_size != end:
-            raise RedSwfError(f"texture chunk {i}: data size {data_size} doesn't match the chunk "
-                              f"({end - pos - TEXTURE_HEADER_SIZE} bytes after the header)")
+        if pos + TEXTURE_OVERHEAD + data_size != end:
+            self.texture_problems.append(f"Texture chunk {i}: data size {data_size} doesn't match the chunk "
+                                         f"({end - pos - TEXTURE_OVERHEAD} bytes available)")
 
     def _parse_swf_body(self, pos: int):
         """Read the length-prefixed SWF and the trailer after it"""

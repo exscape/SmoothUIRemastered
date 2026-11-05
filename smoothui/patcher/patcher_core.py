@@ -145,6 +145,8 @@ def _patch_file(source, settings, body_hook=None):
         if "header file size" in redswf.stale:
             log.warning(f"The .redswf's header states a file size of {redswf.file_size} bytes, but the file has "
                         f"{len(data)}; this is ignored")
+        for problem in redswf.texture_problems:
+            log.warning(f"{problem}; it is copied as it is")
         if redswf.version != CR2W_VERSION:
             log.info(f"The .redswf is CR2W version {redswf.version}: it is written as version {CR2W_VERSION}")
         shares_classes = source.path.startswith(SHARED_CLASSES_FOLDER)
