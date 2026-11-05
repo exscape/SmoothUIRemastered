@@ -268,7 +268,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
 
     def optional_changed(key):
         """Whether an optional fix for this file was chosen or dropped since the package was built"""
-        return any(OPTIONAL_FIXES[fix] == key for fix in built_optional ^ result.optional_fixes if fix in OPTIONAL_FIXES)
+        return any(key in OPTIONAL_FIXES[fix] for fix in built_optional ^ result.optional_fixes if fix in OPTIONAL_FIXES)
 
     # New reviews of mods' code (downloaded since the build) may let a screen that was left out be merged
     reviews = result.reviews
@@ -378,6 +378,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 state(State.DAMAGED, f"the merged patches are damaged ({why}): merge again", Severity.HIGH)
             elif fps_changed(key):
                 state(State.CHANGED, f"{FPS_CHANGED}: merge again", Severity.HIGH, needs_build=True, cause="fps")
+            elif winner is None and optional_changed(key):      # It was only held for the fix
+                state(State.CHANGED, f"{OPTIONAL_CHANGED}: merge again", Severity.MEDIUM, cause="optional")
             elif winner is None:
                 after = file.loaded_without_package
                 state(State.NO_LONGER_NEEDED, f"{record['mod']} no longer changes it: merge again (the game then uses "
@@ -466,6 +468,8 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                   "merge: merge again", Severity.MEDIUM, cause="setting")
         elif result.from_game.get(key) == "game":
             state(State.NOT_BUILT, f"{GAME_UPDATED}: merge again", Severity.MEDIUM, cause="game")
+        elif result.from_game.get(key) == "optional":
+            state(State.NOT_BUILT, f"{OPTIONAL_CHANGED}: merge again", Severity.MEDIUM, cause="optional")
         else:
             state(State.NOT_BUILT, f"{_copy_of(origin)} is new since the last merge: merge again", Severity.MEDIUM)
     return _whole_groups(result, states)

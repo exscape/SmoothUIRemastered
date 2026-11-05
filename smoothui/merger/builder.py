@@ -56,7 +56,7 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
              f"({e!r}): update them")
     settings = {}
     for source in sources:
-        optional = tuple(fix for fix in sorted(result.optional_fixes) if OPTIONAL_FIXES[fix] == source.path)
+        optional = tuple(fix for fix in sorted(result.optional_fixes) if source.path in OPTIONAL_FIXES[fix])
         settings[source.path] = replace(profile[source.path], target_fps=result.fps_of(source.path),
                                         fixes=profile[source.path].fixes + optional)
         if result.reviews and (extra := result.reviews.dont_stretch(source.origin, file_name(source.path),

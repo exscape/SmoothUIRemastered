@@ -165,7 +165,8 @@ FPS_UNSURE = "If unsure, enter less: too low only looks less smooth, too high pl
 FPS_LINK = "How to choose ↗"
 # The optional fixes (see requires.OPTIONAL_FIXES), on the settings page below the frame rates
 OPTIONAL_HEADING = "Optional changes"
-OPTIONAL_FIXES_TEXTS = {"health-bar-glow-fix": "Remove the brighter glow/outline from the health bar"}
+OPTIONAL_FIXES_TEXTS = {"health-bar-glow-fix": "Remove the brighter glow/outline from the health bar",
+                        "menu-slide-fix": "Remove the slide when a menu opens or closes"}
 # What the HUD is built for, by game.hud_rate's level ({rendered}: the rate the game renders in gameplay;
 # {generated}: how frame generation makes it, if on)
 HUD_ADVICE = {

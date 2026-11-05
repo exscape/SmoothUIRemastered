@@ -19,10 +19,37 @@ FIX_NAMES = frozenset({
     "gwent-speed-options",
     "health-bar-glow-fix",
     "hub-tab-hover-fix",
+    "menu-slide-fix",
 })
-# The fixes the user can choose in the merger's settings: {name: profile key of the file}. No profile or
-# manifest names them, so no release requires them.
-OPTIONAL_FIXES = {"health-bar-glow-fix": "gameplay/gui_new/swf/hud/hud_wolfstatbars.redswf"}
+# The fixes the user can choose in the merger's settings: {name: profile keys of its files}. No profile or
+# manifest names them, so no release requires them. The merger builds a chosen fix's files from the game's copies,
+# as the release's don't have it.
+OPTIONAL_FIXES = {
+    "health-bar-glow-fix": frozenset({"gameplay/gui_new/swf/hud/hud_wolfstatbars.redswf"}),
+    # The screens that play CoreMenu's slides (others have animations of their own, or none)
+    "menu-slide-fix": frozenset(f"gameplay/gui_new/swf/{name}.redswf" for name in (
+        "alchemy/panel_alchemy",
+        "character/panel_character",
+        "character/panel_character_dupe",
+        "crafting/panel_crafting",
+        "glossary/panel_glossary_bestiary",
+        "glossary/panel_glossary_books",
+        "glossary/panel_glossary_encyclopedia",
+        "glossary/panel_glossary_main",
+        "glossary/panel_glossary_storybook",
+        "glossary/panel_glossary_tutorials",
+        "gwint/deck_builder",
+        "gwint/gwint_game",
+        "inventory/panel_inventory",
+        "journal/panel_journal_quests",
+        "mainmenu/panel_mainmenu_dbg_startquest",
+        "noticeboard/panel_noticeboard",
+        "repair/panel_blacksmith",
+        "repair/panel_enchanting",
+        "repair/panel_transmog",
+        "worldmap/panel_worldmap",
+    )),
+}
 # The profile's settings (see config/profile_default.txt), less "fix:" (each fix is its own requirement).
 # "group": a release with a group of files it doesn't ship, which the merger builds (see build/main.py)
 SETTING_NAMES = frozenset({"speed", "include", "exclude", "source-fps", "group"})

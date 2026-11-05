@@ -29,6 +29,7 @@ from .. import mod_reviews
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
 from ..manifests import MERGER_ONLY, UNUSED, game_copy
 from ..mod_reviews import ModReviews
+from ..requires import OPTIONAL_FIXES
 from ..witcher3.bundle import read_toc
 from ..witcher3.game_files import game_files
 from ..witcher3.mod_bundles import read_bundle_tocs
@@ -157,8 +158,8 @@ class Scan:
     # The optional fixes to apply (see requires.OPTIONAL_FIXES)
     optional_fixes: frozenset[str] = frozenset()
     # The files whose winner is the game's own copy, and why: {profile key: "merger-only" (no download holds
-    # it), "fps" (the menus' rate isn't the installed build's) or "game" (the game's copy changed since the
-    # installed build's release)}
+    # it), "fps" (the menus' rate isn't the installed build's), "game" (the game's copy changed since the
+    # installed build's release) or "optional" (an optional fix was chosen for it)}
     from_game: dict[str, str] = field(default_factory=dict)
 
     def fps_of(self, key: str) -> int | None:
@@ -249,8 +250,10 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     group_of |= {key: group_dirs[posixpath.dirname(key)] for mod, found in shipped.items() if not is_own_folder(mod.folder)
                  for key in found if key not in keys}
     # The game's copies of the shipped files too (only their TOC entries), to tell a game update
-    game = _game_copies(game_path, keys - unused - off, merger_only.keys() - off, problems)
+    optional = {key for fix in optional_fixes for key in OPTIONAL_FIXES[fix]} & (keys - unused)
+    game = _game_copies(game_path, keys - unused - off, (merger_only.keys() | optional) - off, problems)
     merger_only |= {key: "game" for key, copy in game.items() if key not in merger_only and _game_updated(records[key], copy)}
+    merger_only |= {key: "optional" for key in optional if key not in merger_only}
 
     files = {}
     for key in sorted(group_of.keys() | keys):
