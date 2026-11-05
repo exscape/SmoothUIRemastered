@@ -16,7 +16,7 @@ from .swf_edit import FixKind, FixResult, SwfEdit
 
 NAME = "health-bar-glow-fix"
 CONSEQUENCE = "the brighter outline around the health bar stays"
-KIND = FixKind.GAME_BUG
+KIND = FixKind.SMOOTHUI_FEATURE
 BAR_CLASS = "BackgroundHealthIndicator"
 GLOW_NAME = "mcGainGlow"
 REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)

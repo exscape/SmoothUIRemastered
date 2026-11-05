@@ -377,7 +377,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             elif fps_changed(key):
                 state(State.CHANGED, f"{FPS_CHANGED}: merge again", Severity.HIGH, needs_build=True, cause="fps")
             elif winner is not None and optional_changed(key):
-                state(State.CHANGED, "the optional changes in the settings changed: merge again", Severity.MEDIUM,
+                state(State.CHANGED, "an optional change was turned on or off: merge again", Severity.MEDIUM,
                       needs_build=True, cause="optional")
             elif winner is None:
                 after = file.loaded_without_package

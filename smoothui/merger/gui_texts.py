@@ -313,7 +313,7 @@ CAUSES = {
     "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
     "group left out": "The HUD only works if all of it is merged, so it is left out.",
     "setting": "The \"Smooth HUD\" setting changed since the last merge.",
-    "optional": "The optional changes in the settings changed since the last merge.",
+    "optional": "An optional change was turned on or off since the last merge.",
     "by choice": "Your choice of screens not to merge changed since the last merge.",
     "by rule": "Smooth UI's list of screens not to merge changed since the last merge.",
     "smoothui first": "The game uses Smooth UI's copy of some screens, without your mods' changes.",

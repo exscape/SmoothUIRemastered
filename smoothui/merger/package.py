@@ -78,8 +78,9 @@ def write_package(package_dir: Path, installed: Installed, files: list[PackageFi
     mods' code they were patched with (see mod_reviews.py); groups_off and screens_off: the groups and
     files turned off (see scan.Scan.groups_off and screens_off; the latter is a dict); rates: the menus' and the
     HUD's frame rates they were patched for (see scan.Scan.target_fps; None: installed's); as_is: the mods'
-    copies to hold as they are (see policy.AsIs); optional_fixes: see scan.Scan.optional_fixes. If it would hold no files, remove the package instead, and write
-    the manifest to record (see above), if given; else delete record."""
+    copies to hold as they are (see policy.AsIs); optional_fixes: see scan.Scan.optional_fixes. If it would hold
+    no files, remove the package instead, and write the manifest to record (see above), if given; else delete
+    record."""
     package_dir = Path(package_dir)
     content = package_dir / "content"
     previous = _read_manifest(package_dir / PACKAGE_MANIFEST)

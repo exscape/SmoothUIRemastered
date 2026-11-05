@@ -206,8 +206,8 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     """Scan the game's Mods\\ folder, with the load order from mods_settings (the path of mods.settings).
     groups_off: see Scan.groups_off; screens_off: the user's ScreenOffs (see Scan.screens_off); target_fps
     and hud_fps: see Scan.target_fps (None: the installed build's rate); optional_fixes: see
-    Scan.optional_fixes; reviews: the reviews of mods' code,
-    for the dont-merge lines in them (None: mod_reviews.load()'s), kept in Scan.reviews.
+    Scan.optional_fixes; reviews: the reviews of mods' code, for the dont-merge lines in them (None:
+    mod_reviews.load()'s), kept in Scan.reviews.
 
     modio_root is the folder holding mod.io's mods (default: found from %PUBLIC%); manifests ({version:
     manifest}) replace the release manifests the merger has, for tests. Fails (SmoothUIError) only if

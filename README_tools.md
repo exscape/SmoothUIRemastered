@@ -152,7 +152,7 @@ The HUD has two settings of its own, since gameplay usually runs slower than men
 These change how something looks, so they're off unless you choose them. Merge again after changing one.  
 Right now, there's only one:
 
-- **Remove the brighter glow/outline from the health bar (strictly a matter of taste, so off by default)
+- **Remove the brighter glow/outline from the health bar**
 
 ### Mods that already run at 100+ fps
 
