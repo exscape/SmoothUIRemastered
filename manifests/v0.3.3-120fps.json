@@ -1,5 +1,5 @@
 {
- "created_at": "2026-11-05T11:37:56+00:00",
+ "created_at": "2026-11-05T11:56:19+00:00",
  "created_mod_version": "v0.3.3-120fps",
  "files": {
   "gameplay/gui_new/swf/alchemy/panel_alchemy.redswf": {
@@ -13831,8 +13831,8 @@
  },
  "manifest_format": 2,
  "output_zip": "SmoothUIRemastered_v0.3.3-120fps.zip",
- "patcher_commit": "4755de56f0791d776378de2d3f63cb102471aeff",
- "patcher_uncommitted_changes": true,
+ "patcher_commit": "b99f0ae6cef0bceb23f28356ff7ba1d6dd9ba291",
+ "patcher_uncommitted_changes": false,
  "requires": [
   "fix:gwent-3d-bug-fix",
   "fix:gwent-card-fx-filter-fix",
