@@ -167,6 +167,18 @@ class SwfEdit:
         """Ids of the sprites linked to class_name (none if there are none)"""
         return [i for i in self._sprites_of_class.get(class_name, []) if i in self._sprite_index]
 
+    def sprites_of_class_or_subclasses(self, abc: AbcFile, class_name_index: int) -> list[int]:
+        """Ids of the sprites linked to a class of abc (its multiname index) or to a class that extends it"""
+        names = {class_name_index}
+        grew = True
+        while grew:
+            grew = False
+            for instance in abc.instances:
+                if instance.super_name in names and instance.name not in names:
+                    names.add(instance.name)
+                    grew = True
+        return sorted({sprite for name in names for sprite in self.sprites_of_class(abc.full_name_of(name))})
+
     def insert_abc(self, tag: Tag):
         """Add a DoABC tag (classes of our own) right after the file's own, so that its classes are
         defined before anything runs. It is not one of the file's own tags (see unit_of_class)."""

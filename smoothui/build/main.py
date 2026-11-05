@@ -155,7 +155,8 @@ def main():
     versions = [build_version(base_version, fps) for fps in fps_list]
 
     if args.make_release and not args.dry_run:
-        existing = [version for version in versions if manifest_path(version).exists()]
+        # Dev versions are rebuilt all the time, so their manifests are overwritten without --force
+        existing = [version for version in versions if manifest_path(version).exists() and "dev" not in version]
         if existing and args.force:
             log.info(f"Overwriting previously existing mod release(s) {', '.join(existing)}, including the manifests")
         elif existing:
@@ -210,7 +211,7 @@ def read_game_files(uncooked_files, profile):
     return inputs
 
 def build(args, config, paths, version, fps):
-    """Patch, check, pack and zip one build (and for a release, write its manifest). Returns a function
+    """Patch, check, pack and zip one build (and for a release or dev version, write its manifest). Returns a function
     that prints the build's warnings and rule issues."""
     log.info(f"Building {version}: every file patched to {fps} fps", extra=HEADING)
     profile, shared_settings, group_of, game_copy_of = load_profile(args.profile, fps)
@@ -285,7 +286,8 @@ def build(args, config, paths, version, fps):
 
         zip_tree(output_dir, zip_out)
 
-    if args.make_release:
+    # A dev build gets its manifest too, so that the merger works with it once installed
+    if args.make_release or "dev" in version:
         log.info(f"Writing mod manifest ({version})", extra=HEADING)
         # Hashes and sizes of the source and output files (for v0.2, source_size == output_size for all files)
         records = {entry["path"]: {**entry["hashes"], "fps": entry["fps"], "report": entry["report"]}
@@ -312,8 +314,9 @@ def build(args, config, paths, version, fps):
             "created_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
             "output_zip": str(zip_out.relative_to(REPO_ROOT)) if zip_out.is_relative_to(REPO_ROOT) else str(zip_out),
         })
-        print_changes_since_previous(version)
-    else:
+        if args.make_release:
+            print_changes_since_previous(version)
+    if not args.make_release:
         install_and_launch(output_mod_dir, paths['game_path'], args.install, args.launch,
                            bin_dir=output_dir / "bin")
 

@@ -82,7 +82,10 @@ gameplay/gui_new/swf/character/panel_character.redswf
 gameplay/gui_new/swf/character/panel_character_dupe.redswf
 gameplay/gui_new/swf/glossary/panel_glossary_main.redswf # Glossary root screen + tabs
 gameplay/gui_new/swf/glossary/panel_glossary_bestiary.redswf
+    # The right stick scrolls the text in lines per frame: far too fast at high frame rates
+    fix: text-stick-scroll-fix
 gameplay/gui_new/swf/glossary/panel_glossary_books.redswf
+    fix: text-stick-scroll-fix
 gameplay/gui_new/swf/gwint/deck_builder.redswf # Default 30 fps
 gameplay/gui_new/swf/gwint/gwint_game.redswf # Default 24 fps
     # Fix bugs in the game's weather FX (as of 5.01):
@@ -112,9 +115,12 @@ gameplay/gui_new/swf/crafting/panel_crafting.redswf # Glossary > Crafting
     speed 1.5: panel_crafting_fla.progressbar2_48
 
 gameplay/gui_new/swf/glossary/panel_glossary_encyclopedia.redswf # Glossary > Characters
+    fix: text-stick-scroll-fix
 gameplay/gui_new/swf/glossary/panel_glossary_tutorials.redswf
+    fix: text-stick-scroll-fix
 gameplay/gui_new/swf/inventory/panel_inventory.redswf
 gameplay/gui_new/swf/journal/panel_journal_quests.redswf
+    fix: text-stick-scroll-fix
 gameplay/gui_new/swf/noticeboard/panel_noticeboard.redswf
 gameplay/gui_new/swf/repair/panel_blacksmith.redswf
 gameplay/gui_new/swf/repair/panel_transmog.redswf # Default 22 fps(!)

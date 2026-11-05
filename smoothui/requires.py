@@ -20,6 +20,7 @@ FIX_NAMES = frozenset({
     "health-bar-glow-fix",
     "hub-tab-hover-fix",
     "menu-slide-fix",
+    "text-stick-scroll-fix",
 })
 # The fixes the user can choose in the merger's settings: {name: profile keys of its files}. No profile or
 # manifest names them, so no release requires them. The merger builds a chosen fix's files from the game's copies,

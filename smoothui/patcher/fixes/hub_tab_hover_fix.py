@@ -64,7 +64,7 @@ def apply(swf: SwfEdit) -> FixResult:
     edits = {first: replacement, **{i: b"" for i in range(first + 1, last + 1)}}
     code, exceptions = assemble(body.code, instructions, edits, body.exceptions)
     unit.replace_method_code(method, code, exceptions)
-    return FixResult(_sprites_using(swf, abc, instance.name),
+    return FixResult(swf.sprites_of_class_or_subclasses(abc, instance.name),
                      f"{METHOD} now unlights the hovered tab unless it is the list's selected one, "
                      "not any tab with the selected id")
 
@@ -95,16 +95,3 @@ def _find_multiname(abc: AbcFile, instance, opcode: int, name: str) -> int | Non
             if ins.opcode == opcode and abc.name_of(ins.args[0]) == name and ins.args[1:] in ([], [0]):
                 return ins.args[0]
     return None
-
-
-def _sprites_using(swf: SwfEdit, abc: AbcFile, class_name_index: int) -> list[int]:
-    """Ids of the sprites linked to the class or to a class that extends it"""
-    names = {class_name_index}
-    grew = True
-    while grew:
-        grew = False
-        for instance in abc.instances:
-            if instance.super_name in names and instance.name not in names:
-                names.add(instance.name)
-                grew = True
-    return sorted({sprite for name in names for sprite in swf.sprites_of_class(abc.full_name_of(name))})

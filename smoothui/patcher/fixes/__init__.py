@@ -32,6 +32,7 @@ from . import (
     health_bar_glow_fix,
     hub_tab_hover_fix,
     menu_slide_fix,
+    text_stick_scroll_fix,
 )
 from .swf_edit import (
     AFTER_RESCALE,
@@ -44,7 +45,7 @@ from .swf_edit import (
 
 FIXES = {fix.NAME: fix for fix in (gwent_3d_bug_fix, gwent_card_fx_filter_fix, gwent_coin_shadow_fix, gwent_fog_intro_fix,
                                    gwent_frost_flicker_fix, gwent_rain_loop_fix, gwent_speed_options,
-                                   health_bar_glow_fix, hub_tab_hover_fix, menu_slide_fix)}
+                                   health_bar_glow_fix, hub_tab_hover_fix, menu_slide_fix, text_stick_scroll_fix)}
 if set(FIXES) != FIX_NAMES:
     raise RuntimeError(f"requires.py's FIX_NAMES must list exactly the fixes: {', '.join(sorted(FIXES))}")
 
