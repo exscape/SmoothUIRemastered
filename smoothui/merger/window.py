@@ -262,7 +262,7 @@ from .gui_texts import (
     row_label,
     row_mods,
     row_name,
-    row_rank,
+    row_order,
     row_status,
     screen_rows,
     smoothui_build,
@@ -621,8 +621,6 @@ class MergerWindow:
         self.row_of = {}            # by a file's path: the path of its row
         self.merging = {}           # while merging, by row: the files not patched yet (None once one failed)
         self.rows_merging = False   # whether rows show a merge's progress, not their FileState
-        self.keep_order = False     # since a merge (until Re-scan): rows stay where they were (see show_screens)
-        self.row_order = {}         # by path: the row's position in the list, as last shown
         self.details = {}           # by path: (its frame, its buttons)
         self.list_row = 0
 
@@ -1007,7 +1005,6 @@ class MergerWindow:
             log.info(f"Game folder: {game}")
         self.game = game
         self.found = self.scan_error = self.merged = self.merge_error = None
-        self.keep_order = False
         self.changes = {}
         if self.busy == "scan":
             self.scan_again = True
@@ -1256,18 +1253,13 @@ class MergerWindow:
 
     def show_screens(self):
         """The screens other mods change, by status, mod and screen, then the line for the others, then notes:
-        made again when that changes (open details stay open). After a merge, until Re-scan, the rows keep
-        their places: else the next "Left out" row would move up under the mouse, as if the click had failed."""
+        made again when that changes (open details stay open)."""
         if self.rows_merging and self.busy:     # the scan after a merge: the rows show the merge's until it ends
             return
         states = self.found.states if self.found else []
-        order = lambda row: _row_order(row[0])
-        if self.keep_order:     # a row that wasn't shown goes after the others
-            order = lambda row: (self.row_order.get(row[0].path, len(self.row_order)), _row_order(row[0]))
         rebuilt = [state for state in states if collapses(state)]     # one line
         shown = sorted(screen_rows([state for state in states if state.state != State.NOTHING_TO_DO
-                                    and state not in rebuilt]), key=order)
-        self.row_order = {state.path: index for index, (state, _) in enumerate(shown)}
+                                    and state not in rebuilt]), key=lambda row: row_order(row[0]))
         others = len(states) - len(rebuilt) - sum(len(members) for _, members in shown)
         notes = self.notes() if self.found else []
         content = ([(row, [(state, self.found.scan.files[state.path].shippers) for state in members])
@@ -1467,7 +1459,6 @@ class MergerWindow:
         if self.scan_again or self.downloaded_meanwhile:
             if self.downloaded_meanwhile:
                 self.merged = self.merge_error = None
-                self.keep_order = False
             self.scan_again = self.downloaded_meanwhile = False
             start_scan(self.game, self.calls, scan_options(self.settings))
             self.set_busy("scan")
@@ -1544,11 +1535,9 @@ class MergerWindow:
             self.save_screens_off(chosen)
 
     def rescan(self, keep_result=False):
-        """Scan again; the last merge's result (and the rows' places) stays only with keep_result (right after
-        that merge)"""
+        """Scan again; the last merge's result stays only with keep_result (right after that merge)"""
         if not keep_result:
             self.merged = self.merge_error = None
-            self.keep_order = False
         start_scan(self.game, self.calls, scan_options(self.settings))
 
     def play(self):
@@ -1788,7 +1777,6 @@ class MergerWindow:
         patch_anyway: files to force too (see build)"""
         self.set_busy("build")
         self.merged = self.merge_error = self.progress = None
-        self.keep_order = True
         self.refresh()
         self.merging = {}
         for path, (_, _, _, members) in self.rows.items():  # each says "Done" when its files are (see merged_file)
@@ -2183,12 +2171,6 @@ def fix_text(name):
         return f"{fix_kind(name).header} {fix_consequence(name)} ({name})"
     except ValueError:
         return name
-
-
-def _row_order(state: FileState):
-    """By status (errors, then warnings, then the rest), then by mod (a screen no other mod changes now, e.g.
-    its mod was removed, first), then by screen"""
-    return row_rank(state), (state.winner or "").lower(), row_name(state).lower()
 
 
 def ask_folder(parent, title, initial) -> str:

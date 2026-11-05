@@ -692,6 +692,12 @@ def row_rank(file: FileState) -> int:
     return {ERROR: 0, WARNING: 1, INFO: 2, OK: 3}[row_status(file)[0]]
 
 
+def row_order(file: FileState):
+    """The rows' order: by status (see row_rank), then by mod (a screen no other mod changes now, e.g. its mod
+    was removed, first), then by screen"""
+    return row_rank(file), (file.winner or "").lower(), row_name(file).lower()
+
+
 def screen_rows(states: list[FileState]) -> list[tuple[FileState, tuple[FileState, ...]]]:
     """The list's rows, as (what the row shows, the files it stands for): a file alone, or a group's files
     (e.g. the HUD's) as one row, as they are merged whole or not at all. A group's row is its worst file's

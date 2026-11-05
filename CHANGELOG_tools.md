@@ -1,8 +1,9 @@
 # v0.9.6
 
 * Added: smoother HUD bars: horse stamina/fear, breath, health (on regeneration), etc.
-* Added: optional changes. Currently only one: "remove the brighter glow/outline from the health bar". This is off by default.
+* Added: optional changes. There's currently only one: "remove the brighter glow/outline from the health bar". This is off by default.
 * Changed: if one screen fails to merge entirely, the entire mod is no longer left out; only the failed screen remains at the mod's original frame rate.
+* Changed: sort the screen list by status first (failed at the top, then warning, info, all OK), then by mod name, then by screen: keeps the important things easily visible at the top. (The old behavior of locking the order during a merge is no longer needed: it was a workaround made obsolete by v0.9.5.)
 * Improved: allow further mods to patch via more lenient patching: should resolve "texture chunk X: data size Y doesn't match the chunk (Z bytes after the header)" for the few mods that triggers it.
 
 # v0.9.5
