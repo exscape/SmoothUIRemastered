@@ -144,13 +144,21 @@ group: hud
     gameplay/gui_new/swf/hud/hud_areainfo.redswf
     gameplay/gui_new/swf/hud/hud_boathealth.redswf
     gameplay/gui_new/swf/hud/hud_bossfocus.redswf
+        include: ^BossStatusIndicator$
+        speed 1/3: ^BossStatusIndicator$
     gameplay/gui_new/swf/hud/hud_buffs.redswf
     gameplay/gui_new/swf/hud/hud_companion.redswf
+        include: ^W3StatusIndicator$
+        speed 1/3: ^W3StatusIndicator$
     gameplay/gui_new/swf/hud/hud_controlsfeedback.redswf
     gameplay/gui_new/swf/hud/hud_crosshair.redswf
     gameplay/gui_new/swf/hud/hud_damageditems.redswf
     gameplay/gui_new/swf/hud/hud_dialog.redswf
+        include: ^DefaultStatusIndicator$
+        speed 1/3: ^DefaultStatusIndicator$
     gameplay/gui_new/swf/hud/hud_enemyfocus.redswf
+        include: ^NPC(Status|Stamina|StaminaDelay)Indicator$
+        speed 1/3: ^NPC(Status|Stamina|StaminaDelay)Indicator$
     gameplay/gui_new/swf/hud/hud_horsepanicbar.redswf
         include: ^DefaultStatusIndicator$
         speed 1/3: ^DefaultStatusIndicator$
@@ -170,9 +178,11 @@ group: hud
     gameplay/gui_new/swf/hud/hud_quests.redswf
     gameplay/gui_new/swf/hud/hud_radialmenu.redswf
     gameplay/gui_new/swf/hud/hud_timeleft.redswf
+        include: ^DefaultStatusIndicator$
+        speed 1/3: ^DefaultStatusIndicator$
     gameplay/gui_new/swf/hud/hud_wolfstatbars.redswf
-        include: ^(Health|Stamina|Toxicity|LockedToxicity)StatusIndicator$
-        speed 1/3: ^(Health|Stamina|Toxicity|LockedToxicity)StatusIndicator$
+        include: ^(Health|Stamina|Toxicity|LockedToxicity|Focus)StatusIndicator$
+        speed 1/3: ^(Health|Stamina|Toxicity|LockedToxicity|Focus)StatusIndicator$
         include: ^BackgroundHealthIndicator$
         speed 1/3: ^BackgroundHealthIndicator$
 

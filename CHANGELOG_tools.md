@@ -1,3 +1,8 @@
+# v0.9.7
+
+* Added: new optional change, "remove menu slides". Removes slide-in/slide-out effects for the patched menus (including the Gwent deck builder).
+* Added: smoothen a few more HUD bars I missed previously (e.g. time left to make a dialog choice)
+
 # v0.9.6
 
 * Added: smoother HUD bars: horse stamina/fear, breath, health (on regeneration), etc.
