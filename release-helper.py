@@ -145,13 +145,13 @@ def tools_download(args):
     print(f"  {zip_path}\n  {notes_path}")
 
 
-def is_manifest_to_upload(path):
+def is_manifest_to_upload(path, uploaded):
     """A manifest the merger downloads (<version>.json of a release, not of a dev build) that the oldest public
-    tools don't ship"""
+    tools don't ship, or one already uploaded (a reissue, which the tools prefer to the copy they ship)"""
     version = path.stem
     return (path.suffix == ".json" and "dev" not in path.name and normalize_version(version) == version
             and version_key(version) is not None and not is_dev_version(version)
-            and version_key(version) > version_key(NEWEST_SHIPPED_MANIFEST))
+            and (uploaded or version_key(version) > version_key(NEWEST_SHIPPED_MANIFEST)))
 
 
 def upload_manifests(args):
@@ -161,7 +161,7 @@ def upload_manifests(args):
     digests = {asset["name"]: asset.get("digest") for asset in assets}
     new, changed = [], []
     for path in sorted((ROOT / MANIFESTS).glob("*.json")):
-        if not is_manifest_to_upload(path):
+        if not is_manifest_to_upload(path, path.name in digests):
             continue
         digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
         if path.name not in digests:
@@ -180,10 +180,15 @@ def upload_manifests(args):
     print("These manifests would be uploaded:")
     for path in upload:
         print(f"  {path.name}" + ("  (replaces the uploaded copy)" if path in changed else ""))
+    command = ["gh", "release", "upload", MANIFESTS_TAG, "--repo", REPO, *(["--clobber"] if changed else []),
+               *(MANIFESTS / path.name for path in upload)]
+    if args.dry_run:
+        print("Dry run, so nothing uploaded. The command would be:")
+        print("$", " ".join(map(str, command)))
+        return
     if input("Continue? [y/N] ").strip().lower() != "y":
         sys.exit("Nothing uploaded.")
-    run(["gh", "release", "upload", MANIFESTS_TAG, "--repo", REPO, *(["--clobber"] if changed else []),
-         *(MANIFESTS / path.name for path in upload)])
+    run(command)
     print("Uploaded. Installed tools download them at their next update check.")
 
 
@@ -196,6 +201,7 @@ def main():
     upload = commands.add_parser("upload-manifests", help="upload the manifests the manifests release lacks")
     upload.add_argument("--replace", action="store_true",
                         help="also upload manifests that differ from the uploaded copy (corrected ones)")
+    upload.add_argument("--dry-run", action="store_true", help="only show what would be uploaded")
     args = parser.parse_args()
     {"tools-packages": tools_packages, "tools-notes": tools_notes, "tools-download": tools_download,
      "upload-manifests": upload_manifests}[args.command](args)
