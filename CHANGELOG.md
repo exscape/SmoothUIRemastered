@@ -2,6 +2,7 @@
 # v0.3.4
 
 * Fix text scroll speed (mostly in the Glossary) at high frame rates
+* Also adjust text scroll speed for books in when opened from gameplay, and in the inventory: this is a different book reader. This one scrolled very slowly (in the base game).
 
 # v0.3.3
 

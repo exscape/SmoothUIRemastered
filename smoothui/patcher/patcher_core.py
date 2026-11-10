@@ -62,6 +62,7 @@ class PatchSettings:
     fixes: tuple = ()       # names of fixes for bugs in the game's file (see fixes/)
     source_fps: float | None = None     # the frame rate it plays at in game, where that isn't its header's
                                         # ("source fps"; e.g. HUD modules play at the root HUD movie's rate)
+    retime: bool = True     # False ("retime: false"): only its fixes are applied, its frame rate stays
 
 def patch_files(inputs, profile, *, on_file=None, pool=None):
     """Patch the given files (SourceFiles) in memory, each with its settings in profile ({profile key:
@@ -295,7 +296,7 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True, game_rat
     applying its fixes before or after that (see fixes/). body_hook (see dev_mode.py) runs on the result.
     game_rate: as for process; a mod's file that only raised its header's frame rate above it is rescaled
     from it instead (see rescale_from_game_rate). Any other file with a header of ALREADY_RESCALED_FPS or
-    more is kept unchanged, also below the target.
+    more is kept unchanged, also below the target, as is any file whose settings say not to retime it.
 
     Returns:
     None if there is no valid SWF stream at pos, or
@@ -310,8 +311,8 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True, game_rat
         fixed, fix_records = apply_fixes(body, settings.fixes, BEFORE_RESCALE)
         if fixed is not None:
             body[:] = fixed
-        result, keep = None, False
-        if settings.source_fps is None and game_rate is not None:
+        result, keep = None, not settings.retime
+        if settings.retime and settings.source_fps is None and game_rate is not None:
             result = rescale_from_game_rate(body, settings, game_rate, shares_classes)
             keep = result is None and (header_fps(body) or 0) >= ALREADY_RESCALED_FPS
         if result is None:
@@ -330,6 +331,8 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True, game_rat
         report = {**result.report, "fixes": fix_records}
         if settings.source_fps is not None:
             report["source_fps"] = settings.source_fps     # old_fps is then this, not the header's
+        if not settings.retime:
+            report["retime"] = False
         return changed, report
 
     return swf_patch(data, pos, patch, body_hook)

@@ -132,15 +132,15 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
     if status == "failed":
         log.error(f"{rel}: {error}")
         return
+    why_kept = ("not retimed (retime: false)" if report.get("retime") is False
+                else f"already at or above the target {report['target_fps']:g} fps")
     if status == "kept":
-        log.info(f"KEEP {rel}: {report['old_fps']:g} fps, already at or above the target "
-                 f"{report['target_fps']:g} fps")
+        log.info(f"KEEP {rel}: {report['old_fps']:g} fps, {why_kept}")
         _print_fixes(report)
         return
 
     if report["new_fps"] is None:
-        log.info(f"{rel}: {report['old_fps']:g} fps, already at or above the target {report['target_fps']:g} fps; "
-                 "fixed only")
+        log.info(f"{rel}: {report['old_fps']:g} fps, {why_kept}; fixed only")
     else:
         log.info(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps", extra=DETAIL)
     _print_fixes(report)

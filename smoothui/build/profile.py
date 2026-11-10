@@ -35,7 +35,7 @@ from .shared import DEFAULT_PROFILE
 log = logging.getLogger(__name__)
 
 # ("shipped:" only to say what replaced it)
-SETTING = re.compile(r"(include|exclude|fix|reviewed|source fps|game copy|shipped|speed (\S+)):\s*(.*)")
+SETTING = re.compile(r"(include|exclude|fix|reviewed|source fps|game copy|retime|shipped|speed (\S+)):\s*(.*)")
 # Where a setting is: under a file, under "*", or directly under a group (for every file of the group)
 FILE, STAR, GROUP = "file", "*", "group"
 
@@ -52,6 +52,7 @@ class Entry:
     game_copy: str | None = None                    # "game copy:" (see Group.game_copy); only for a file
                                                     # outside groups
     group: str | None = None                        # a file's group (see Group)
+    retime: bool = True                             # False: "retime: false"; only for a file outside groups
 
     def descriptions(self) -> list[str]:
         """Each speed/include/exclude/fix, as written in the profile"""
@@ -99,6 +100,15 @@ def _add_setting(entry: Entry, text: str, where: str, is_override: bool):
         if entry.game_copy is not None:
             raise ValueError("game copy: is given twice")
         entry.game_copy = _game_copy(value)
+        return
+    if key == "retime":
+        if where != FILE or entry.group is not None or is_override:
+            raise ValueError("retime: only belongs under a file outside groups in a profile")
+        if value != "false":
+            raise ValueError(f"retime: {value!r} isn't false (files are retimed unless they say retime: false)")
+        if not entry.retime:
+            raise ValueError("retime: is given twice")
+        entry.retime = False
         return
     if key == "fix":
         if where != FILE:
@@ -206,6 +216,9 @@ def parse_profile(path: Path, *, is_override: bool = False) -> tuple[dict[str, E
     for name in groups:
         if not any(entry.group == name for entry in files.values()):
             fail(f"{path}: group {name} has no files")
+    for key, entry in files.items():
+        if not entry.retime and (entry.rules or entry.include or entry.exclude or entry.source_fps is not None):
+            fail(f"{path}: {key} has retime: false, so speed, include, exclude and source fps don't apply to it")
     return files, star or Entry(), groups
 
 
@@ -230,6 +243,8 @@ def load_profile(path, fps: int) -> tuple[dict[str, PatchSettings], list[str], d
     files, star, groups = parse_profile(path)
 
     def settings(entry, shared):    # a file's settings (entry), with its group's (shared) and those under "*"
+        if not entry.retime:
+            return PatchSettings(fps, fixes=_unique(entry.fixes), retime=False)
         return PatchSettings(fps, _unique(entry.rules + shared.rules + star.rules),
                              _unique(entry.include + shared.include + star.include),
                              _unique(entry.exclude + shared.exclude + star.exclude),
@@ -273,6 +288,6 @@ def apply_overrides(profile: dict[str, PatchSettings], path) -> tuple[dict[str, 
             _unique([*settings.include, *entry.include, *star.include]),
             _unique([*settings.exclude, *entry.exclude, *star.exclude]),
             _unique([*settings.fixes, *entry.fixes]),
-            settings.source_fps)
+            settings.source_fps, settings.retime)
     log.info(f"Applied overrides from {path} ({len(files)} files, {len(star.descriptions())} settings under *)")
     return merged, star.descriptions(), set(star.reviewed)
