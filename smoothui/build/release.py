@@ -113,8 +113,8 @@ def _recorded_fixes(key, report):
 
 def _recorded_tokens(report, kind):
     """A report's include or exclude patterns, with sprite ids expecting the class and frame count
-    recorded for them"""
-    recorded_sprites = {sprite["id"]: (sprite["class"], sprite["frames"]) for sprite in report["sprites"]}
+    recorded for them (a file that wasn't rescaled records no sprites)"""
+    recorded_sprites = {sprite["id"]: (sprite["class"], sprite["frames"]) for sprite in report.get("sprites", ())}
     parsed = (parse_sprite_pattern(setting["pattern"]) for setting in report[kind])
     return tuple(SpriteRef(token.id, recorded_sprites.get(token.id)) if isinstance(token, SpriteRef)
                  else token for token in parsed)

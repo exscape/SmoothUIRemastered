@@ -53,7 +53,8 @@ from .retiming import Retiming, fps_ratio
 
 def unchanged_report(old_fps: float, options: RescaleOptions, animated: bool) -> dict:
     file_ratio = fps_ratio(old_fps, options.target_fps)
-    return {"old_fps": old_fps, "new_fps": None, "target_fps": options.target_fps, "animated": animated,
+    # "sprites" too, as in build_report: manifests record reports, and mergers read it
+    return {"old_fps": old_fps, "new_fps": None, "target_fps": options.target_fps, "animated": animated, "sprites": [],
             "rules": _rule_records(file_ratio, options.rules, [[] for _ in options.rules]),
             "include": _pattern_records(options.include, [[] for _ in options.include]),
             "exclude": _pattern_records(options.exclude, [[] for _ in options.exclude]),
@@ -144,8 +145,9 @@ def report_to_text(report: dict) -> str:
     """Human-readable version of a report dict (as returned by build_report, or loaded from JSON)"""
     fixes = [format_fix(fix) for fix in report.get("fixes", [])]
     if report["new_fps"] is None:
-        summary = (f"source {report['old_fps']:.3f} fps is already at or above the target "
-                   f"{report['target_fps']:.3f} fps; not rescaled")
+        summary = (f"source {report['old_fps']:.3f} fps; not rescaled (retime: false)" if report.get("retime") is False
+                   else f"source {report['old_fps']:.3f} fps is already at or above the target "
+                        f"{report['target_fps']:.3f} fps; not rescaled")
         return "\n".join([summary, *fixes])
 
     lines = []
