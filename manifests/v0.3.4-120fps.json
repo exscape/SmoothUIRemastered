@@ -1,5 +1,5 @@
 {
- "created_at": "2026-11-10T19:10:22+00:00",
+ "created_at": "2026-11-10T21:57:51+00:00",
  "created_mod_version": "v0.3.4-120fps",
  "files": {
   "gameplay/gui_new/swf/alchemy/panel_alchemy.redswf": {
@@ -2950,10 +2950,10 @@
   "gameplay/gui_new/swf/glossary/panel_glossary_bestiary.redswf": {
    "fps": 120.0,
    "game_copy": "shipped",
-   "output_crc32": 1744516071,
-   "output_sha256": "c2773a77a2ebec989f24eb35676fee1ba9daf262a944e64d8fc6f72c17bf21d4",
-   "output_size": 1964525,
-   "output_swf_sha256": "df524bf592805466bd11c55a26cda353954af5f0bf182bd36b5f00c77ede0a9c",
+   "output_crc32": 1142966181,
+   "output_sha256": "da0aed4aec575c954d4e458d2c9ca27d38910ebad9da84a92fa9c2dcef126c1b",
+   "output_size": 1965478,
+   "output_swf_sha256": "d999f943c531d53a6ad99a5f98567d7241b254492a68e769f5a890cad73dce23",
    "report": {
     "exclude": [
      {
@@ -3280,10 +3280,10 @@
   "gameplay/gui_new/swf/glossary/panel_glossary_books.redswf": {
    "fps": 120.0,
    "game_copy": "shipped",
-   "output_crc32": 561501593,
-   "output_sha256": "802d16f815b0ebc6ffcc39e8825b6832308e7758116f00dde082df09a3bb6b0b",
-   "output_size": 1073338,
-   "output_swf_sha256": "0f0974f6378f3de6cc3cf9376148f9a3f265aa4907ced45eaccb8a8239ce3392",
+   "output_crc32": 1658870948,
+   "output_sha256": "d334beaca87ad8147716b36421aa27686a490dfa55816dd718b758ce96859df4",
+   "output_size": 1074262,
+   "output_swf_sha256": "4bff0fe5af8cbb331d2c0ac96e052eb97130d58f0704e0796df37645a4fd613d",
    "report": {
     "exclude": [
      {
@@ -3492,10 +3492,10 @@
   "gameplay/gui_new/swf/glossary/panel_glossary_encyclopedia.redswf": {
    "fps": 120.0,
    "game_copy": "shipped",
-   "output_crc32": 200995419,
-   "output_sha256": "02174a6e8a078fd3f501c6a67953e86d2e3427aa2efe60ae1b93b6e335fde192",
-   "output_size": 972364,
-   "output_swf_sha256": "7f154ec3cea684388192a199aa19d4191d2dac537ff856fc51309c89b468fc95",
+   "output_crc32": 971206630,
+   "output_sha256": "8a12ee06324dbaa74d98532e08b68b65c1d3d68be4690ecb3660a1330230b921",
+   "output_size": 973277,
+   "output_swf_sha256": "8c16efe25a6bcef2c23747a341aea582bade17f7eda2107952ec4f6b1bb77b4c",
    "report": {
     "exclude": [
      {
@@ -4606,10 +4606,10 @@
   "gameplay/gui_new/swf/glossary/panel_glossary_tutorials.redswf": {
    "fps": 120.0,
    "game_copy": "shipped",
-   "output_crc32": 2741532129,
-   "output_sha256": "7565ad30e19560e358fb9ab886b4faf54702946b44c5c127ce84443b47a5d2d4",
-   "output_size": 1782511,
-   "output_swf_sha256": "b62d971b77696750ee57289793ce47f4100b4fbb11039953e976f76a87f12408",
+   "output_crc32": 177965868,
+   "output_sha256": "4168d7a240a252245de438d8e28d7a989401b2ade50a16340340da5ee17e12eb",
+   "output_size": 1783448,
+   "output_swf_sha256": "c9050688f9708f852c07bbcf738ed61fc0c8a0d9f86d7360ab481db290b16c24",
    "report": {
     "exclude": [
      {
@@ -11100,10 +11100,10 @@
   "gameplay/gui_new/swf/journal/panel_journal_quests.redswf": {
    "fps": 120.0,
    "game_copy": "shipped",
-   "output_crc32": 1913111217,
-   "output_sha256": "7ee645eb7a4687d760e724c08ac018338d4f429b6165fe8f1f00f839dd61ae67",
-   "output_size": 1314413,
-   "output_swf_sha256": "f7cdaa62d3ea27f698395e39cb69353aed240cfad0d7a0be26af0059fd3d7e6e",
+   "output_crc32": 1222693755,
+   "output_sha256": "60f55878c52c3b0b5bb61e364ae85b755409b4f74b954d5541d3e42a95eb12ef",
+   "output_size": 1315305,
+   "output_swf_sha256": "519604c504f224056d7317f763b5263c7f174427b4418497f176b40cfa1c8e7b",
    "report": {
     "exclude": [
      {
@@ -11782,6 +11782,43 @@
    "source_sha256": "47bad5192740b10d27368499063cad698045c8ac4fa863db7907b7bcbda21533",
    "source_size": 13005740,
    "source_swf_sha256": "e73c91237d09647312549b976ea094ce77baa1c42846771a871ab7aa2e1859e2"
+  },
+  "gameplay/gui_new/swf/overlay/panel_overlay.redswf": {
+   "fps": 24.0,
+   "game_copy": "shipped",
+   "output_crc32": 2167925010,
+   "output_sha256": "7724a9f77d1983fbfd81acd7719c51aed53c6b4a0706b5f872d2296d81e26d40",
+   "output_size": 2208155,
+   "output_swf_sha256": "6d6e6841e01b61e2a332c196990ed1ad56b84a06025d9553df7845a60ce3dee8",
+   "report": {
+    "animated": true,
+    "exclude": [],
+    "fixes": [
+     {
+      "detail": "added smoothui.text.StickScroll; handleInput scrolls with the left stick with it, at a speed in pixels per second rather than a line per key repeat",
+      "matched": [
+       10,
+       409,
+       430
+      ],
+      "name": "book-stick-scroll-fix",
+      "result": "applied"
+     }
+    ],
+    "include": [],
+    "new_fps": null,
+    "old_fps": 24.0,
+    "retime": false,
+    "rules": [],
+    "sprites": [],
+    "target_fps": 120,
+    "unmet_rules": [],
+    "warnings": []
+   },
+   "source_crc32": 1210691237,
+   "source_sha256": "f94dc6e402faf1887ba3b1bb4ef2af8bdbff615c4a394c8cd462f8a3ec47dc65",
+   "source_size": 2205906,
+   "source_swf_sha256": "a6dac5f99d016854f827752387baa47c5912752bc072863c19bf8adb4231e4a7"
   },
   "gameplay/gui_new/swf/repair/panel_blacksmith.redswf": {
    "fps": 120.0,
@@ -14055,9 +14092,10 @@
  },
  "manifest_format": 2,
  "output_zip": "SmoothUIRemastered_v0.3.4-120fps.zip",
- "patcher_commit": "fb17ce0b4f4f2dc53eb36731e1a8811c56fa1e03",
- "patcher_uncommitted_changes": true,
+ "patcher_commit": "27de685966384b27fa50807f39d229baf4b3aa38",
+ "patcher_uncommitted_changes": false,
  "requires": [
+  "fix:book-stick-scroll-fix",
   "fix:gwent-3d-bug-fix",
   "fix:gwent-card-fx-filter-fix",
   "fix:gwent-coin-shadow-fix",
@@ -14069,6 +14107,7 @@
   "fix:text-stick-scroll-fix",
   "setting:exclude",
   "setting:include",
+  "setting:retime",
   "setting:source-fps",
   "setting:speed",
   "setting:group"
