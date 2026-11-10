@@ -5,12 +5,14 @@ Every main build these from scratch, as they take next to no time; they aren't t
 Uses w3stringsr.exe: https://www.nexusmods.com/witcher3/mods/13094
 
 First checks that every name in the settings menu's XML has a string (as the menu looks it up: see
-assets/strings/en.csv), so that the menu never shows a raw key."""
+assets/strings/en.csv), so that the menu never shows a raw key, and that the mod's script can give every
+setting its default."""
 
 import logging
 import re
 import subprocess
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from ..common import fail, to_windows
@@ -61,10 +63,48 @@ def check_menu_strings(source: str, xml_path: Path):
     needed = {key.lower() for key in needed} - {"panel_mods"}    # (the game's own)
     if missing := sorted(needed - keys):
         fail(f"{SOURCE.name} has no string for these keys of {xml_path.name}:\n  " + "\n  ".join(missing))
-    # Optional: descriptions (see smoothui_gwent.ws)
+    # Optional: descriptions (see smoothui_settings.ws)
     descriptions = {key + "_description" for key in needed if key.startswith("option_")}
     if unused := sorted(keys - needed - descriptions):
         log.info(f"Note: strings that {xml_path.name} doesn't use: {', '.join(unused)}")
+
+
+def check_menu_defaults(xml_path: Path, scripts: str):
+    """Fail unless the mod's scripts (scripts: their text) can give every setting of the menu its default
+    (see SmoothUI_InitOptions): each group has an id starting with SmoothUIRemastered and a hidden DefaultsSet,
+    the visible settings' ids are unique among the groups, and every slider has a default in
+    SmoothUI_SliderDefault (within its range, if it's a number)"""
+    body = re.search(r"\bfunction SmoothUI_SliderDefault\b.*?\n}", scripts, re.DOTALL)
+    defaults = dict(re.findall(r"\bcase '(\w+)':\s*return (.+?);", body[0])) if body else {}
+    problems, ids, sliders = [], set(), set()
+    for group in ET.parse(xml_path).getroot().iter("Group"):
+        group_id = group.get("id")
+        if not group_id.startswith("SmoothUIRemastered"):
+            problems.append(f"group {group_id}: its id doesn't start with SmoothUIRemastered")
+        if not any(var.get("id") == "DefaultsSet" and var.get("visibilityCondition") == "hideAlways"
+                   for var in group.iter("Var")):
+            problems.append(f"group {group_id}: has no hidden DefaultsSet")
+        for var in group.iter("Var"):
+            var_id, display_type = var.get("id"), var.get("displayType", "")
+            if var.get("visibilityCondition") != "hideAlways":
+                if var_id in ids:
+                    problems.append(f"{var_id}: the id is in more than one group")
+                ids.add(var_id)
+            if not display_type.startswith("SLIDER"):
+                continue
+            sliders.add(var_id)
+            slider = re.fullmatch(r"SLIDER;(-?[\d.]+);(-?[\d.]+);\d+", display_type)
+            default = re.fullmatch(r'"(-?[\d.]+)"', defaults.get(var_id, ""))
+            if not slider:
+                problems.append(f"{var_id}: displayType isn't SLIDER;min;max;steps")
+            elif var_id not in defaults:
+                problems.append(f"{var_id}: has no default in SmoothUI_SliderDefault")
+            elif default and not float(slider[1]) <= float(default[1]) <= float(slider[2]):
+                problems.append(f"{var_id}: the default ({default[1]}) is outside {slider[1]}-{slider[2]}")
+    problems += [f"{var_id}: has a default in SmoothUI_SliderDefault, but isn't a slider"
+                 for var_id in sorted(defaults.keys() - sliders)]
+    if problems:
+        fail(f"{xml_path.name}: settings without a working default:\n  " + "\n  ".join(problems))
 
 
 def build_strings(tool: Path, work_dir: Path, mod_name: str, dry_run=False):
@@ -76,6 +116,8 @@ def build_strings(tool: Path, work_dir: Path, mod_name: str, dry_run=False):
         fail(f"{SOURCE} should have one ;meta[language=..] line")
     check_menu_strings(source, menu_xml(mod_name))
     out_dir = content_dir(mod_name)
+    check_menu_defaults(menu_xml(mod_name), "\n".join(script.read_text(encoding="utf-8")
+                                                       for script in sorted(out_dir.rglob("*.ws"))))
     if dry_run:
         log.info(f"Dry run: would write {len(LANGUAGES)} .w3strings files to {out_dir.relative_to(REPO_ROOT)}")
         return

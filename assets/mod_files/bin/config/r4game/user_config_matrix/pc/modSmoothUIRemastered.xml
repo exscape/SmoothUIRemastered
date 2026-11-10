@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Smooth UI Remastered's options. Read by content/scripts/local/smoothui_gwent.ws.
+<!-- Smooth UI Remastered's options. Set up by content/scripts/local/smoothui_settings.ws.
      Each option's value is in its displayName (the script reads it from there): the setting's prefix, then
      the value with _ for the decimal point (smoothui_gwent_banner_hold_0_75: 0.75 s), or "default" for the
      game's own. Allowed: card speed 50-1000 (%) or instant, times 0 or more (s; banners can be held longer than the
      game's 2.3 s too; with 0, they don't show at all), effect speeds 1-10 (times the game's) or instant.
      The default option (..._default) doesn't have to be the first: the script gives every setting its default option
-     the first time (see SmoothUI_InitOptions). A setting added later starts out at its first option. -->
+     the first time (see SmoothUI_InitOptions). A setting added later to an existing group starts out at its first
+     option, or at 0 for a slider (unless SmoothUI_UpdateOptions sets it).
+     A slider (displayType="SLIDER;min;max;steps") gets its default from SmoothUI_SliderDefault in the script.
+     Another group (a page of its own: displayName="Mods.smoothui_remastered.<page>") needs an id starting with
+     SmoothUIRemastered, and a hidden DefaultsSet as below. Setting ids are unique among the groups. The build
+     checks all of this. -->
 <UserConfig>
 	<Group id="SmoothUIRemastered" displayName="Mods.smoothui_remastered">
 		<!-- Shown as a row of buttons above the settings: applying one sets the settings it lists, by option id
@@ -164,7 +169,7 @@
 			<!-- Hidden: true once the script gave every setting its default option (see SmoothUI_InitOptions) -->
 			<Var id="DefaultsSet" displayName="smoothui_defaults_set" displayType="TOGGLE" visibilityCondition="hideAlways"/>
 			<!-- Hidden: the version of these settings the user's choices are for (see SmoothUI_UpdateOptions) -->
-			<Var id="SettingsVersion" displayName="smoothui_settings_version" displayType="SLIDER:0:1000:1000" visibilityCondition="hideAlways"/>
+			<Var id="SettingsVersion" displayName="smoothui_settings_version" displayType="SLIDER;0;1000;1000" visibilityCondition="hideAlways"/>
 		</VisibleVars>
 	</Group>
 </UserConfig>
