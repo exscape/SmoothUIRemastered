@@ -10,6 +10,7 @@ Light: the merger's launch check imports it, so it must not import the patcher.
 # The fixes in patcher/fixes/ (each one's NAME); patcher/fixes/__init__.py checks that this lists exactly
 # them. To remove a fix, move its requirement to RETIRED.
 FIX_NAMES = frozenset({
+    "book-stick-scroll-fix",
     "gwent-3d-bug-fix",
     "gwent-card-fx-filter-fix",
     "gwent-coin-shadow-fix",
@@ -53,7 +54,7 @@ OPTIONAL_FIXES = {
 }
 # The profile's settings (see config/profile_default.txt), less "fix:" (each fix is its own requirement).
 # "group": a release with a group of files it doesn't ship, which the merger builds (see build/main.py)
-SETTING_NAMES = frozenset({"speed", "include", "exclude", "source-fps", "group"})
+SETTING_NAMES = frozenset({"speed", "include", "exclude", "source-fps", "group", "retime"})
 # Requirements this merger no longer has, e.g. "fix:<name>" of a removed fix
 RETIRED = frozenset()
 

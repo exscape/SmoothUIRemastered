@@ -71,9 +71,7 @@ def apply(swf: SwfEdit) -> FixResult:
     if inner & branch_targets(instructions):
         raise CantApply(f"{HANDLER} has a branch into mcScrollbar.position -= <tilt>")
 
-    ours = _abc_bytes()
-    if clash := swf.class_names() & {parse_abc(ours).full_name_of(i.name) for i in parse_abc(ours).instances}:
-        raise CantApply(f"the file already defines {', '.join(sorted(clash))}")
+    ours = abc_bytes(swf)
     sprites = swf.sprites_of_class_or_subclasses(abc, instance.name)
     if not sprites:
         raise CantApply(f"no sprite is linked to {TEXT_CLASS} or a class that extends it")
@@ -86,17 +84,26 @@ def apply(swf: SwfEdit) -> FixResult:
             + bytes([OP_CALLPROPVOID]) + encode_u30(scroll) + encode_u30(2))
     edits = {first: call, **{i: b"" for i in range(first + 1, last + 1)}}
     unit.replace_methods({method: assemble(body.code, instructions, edits, body.exceptions)}, additions)
-    swf.insert_abc(Tag(TagCode.DO_ABC, struct.pack("<I", DO_ABC_LAZY) + PACKAGE.encode() + b"\0" + ours,
-                       long_header=True))
+    insert_class(swf, ours)
     return FixResult(sprites, f"added {PACKAGE}.{CLASS}; {HANDLER} scrolls with it, at a speed in pixels per "
                               "second rather than a tilt in lines per frame")
 
 
-def _abc_bytes() -> bytes:
+def abc_bytes(swf: SwfEdit) -> bytes:
+    """Our compiled StickScroll class; CantApply if the file already defines a class of it"""
     try:
-        return ABC_PATH.read_bytes()
+        ours = ABC_PATH.read_bytes()
     except FileNotFoundError:
         raise CantApply(f"{ABC_PATH.name} is missing; build it with dev-tools/build-as3.py") from None
+    if clash := swf.class_names() & {parse_abc(ours).full_name_of(i.name) for i in parse_abc(ours).instances}:
+        raise CantApply(f"the file already defines {', '.join(sorted(clash))}")
+    return ours
+
+
+def insert_class(swf: SwfEdit, ours: bytes):
+    """Add abc_bytes' class to the file, as a DoABC tag of its own"""
+    swf.insert_abc(Tag(TagCode.DO_ABC, struct.pack("<I", DO_ABC_LAZY) + PACKAGE.encode() + b"\0" + ours,
+                       long_header=True))
 
 
 def _find_scroll(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int, int] | None:
