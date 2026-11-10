@@ -74,6 +74,13 @@ modExpandedBuffMenu:
 modCMFMinimapPanel:
     enter-frame-handler HudModuleWatermark.cmfOnFrame @ea3f9109      # hud_pickeditemsinfo: follows the minimap pins
 
+# --- Quick Inventory - Radial Menu Overhaul
+# Its ENTER_FRAME handler sets the alpha of the radial menu's Meditation button each frame, from the current
+# state (no counters). Its other per-frame code waits for frames to be drawn or uses getTimer(), so the result
+# is the same at any frame rate. Checked 2026-11-10, against version 2.4.
+modQuickInventory:
+    enter-frame-handler HudModuleRadialMenu.qiGreyMeditation @edb8b25e
+
 # --- Conjunction Map Framework: known not to work
 # It sets the map's frame rate itself (stage.frameRate: 60 by default, 24 to 60 by theme), and puts the old
 # one back when its motion is turned off. The merged map's timelines are retimed for 120 or 60 fps, so they
