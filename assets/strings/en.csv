@@ -4,13 +4,14 @@
 ; Encoded into assets/mod_files/mods/modSmoothUIRemastered/content/<language>.w3strings (English text for every
 ; language) by the build scripts. Ids: 2113526000-2113526999 (id space 13526, the mod's Nexus Mods id).
 2113526000||panel_smoothui_remastered|Smooth UI Remastered
-2113526032||preset_mods_smoothui_remastered|Gwent speed preset
+2113526056||panel_smoothui_gwent|Gwent
+2113526032||preset_mods_smoothui_remastered_smoothui_gwent|Gwent speed preset
 2113526033||preset_value_smoothui_gwent_preset_default|Default
 2113526034||preset_value_smoothui_gwent_preset_fast|Fast
 2113526035||preset_value_smoothui_gwent_preset_faster|Faster
 2113526036||preset_value_smoothui_gwent_preset_insane|Insane
 2113526037||preset_value_smoothui_gwent_preset_hyperspeed|Hyperspeed
-2113526001||option_smoothui_gwent_card_speed|Gwent: card movement speed
+2113526001||option_smoothui_gwent_card_speed|Card movement speed
 2113526038||option_smoothui_gwent_card_speed_description|How fast cards move across the board. Instant doesn't show any movement.
 2113526029||preset_value_smoothui_gwent_card_speed_80|80%
 2113526002||preset_value_smoothui_gwent_card_speed_default|Default
@@ -19,7 +20,7 @@
 2113526005||preset_value_smoothui_gwent_card_speed_200|200%
 2113526006||preset_value_smoothui_gwent_card_speed_300|300%
 2113526044||preset_value_smoothui_gwent_card_speed_instant|Instant
-2113526016||option_smoothui_gwent_opponent_card_time|Gwent: opponent's card preview time
+2113526016||option_smoothui_gwent_opponent_card_time|Opponent's card preview time
 2113526039||option_smoothui_gwent_opponent_card_time_description|How long the card your opponent plays is shown before it goes onto the board. Off: it goes straight onto the board.
 2113526030||preset_value_smoothui_gwent_opponent_card_time_3|3 s
 2113526031||preset_value_smoothui_gwent_opponent_card_time_2|2 s
@@ -27,19 +28,19 @@
 2113526019||preset_value_smoothui_gwent_opponent_card_time_0_8|0.8 s
 2113526021||preset_value_smoothui_gwent_opponent_card_time_0_4|0.4 s
 2113526023||preset_value_smoothui_gwent_opponent_card_time_0|Off
-2113526047||option_smoothui_gwent_card_effects|Gwent: card effect speed
+2113526047||option_smoothui_gwent_card_effects|Card effect speed
 2113526048||option_smoothui_gwent_card_effects_description|Decides the speed of card effect animations (e.g. Tight Bond, Spy, Hero cards' burning border, and so on).
-2113526049||option_smoothui_gwent_weather_intros|Gwent: weather intro effect speed
+2113526049||option_smoothui_gwent_weather_intros|Weather intro effect speed
 2113526050||option_smoothui_gwent_weather_intros_description|How fast the animation plays as a weather card is played, which the game waits for. The weather's ongoing effect on the rows keeps its own speed.
 2113526051||preset_value_smoothui_gwent_effect_default|Default
 2113526053||preset_value_smoothui_gwent_effect_2|200%
 2113526054||preset_value_smoothui_gwent_effect_3|300%
 2113526055||preset_value_smoothui_gwent_effect_4|400%
 2113526052||preset_value_smoothui_gwent_effect_instant|Instant
-2113526007||option_smoothui_gwent_turn_banner_hold|Gwent: turn banner time
-2113526024||option_smoothui_gwent_first_banner_hold|Gwent: coin toss banner time
-2113526028||option_smoothui_gwent_result_banner_hold|Gwent: round result and opponent pass banner time
-2113526008||option_smoothui_gwent_other_banner_hold|Gwent: round start and ability banner time
+2113526007||option_smoothui_gwent_turn_banner_hold|Turn banner time
+2113526024||option_smoothui_gwent_first_banner_hold|Coin toss banner time
+2113526028||option_smoothui_gwent_result_banner_hold|Round result and opponent pass banner time
+2113526008||option_smoothui_gwent_other_banner_hold|Round start and ability banner time
 2113526040||option_smoothui_gwent_turn_banner_hold_description|How long the banners saying whose turn it is, and that you passed, stay on screen (they also fade in and out). Off: they don't show at all.
 2113526041||option_smoothui_gwent_first_banner_hold_description|How long the banner saying who goes first stays on screen (it also fades in and out). Off: it doesn't show at all.
 2113526042||option_smoothui_gwent_result_banner_hold_description|How long the banners saying who won a round, and that your opponent passed, stay on screen (they also fade in and out). Off: they don't show at all, which can make the game seem stuck.
@@ -51,3 +52,6 @@
 2113526013||preset_value_smoothui_gwent_banner_hold_0_5|0.5 s
 2113526014||preset_value_smoothui_gwent_banner_hold_0_25|0.25 s
 2113526015||preset_value_smoothui_gwent_banner_hold_0|Off
+2113526057||panel_smoothui_other|Other
+2113526058||option_smoothui_stick_scroll_speed|Text scrolling speed with a controller stick
+2113526059||option_smoothui_stick_scroll_speed_description|How fast a controller stick scrolls text at full tilt, in pixels per second (books, the Glossary, and quests in the Journal). Default: 800.

@@ -144,6 +144,9 @@ function SmoothUI_SliderDefault(varName : name) : string
 		// The defaults are for this version already
 		case 'SettingsVersion':
 			return IntToString(SmoothUI_SettingsVersion());
+		// px per second (as StickScroll.DEFAULT_FAST_SPEED)
+		case 'StickScrollFastSpeed':
+			return "800";
 	}
 	LogChannel('modSmoothUIRemastered', "no default for the slider " + NameToString(varName));
 	return "";

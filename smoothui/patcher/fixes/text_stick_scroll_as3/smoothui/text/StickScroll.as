@@ -1,6 +1,7 @@
 package smoothui.text
 {
 	import flash.utils.Dictionary;
+	import flash.utils.getDefinitionByName;
 	import flash.utils.getTimer;
 
 	/**
@@ -17,13 +18,24 @@ package smoothui.text
 	 * book_stick_scroll_fix.py).
 	 *
 	 * The speed is in pixels, not lines, so (modded) bigger fonts don't scroll faster.
+	 *
+	 * The speed at full tilt is a setting in the game's settings menu. On its first stick event in a menu, this
+	 * registers for it, and asks the mod's WitcherScript to send it (smoothui_text.ws). Until it comes (or
+	 * without that script), the speed is DEFAULT_FAST_SPEED.
 	 */
 	public class StickScroll
 	{
-		// Pixels per second: SLOW_SPEED just past the dead zone, growing exponentially to FAST_SPEED at full
+		// Pixels per second: SLOW_SPEED just past the dead zone, growing exponentially to fastSpeed at full
 		// tilt, so that each bit of extra tilt multiplies the speed by the same factor (about 1.4x per tenth)
 		private static const SLOW_SPEED:Number = 40;
-		private static const FAST_SPEED:Number = 1400;
+		private static const DEFAULT_FAST_SPEED:Number = 800;
+		// A setting outside these is a bug in the script: DEFAULT_FAST_SPEED then
+		private static const MIN_FAST_SPEED:Number = 100;
+		private static const MAX_FAST_SPEED:Number = 10000;
+
+		// The binding the script sends the settings to, and the event that asks it to
+		public static const CONFIG_KEY:String = "smoothui.text.config";
+		private static const CONFIG_REQUEST:String = "OnSmoothUIStickScrollConfig";
 
 		// Tilts below this don't scroll
 		private static const DEAD_ZONE:Number = 0.08;
@@ -38,6 +50,8 @@ package smoothui.text
 
 		// Per scrolling object: [the time of its last stick event, the fraction of a line scrolled but not shown]
 		private static var states:Dictionary = new Dictionary(true);
+
+		private static var fastSpeed:Number = DEFAULT_FAST_SPEED;
 
 		public static function scroll(module:Object, tilt:Number):void
 		{
@@ -81,6 +95,10 @@ package smoothui.text
 		{
 			var now:int = getTimer();
 			var state:Array = states[owner];
+			if (state == null)
+			{
+				requestConfig(owner);
+			}
 			if (state == null || now - state[0] > MAX_EVENT_GAP)
 			{
 				states[owner] = [now, 0];
@@ -95,13 +113,38 @@ package smoothui.text
 				return 0;
 			}
 			var lineHeight:Number = textField.textHeight / textField.numLines;
-			var pixels:Number = SLOW_SPEED * Math.pow(FAST_SPEED / SLOW_SPEED, Math.min(amount, 1)) * elapsed / 1000;
+			var pixels:Number = SLOW_SPEED * Math.pow(fastSpeed / SLOW_SPEED, Math.min(amount, 1)) * elapsed / 1000;
 
 			// Positive tilt value = stick up, so scroll upwards (reduce position)
 			var total:Number = state[1] + (tilt > 0 ? -pixels : pixels) / lineHeight;
 			var whole:int = int(total);
 			state[1] = total - whole;
 			return whole;
+		}
+
+		// Registers onConfig for the settings, and asks the script to send them, through owner's menu (a
+		// display object's GameEvents go to the menu it's in)
+		private static function requestConfig(owner:Object):void
+		{
+			// An error here would stop the scrolling
+			try
+			{
+				var gameEvent:Class = getDefinitionByName("red.core.events.GameEvent") as Class;
+				owner.dispatchEvent(new gameEvent(gameEvent.REGISTER, CONFIG_KEY, [onConfig]));
+				owner.dispatchEvent(new gameEvent(gameEvent.CALL, CONFIG_REQUEST, []));
+			}
+			catch (error:Error)
+			{
+				trace("GFX [SmoothUI] StickScroll.requestConfig failed: " + error);
+			}
+		}
+
+		/** The settings from the script: fastSpeed (px per second at full tilt) */
+		public static function onConfig(config:Object):void
+		{
+			var speed:Number = config == null ? NaN : Number(config.fastSpeed);
+			fastSpeed = speed >= MIN_FAST_SPEED && speed <= MAX_FAST_SPEED ? speed : DEFAULT_FAST_SPEED;
+			trace("GFX [SmoothUI] Stick scroll options: fastSpeed " + fastSpeed);
 		}
 	}
 }

@@ -12,11 +12,12 @@
      SmoothUIRemastered, and a hidden DefaultsSet as below. Setting ids are unique among the groups. The build
      checks all of this. -->
 <UserConfig>
-	<Group id="SmoothUIRemastered" displayName="Mods.smoothui_remastered">
+	<!-- The Gwent page (its id is from when it was the only one: users' choices are saved by group and setting id) -->
+	<Group id="SmoothUIRemastered" displayName="Mods.smoothui_remastered.smoothui_gwent">
 		<!-- Shown as a row of buttons above the settings: applying one sets the settings it lists, by option id
 		     (as the game's graphics presets do). No more than 5: the game script cuts a group with 6 presets
 		     down to 4 on PCs without ray tracing (IngameMenu_FillSubMenuOptionsList, for its own graphics
-		     presets). Their title is preset_mods_smoothui_remastered. -->
+		     presets). Their title is preset_mods_smoothui_remastered_smoothui_gwent. -->
 		<PresetsArray>
 			<Preset id="0" displayName="smoothui_gwent_preset_default">
 				<Entry overrideGroup="SmoothUIRemastered" varId="GwentCardSpeed"        value="1"/>	<!-- Default -->
@@ -170,6 +171,15 @@
 			<Var id="DefaultsSet" displayName="smoothui_defaults_set" displayType="TOGGLE" visibilityCondition="hideAlways"/>
 			<!-- Hidden: the version of these settings the user's choices are for (see SmoothUI_UpdateOptions) -->
 			<Var id="SettingsVersion" displayName="smoothui_settings_version" displayType="SLIDER;0;1000;1000" visibilityCondition="hideAlways"/>
+		</VisibleVars>
+	</Group>
+	<Group id="SmoothUIRemasteredOther" displayName="Mods.smoothui_remastered.smoothui_other">
+		<VisibleVars>
+			<!-- Pixels per second that the stick scrolls text at full tilt (books, Glossary, Journal > Quests), read by
+			     content/scripts/local/smoothui_text.ws; default 800 (SmoothUI_SliderDefault) -->
+			<Var id="StickScrollFastSpeed" displayName="smoothui_stick_scroll_speed" displayType="SLIDER;200;3000;14"/>
+			<!-- Hidden: true once the script gave every setting its default (see SmoothUI_InitOptions) -->
+			<Var id="DefaultsSet" displayName="smoothui_defaults_set" displayType="TOGGLE" visibilityCondition="hideAlways"/>
 		</VisibleVars>
 	</Group>
 </UserConfig>
