@@ -1,8 +1,8 @@
 # v0.9.7
 
-* Added: new optional change, "remove menu slides". Removes slide-in/slide-out effects for the patched menus (including the Gwent deck builder).
-* Added: smoothen a few more HUD bars I missed previously (e.g. time left to make a dialog choice)
-* Added: support Smooth UI v0.3.4 (text scroll speed fixes: applied to other mods' screens when merged)
+* Added: support for Smooth UI v0.3.4 (text scroll speed fixes: applied to other mods' screens when merged).
+* Added: make additional HUD bars smooth (e.g. time left to make a dialog choice); I missed them for the previous version.
+* Added: new optional change, "Remove the slide when a menu opens or closes". Removes slide-in/slide-out effects for the patched menus (including the Gwent deck builder). This can make menu loads smoother, since some menus stutter on load (and the slide makes that very obvious).
 * Fixed: the wolf medallion was pulsing too fast (e.g. near a Place of Power)
 
 # v0.9.6

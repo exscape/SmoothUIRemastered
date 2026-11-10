@@ -1,8 +1,9 @@
 
 # v0.3.4
 
-* Fix text scroll speed (mostly in the Glossary) at high frame rates
-* Also adjust text scroll speed for books in when opened from gameplay, and in the inventory: this is a different book reader. This one scrolled very slowly (in the base game).
+* Controller: fix text scroll speed (Glossary pages, Quests/journal) at high frame rates
+* Controller: also adjust text scroll speed for books when opened from gameplay, and in the inventory: this is a different book reader. This one scrolled very slowly (in the base game).
+* Controller: add setting for text scroll speed (and move Gwent settings to their own page).
 
 # v0.3.3
 
