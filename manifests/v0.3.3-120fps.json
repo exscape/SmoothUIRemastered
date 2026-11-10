@@ -1,5 +1,5 @@
 {
- "created_at": "2026-11-07T09:25:22+00:00",
+ "created_at": "2026-11-10T18:09:08+00:00",
  "created_mod_version": "v0.3.3-120fps",
  "files": {
   "gameplay/gui_new/swf/alchemy/panel_alchemy.redswf": {
@@ -9909,10 +9909,10 @@
    "fps": 120.0,
    "game_copy": "merger-only",
    "group": "hud",
-   "output_crc32": 1995304466,
-   "output_sha256": "b0a07b783cc2eef1e532a51b430b3e31dd1ceb3d05e8f91188fc0f056f596404",
-   "output_size": 304904,
-   "output_swf_sha256": "4ccdc2f9ec348ebd90aa814d037ed745cacb3f664509f9ba5e546001e136bc1c",
+   "output_crc32": 3561572580,
+   "output_sha256": "3439f1e5d19e3a04a4ece1733f169e04d859e9eb94cb5404ce6a4078eef1702e",
+   "output_size": 305503,
+   "output_swf_sha256": "4c2dc14a9fdbc1a814c7ee2cac0a8c1c5bdc8e94fa1c5ef0123716b371a7a5da",
    "report": {
     "exclude": [
      {
@@ -9948,6 +9948,12 @@
        47
       ],
       "pattern": "^BackgroundHealthIndicator$"
+     },
+     {
+      "matched": [
+       4
+      ],
+      "pattern": "MC_IMG_WolfHead/mcWolfGlow"
      }
     ],
     "increments": [],
@@ -9993,10 +9999,15 @@
       "class": null,
       "frames": 22,
       "id": 4,
-      "reasons": [
-       "currentFrame read in WolfMedallion.Update"
-      ],
-      "stretched": false
+      "interpolation": {
+       "bytes": 1145,
+       "motion": 53.32,
+       "snapped": 0,
+       "steps": 21
+      },
+      "new_frames": 110,
+      "speed": "1",
+      "stretched": true
      },
      {
       "class": "MC_IMG_WolfHead",
@@ -10345,6 +10356,11 @@
     "unlinked_classes": [],
     "unmet_rules": [],
     "warnings": [
+     {
+      "hash": "7c34bbd9",
+      "key": "stretched-frame-property WolfMedallion.Update",
+      "message": "currentFrame used in red.game.witcher3.hud.modules.wolfHead.WolfMedallion.Update on stretched clips [4]"
+     },
      {
       "hash": "9c107ce5",
       "key": "stretched-frame-property StatusIndicator.updatePosition",
@@ -13994,7 +14010,7 @@
  },
  "manifest_format": 2,
  "output_zip": "SmoothUIRemastered_v0.3.3-120fps.zip",
- "patcher_commit": "aea5823f61c42bda314c7e60d84789c930444162",
+ "patcher_commit": "d110c2eadc62ba36a7710bb5ba48b552453b7751",
  "patcher_uncommitted_changes": true,
  "requires": [
   "fix:gwent-3d-bug-fix",
