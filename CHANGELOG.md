@@ -1,4 +1,8 @@
 
+# v0.3.4
+
+* Fix text scroll speed (mostly in the Glossary) at high frame rates
+
 # v0.3.3
 
 * Support making the HUD high FPS, but only when using [Smooth UI Tools](https://www.nexusmods.com/witcher3/mods/15202) because of how the HUD is built. A downloadable version would be *very* likely to cause compatibility issues, breaking the HUD when other mods change it.
