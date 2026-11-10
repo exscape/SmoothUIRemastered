@@ -29,3 +29,6 @@ unresolved-goto InputFeedbackButton.UpdateHoldAnimationWithPercentage @d9b7d999
 unresolved-frame-property Button.configUI @06be0bbc
 # frame = percent * totalFrames, so it adapts to a stretched clip
 stretched-frame-property StatusIndicator.updatePosition @9c107ce5
+
+# currentFrame == 1 in an ENTER_FRAME handler: frame 1 is still frame 1 once stretched, and the handler runs on every frame
+stretched-frame-property WolfMedallion.Update @7c34bbd9

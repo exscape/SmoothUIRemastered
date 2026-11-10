@@ -185,6 +185,9 @@ group: hud
         speed 1/3: ^(Health|Stamina|Toxicity|LockedToxicity|Focus)StatusIndicator$
         include: ^BackgroundHealthIndicator$
         speed 1/3: ^BackgroundHealthIndicator$
+        # The medallion's glow loop: WolfMedallion.Update only compares currentFrame with 1, which stretching keeps
+        # It plays too fast if not included.
+        include: MC_IMG_WolfHead/mcWolfGlow
 
 # Cut content: the game never shows these, so only mods' copies are patched (by the merger)
 gameplay/gui_new/swf/glossary/panel_glossary_storybook.redswf
