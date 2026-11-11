@@ -1,5 +1,5 @@
 {
- "created_at": "2026-11-10T21:57:51+00:00",
+ "created_at": "2026-11-11T10:21:45+00:00",
  "created_mod_version": "v0.3.4-120fps",
  "files": {
   "gameplay/gui_new/swf/alchemy/panel_alchemy.redswf": {
@@ -11786,10 +11786,10 @@
   "gameplay/gui_new/swf/overlay/panel_overlay.redswf": {
    "fps": 24.0,
    "game_copy": "shipped",
-   "output_crc32": 2167925010,
-   "output_sha256": "7724a9f77d1983fbfd81acd7719c51aed53c6b4a0706b5f872d2296d81e26d40",
-   "output_size": 2208155,
-   "output_swf_sha256": "6d6e6841e01b61e2a332c196990ed1ad56b84a06025d9553df7845a60ce3dee8",
+   "output_crc32": 1280357370,
+   "output_sha256": "5196d590b21415a363f505f8eb8d2b4d39842e8f2a46c8b9d02b294aab451902",
+   "output_size": 2208129,
+   "output_swf_sha256": "a93c9049d9c72da791d5e6f72303dcc384bf463260820313da55b282f2c29b6c",
    "report": {
     "animated": true,
     "exclude": [],
@@ -11802,6 +11802,14 @@
        430
       ],
       "name": "book-stick-scroll-fix",
+      "result": "applied"
+     },
+     {
+      "detail": "populateSingleBookData shows every book at once, without fading the title and text out and back in",
+      "matched": [
+       447
+      ],
+      "name": "book-fade-fix",
       "result": "applied"
      }
     ],
@@ -14092,9 +14100,10 @@
  },
  "manifest_format": 2,
  "output_zip": "SmoothUIRemastered_v0.3.4-120fps.zip",
- "patcher_commit": "27de685966384b27fa50807f39d229baf4b3aa38",
- "patcher_uncommitted_changes": false,
+ "patcher_commit": "477c4dff9a0b6ecd74ede01b5cc336d547dc837c",
+ "patcher_uncommitted_changes": true,
  "requires": [
+  "fix:book-fade-fix",
   "fix:book-stick-scroll-fix",
   "fix:gwent-3d-bug-fix",
   "fix:gwent-card-fx-filter-fix",

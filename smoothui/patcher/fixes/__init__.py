@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from ...requires import FIX_NAMES
 from . import (
+    book_fade_fix,
     book_stick_scroll_fix,
     gwent_3d_bug_fix,
     gwent_card_fx_filter_fix,
@@ -44,9 +45,10 @@ from .swf_edit import (
     SwfEdit,
 )
 
-FIXES = {fix.NAME: fix for fix in (book_stick_scroll_fix, gwent_3d_bug_fix, gwent_card_fx_filter_fix, gwent_coin_shadow_fix,
-                                   gwent_fog_intro_fix, gwent_frost_flicker_fix, gwent_rain_loop_fix, gwent_speed_options,
-                                   health_bar_glow_fix, hub_tab_hover_fix, menu_slide_fix, text_stick_scroll_fix)}
+FIXES = {fix.NAME: fix for fix in (book_fade_fix, book_stick_scroll_fix, gwent_3d_bug_fix, gwent_card_fx_filter_fix,
+                                   gwent_coin_shadow_fix, gwent_fog_intro_fix, gwent_frost_flicker_fix, gwent_rain_loop_fix,
+                                   gwent_speed_options, health_bar_glow_fix, hub_tab_hover_fix, menu_slide_fix,
+                                   text_stick_scroll_fix)}
 if set(FIXES) != FIX_NAMES:
     raise RuntimeError(f"requires.py's FIX_NAMES must list exactly the fixes: {', '.join(sorted(FIXES))}")
 

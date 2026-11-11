@@ -4,6 +4,7 @@
 * Controller: fix text scroll speed (Glossary pages, Quests/journal) at high frame rates
 * Controller: also adjust text scroll speed for books when opened from gameplay, and in the inventory: this is a different book reader. This one scrolled very slowly (in the base game).
 * Controller: add setting for text scroll speed (and move Gwent settings to their own page).
+* Books: remove base game double-fade when reading books as it looks broken. This was triggered when you open a book, while there are multiple unread books (including contracts, etc.).
 
 # v0.3.3
 

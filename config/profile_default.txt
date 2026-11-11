@@ -139,6 +139,9 @@ gameplay/gui_new/swf/overlay/panel_overlay.redswf # Default 24 fps
     retime: false
     # The right stick scrolls books a line at a time, slowly
     fix: book-stick-scroll-fix
+    # The text fades out and back in when switching books, and as a book opens from the inventory while there are
+    # other unread books
+    fix: book-fade-fix
 
 # The HUD. Every module is loaded into the root HUD movie (hud.redswf, 24 fps) and plays at its frame
 # rate, whatever its own header says (30 for most), so all of them are rescaled from 24 fps, and only work
