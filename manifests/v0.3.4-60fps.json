@@ -1,5 +1,5 @@
 {
- "created_at": "2026-11-11T10:21:51+00:00",
+ "created_at": "2026-11-11T18:06:33+00:00",
  "created_mod_version": "v0.3.4-60fps",
  "files": {
   "gameplay/gui_new/swf/alchemy/panel_alchemy.redswf": {
@@ -5413,10 +5413,10 @@
   "gameplay/gui_new/swf/gwint/gwint_game.redswf": {
    "fps": 60.0,
    "game_copy": "shipped",
-   "output_crc32": 2437975079,
-   "output_sha256": "3f2e78eb125432ff9b2f3d6957fac0d11db377e8ce9b0872831c6bcf92af14be",
-   "output_size": 12466672,
-   "output_swf_sha256": "65c72ad5c027cc2d4f465db5133e2e66e6ce1d6f7ea050bd50cca2a5eba94d20",
+   "output_crc32": 1656408870,
+   "output_sha256": "bb93b3505b653a46c4c68dc8271d94a43f1c33ee5241d563de10cfac9dbc4b96",
+   "output_size": 12480553,
+   "output_swf_sha256": "004a7205d4da20645e92a0432d525e8f08c6a170dc14250b1b3da401f20ee24d",
    "report": {
     "exclude": [
      {
@@ -5485,6 +5485,24 @@
        423
       ],
       "name": "gwent-card-fx-filter-fix",
+      "result": "applied"
+     },
+     {
+      "detail": "crossfaded Muster's arrival (67), Muster and Medic (128), the puff of Hero, Spy and Morph (158), Scorch (208), Scorch (243), Hero (349), Decoy (422), Deploy (462), Clear Weather (534), Rain (1059), a gem breaking (1186)",
+      "matched": [
+       67,
+       128,
+       158,
+       208,
+       243,
+       349,
+       422,
+       462,
+       534,
+       1059,
+       1186
+      ],
+      "name": "gwent-flipbook-fix",
       "result": "applied"
      },
      {
@@ -14145,7 +14163,7 @@
  },
  "manifest_format": 2,
  "output_zip": "SmoothUIRemastered_v0.3.4-60fps.zip",
- "patcher_commit": "477c4dff9a0b6ecd74ede01b5cc336d547dc837c",
+ "patcher_commit": "02c5ffbe63039407b50a6c381a72d5b98fed519a",
  "patcher_uncommitted_changes": true,
  "requires": [
   "fix:book-fade-fix",
@@ -14153,6 +14171,7 @@
   "fix:gwent-3d-bug-fix",
   "fix:gwent-card-fx-filter-fix",
   "fix:gwent-coin-shadow-fix",
+  "fix:gwent-flipbook-fix",
   "fix:gwent-fog-intro-fix",
   "fix:gwent-frost-flicker-fix",
   "fix:gwent-rain-loop-fix",
