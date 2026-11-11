@@ -122,7 +122,7 @@ def _parse_place_object(code: int, data: bytes) -> PlaceObject:
 
     matrix = None
     if flags & FLAG_HAS_MATRIX:
-        matrix, offset = _read_matrix(data, offset)
+        matrix, offset = read_matrix(data, offset)
 
     color_transform = None
     if flags & FLAG_HAS_COLOR_TRANSFORM:
@@ -170,7 +170,18 @@ def build_move(depth: int, matrix: Matrix | None = None, color_transform: ColorT
                ratio: int | None = None, display_options: tuple = ()) -> Tag:
     """PlaceObject2 that changes the given properties of the object at `depth`, or a PlaceObject3
     if display options (see PlaceObject) are given, which it sets as well"""
-    flags = FLAG_MOVE
+    return _build(FLAG_MOVE, depth, b"", matrix, color_transform, ratio, display_options)
+
+
+def build_place(depth: int, character_id: int, matrix: Matrix | None = None,
+                color_transform: ColorTransform | None = None, display_options: tuple = ()) -> Tag:
+    """PlaceObject2 that puts a character at the empty `depth`, or a PlaceObject3 if display options
+    (see PlaceObject) are given"""
+    return _build(FLAG_HAS_CHARACTER, depth, struct.pack("<H", character_id), matrix, color_transform, None,
+                  display_options)
+
+
+def _build(flags, depth, character, matrix, color_transform, ratio, display_options) -> Tag:
     if matrix:
         flags |= FLAG_HAS_MATRIX
     if color_transform:
@@ -179,7 +190,7 @@ def build_move(depth: int, matrix: Matrix | None = None, color_transform: ColorT
         flags |= FLAG_HAS_RATIO
 
     flags3 = sum(flag for flag, _ in display_options)
-    payload = bytes([flags, flags3] if display_options else [flags]) + struct.pack("<H", depth)
+    payload = bytes([flags, flags3] if display_options else [flags]) + struct.pack("<H", depth) + character
     if matrix:
         payload += _encode_matrix(matrix)
     if color_transform:
@@ -206,7 +217,7 @@ def rewrite_place_object(tag: Tag, *, color_transform=_KEEP, display_options=_KE
     if flags & FLAG_HAS_CHARACTER:
         offset += 2
     if flags & FLAG_HAS_MATRIX:
-        offset = _read_matrix(data, offset)[1]
+        offset = read_matrix(data, offset)[1]
     head_end = offset
     old_color_transform = None
     if flags & FLAG_HAS_COLOR_TRANSFORM:
@@ -239,7 +250,8 @@ def rewrite_place_object(tag: Tag, *, color_transform=_KEEP, display_options=_KE
     return Tag(code, payload)
 
 
-def _read_matrix(data: bytes, offset: int) -> tuple[Matrix, int]:
+def read_matrix(data: bytes, offset: int) -> tuple[Matrix, int]:
+    """The MATRIX record at offset, and the offset after it"""
     bits = BitReader(data, offset)
     scale_x = scale_y = FIXED_ONE
     skew0 = skew1 = 0

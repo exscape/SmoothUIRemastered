@@ -15,6 +15,7 @@ FIX_NAMES = frozenset({
     "gwent-3d-bug-fix",
     "gwent-card-fx-filter-fix",
     "gwent-coin-shadow-fix",
+    "gwent-flipbook-fix",
     "gwent-fog-intro-fix",
     "gwent-frost-flicker-fix",
     "gwent-rain-loop-fix",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import struct
 from enum import Enum
 from typing import NamedTuple
 
@@ -25,6 +26,10 @@ from ..swf_patcher.swf_tags import (
 # rescale, or on the rescaled file (or the game's, if it isn't rescaled), for a fix that must keep the
 # in-between frames the rescale adds. Fixes that run before are covered by the rescale's verification.
 BEFORE_RESCALE, AFTER_RESCALE = "before rescale", "after rescale"
+# The tags that define a character (its id comes first): SWF's shapes, bitmaps, buttons, fonts, texts, sounds,
+# sprites, morph shapes and videos, and Scaleform's DefineExternalImage, DefineSubImage and DefineExternalImage2
+DEFINE_CODES = frozenset({2, 6, 7, 10, 11, 13, 14, 20, 21, 22, 32, 33, 34, 35, 36, 37, 39, 46, 48, 60, 75, 83, 84,
+                          90, 91, 1001, 1008, 1009})
 
 
 class FixKind(Enum):
@@ -50,7 +55,7 @@ class FixResult(NamedTuple):
 
 class AbcEdit:
     """One of the file's own DoABC tags, whose methods fixes replace (see SwfEdit.unit_of_class). Valid
-    until SwfEdit.insert_abc, which moves the tags."""
+    until SwfEdit.insert_abc or insert_before_sprite, which move the tags."""
 
     def __init__(self, swf: SwfEdit, tag_index: int):
         self._swf = swf
@@ -87,6 +92,7 @@ class SwfEdit:
         self.tags = parse_tags(body, first_tag)
         self.changed = False
         self._added_abc = []        # DoABC tags added by insert_abc (not the file's own ActionScript)
+        self._last_id = None        # the highest character id in use, once new_character_id is asked for one
         self._index_tags()
 
     def _index_tags(self):
@@ -123,6 +129,10 @@ class SwfEdit:
         (character_id, class_name), = found.items()
         return character_id, class_name, parse_sprite_tags(self.tags[self._sprite_index[character_id]])
 
+    def sprite_ids(self) -> list[int]:
+        """The ids of all sprites, in ascending order"""
+        return sorted(self._sprite_index)
+
     def sprite_tags(self, character_id: int) -> list[Tag] | None:
         """A sprite's timeline; None if there is no such sprite"""
         index = self._sprite_index.get(character_id)
@@ -140,6 +150,23 @@ class SwfEdit:
                 tag.code == TagCode.SHOW_FRAME for tag in parse_sprite_tags(old)) - frames_removed:
             raise AssertionError(f"BUG: a fix changed the frame count of sprite {character_id} unexpectedly")
         self.tags[index] = build_sprite(character_id, frame_count - frames_removed, tags, long_header=old.long_header)
+        self.changed = True
+
+    def new_character_id(self) -> int:
+        """An id for a character to add; CantApply if there is none left"""
+        if self._last_id is None:
+            self._last_id = max(struct.unpack_from("<H", tag.payload)[0] for tag in self.tags
+                                if tag.code in DEFINE_CODES)
+        if self._last_id == 0xFFFF:
+            raise CantApply("the file has no character ids left")
+        self._last_id += 1
+        return self._last_id
+
+    def insert_before_sprite(self, character_id: int, tags: list[Tag]):
+        """Add tags (the definitions of characters for the sprite to place) right before a sprite"""
+        index = self._sprite_index[character_id]
+        self.tags[index:index] = tags
+        self._index_tags()
         self.changed = True
 
     def _own_abc(self, index: int) -> AbcFile:
