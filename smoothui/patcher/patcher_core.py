@@ -19,7 +19,7 @@ from ..witcher3.bundle import BundleEntry, BundleError, make_entry
 from ..witcher3.redswf import CR2W_VERSION, RedSwf, RedSwfError, replace_swf, swf_sha256
 from . import dev_mode
 from .dev_mode import dev_make_body_hook, resolve_dev_target
-from .fixes import Phase, apply_fixes
+from .fixes import FixOutcome, Phase, apply_fixes
 from .game_timing import game_fps, not_game_timed
 from .swf import (
     FPS_FIXED_POINT_SCALE,
@@ -239,7 +239,8 @@ def find_rule_issues(patched: list[PatchedFile], kept: list[KeptFile], shared=()
 
     For compat builds, recorded maps profile keys to the reports the Smooth UI release recorded.
     A setting from there that matches nothing in the other mod's version of a file is only a
-    warning, and only if it matched something in the release (otherwise it is not reported). A file that
+    warning, and only if it matched something in the release (otherwise it is not reported); for a fix
+    that can't be applied to the other mod's version (not one that isn't needed there), an error. A file that
     wasn't rescaled (already at or above the target frame rate, so only fixed) has no use for the rescale's
     settings (speed rules, include, exclude), so those are not reported for it: only its fixes are."""
     errors, warnings = [], []
@@ -263,9 +264,10 @@ def find_rule_issues(patched: list[PatchedFile], kept: list[KeptFile], shared=()
             elif setting in inherited:
                 if inherited[setting] and (fix or not not_rescaled):
                     detail = f" ({fix_details[setting]})" if setting in fix_details else ""
-                    warnings.append(RuleIssue(path, f"{setting}: matched sprite(s) {inherited[setting]} in the "
-                                              f"Smooth UI release, but nothing in this mod's version of the file{detail}",
-                                              fix))
+                    cant_apply = fix and FixOutcome(fixes[setting]["result"]) is FixOutcome.CANT_APPLY
+                    (errors if cant_apply else warnings).append(
+                        RuleIssue(path, f"{setting}: matched sprite(s) {inherited[setting]} in the Smooth UI release, "
+                                        f"but nothing in this mod's version of the file{detail}", fix))
             elif setting not in shared:
                 errors.append(RuleIssue(path, f"{setting}: {fix_details.get(setting, 'matched no sprite')}", fix))
     errors += [RuleIssue(None, f"{setting}: matched no sprite in any file") for setting in shared

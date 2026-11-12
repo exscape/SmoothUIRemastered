@@ -27,8 +27,8 @@ flipbook depends on what it shows. A flipbook is known by how many pictures it h
 each picture's bounds and fills (colours, gradients, or the bitmap and where it is drawn). Sprite, shape and
 bitmap numbers don't matter, and neither do the pictures' edges: other exports of the file (mods' copies
 of it) store the same edges in other orders and directions, and to compare them all would be slow. A
-flipbook with a picture added, removed, or changed in those is left as it is. More than one flipbook that
-isn't the game's means that the file isn't the game's as the fix knows it: then it changes nothing.
+flipbook with a picture added, removed, or changed in those isn't the game's, and the file then isn't the
+game's as the fix knows it: it changes nothing.
 """
 
 from __future__ import annotations
@@ -177,10 +177,10 @@ def apply(swf: SwfEdit) -> FixResult:
             log.warning(f"{FIX.name}: sprite {sprite_id} is a flipbook that isn't one of the game's "
                         f"({len(frames)} frames, fingerprint {fingerprint})")
             unknown.append(sprite_id)
-    ids = ", ".join(map(str, unknown))
-    if len(unknown) > 1 or not found:
-        raise CantApply(f"{len(unknown)} flipbook(s) that aren't the game's ({ids})" if unknown
-                        else "found none of the game's flipbooks")
+    if unknown:
+        raise CantApply(f"{len(unknown)} unknown flipbook animation(s) ({', '.join(map(str, unknown))})")
+    if not found:
+        raise CantApply("found none of the game's flipbooks")
     done = []
     for sprite_id, tags, snaps, keys, frames, known in found:
         if known is None or all(b - a == 1 for a, b in pairwise(keys)):     # or not stretched
@@ -193,8 +193,7 @@ def apply(swf: SwfEdit) -> FixResult:
     if not done:
         return FixResult([], "the flipbooks aren't stretched, or are crossfaded already")
     return FixResult([sprite_id for sprite_id, _ in done],
-                     "crossfaded " + ", ".join(f"{name} ({sprite_id})" for sprite_id, name in done)
-                     + (f"; 1 flipbook that isn't the game's left alone ({ids})" if unknown else ""))
+                     "crossfaded " + ", ".join(f"{name} ({sprite_id})" for sprite_id, name in done))
 
 
 def _is_flipbook(tags: list[Tag], shapes: dict[int, Tag]) -> bool:
