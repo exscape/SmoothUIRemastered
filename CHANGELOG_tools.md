@@ -1,7 +1,8 @@
 # v0.9.8
 
 * Improved: about 30% faster merges. In part due to using up to 6 cores (vs 4 before), but also because of code improvements. On 4-core computers, only a small benefit (5% or so).
-* Improved: slightly faster launches -- about 0.2 s vs 0.25 s on my system.
+* Improved: slightly faster launches (not noticeable): about 0.25 s vs 0.3 s on my system.
+* Fixed: the new Gwent animation changes failed to apply on some mods (e.g. Gwent Opponent Names). The new code should work on all mods that don't rework FX entirely.
 
 
 # v0.9.7

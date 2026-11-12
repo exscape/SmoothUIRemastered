@@ -23,16 +23,18 @@ A crossfade adds no motion, so where the pictures show something moving steadily
 every tick (_grow, _rise).
 
 Only the game's own flipbooks are changed, told by a fingerprint of their pictures (KNOWN): what suits a
-flipbook depends on what it shows. Sprite, shape and bitmap numbers don't matter (they differ between
-exports of the file); a flipbook with a picture changed, added or removed is left as it is. That goes for
-pictures drawn as vectors. Of one that is a bitmap, the file only holds the rectangle it is drawn on (the
-pixels are in the .redswf's textures), so a flipbook of bitmaps is known by how many it has, their sizes and
-where it puts them.
+flipbook depends on what it shows. A flipbook is known by how many pictures it has, where it puts them, and
+each picture's bounds and fills (colours, gradients, or the bitmap and where it is drawn). Sprite, shape and
+bitmap numbers don't matter, and neither do the pictures' edges: other exports of the file (mods' copies
+of it) store the same edges in other orders and directions, and to compare them all would be slow. A
+flipbook with a picture added, removed, or changed in those is left as it is. More than one flipbook that
+isn't the game's means that the file isn't the game's as the fix knows it: then it changes nothing.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import struct
 from bisect import bisect_right
 from collections.abc import Callable
@@ -64,8 +66,11 @@ from ..swf_patcher.swf_tags import (
 )
 from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
 
+log = logging.getLogger(__name__)
+
 SHAPE_CODES = (TagCode.DEFINE_SHAPE, TagCode.DEFINE_SHAPE2, TagCode.DEFINE_SHAPE3, TagCode.DEFINE_SHAPE4)
 SOLID_FILL, BITMAP_FILLS = 0x00, (0x40, 0x41, 0x42, 0x43)
+GRADIENT_FILLS, FOCAL_GRADIENT = (0x10, 0x12, 0x13), 0x13
 FLIPBOOK_CODES = {*PLACE_OBJECT_CODES, *REMOVE_OBJECT_CODES, TagCode.SHOW_FRAME, TagCode.FRAME_LABEL, TagCode.END}
 MIN_SWAPS = 5                   # a flipbook swaps its picture at least this often
 FLIP = 1                        # the depth a flipbook shows its pictures at
@@ -141,24 +146,24 @@ class Known(NamedTuple):
 
 # The game's flipbooks (5.01) by fingerprint (see _fingerprint); None: left as it is
 KNOWN = {
-    "5d1cbe0e2fd95693": Known("Deploy", hard_cuts=3),   # the hit at its start stays hard
-    "b3fa34f3647074c2": Known("Clear Weather"),
-    "bb72a9fc904c74d8": Known("Rain"),
-    "6747e1308e8c3008": None,   # the rain's drops: 32 on screen at once, each with little to gain
-    "209dbe852b2bbbba": Known("Scorch"),
-    "e96b1ada391997e9": Known("Scorch"),
-    "92ffd0bb870a806e": Known("Decoy"),
-    "945e2c7b99eb872e": Known("Muster and Medic"),
-    "6bdd9de7b2594188": Known("Muster's arrival", motion=_rise),
-    "7a927673aecd2059": Known("Hero"),
-    "e438fac05b8c25f7": Known("the puff of Hero, Spy and Morph"),
-    "36f9cc8f6a3ee27d": Known("a gem breaking", motion=_grow),
+    "cba86a3b6526e8bd": Known("Deploy", hard_cuts=3),   # the hit at its start stays hard
+    "0401387425ffaa74": Known("Clear Weather"),
+    "65f4d71d90f24802": Known("Rain"),
+    "cf5608c291e06069": None,   # the rain's drops: 32 on screen at once, each with little to gain
+    "2992a9e2ba5f851c": Known("Scorch"),
+    "ee028a4d383286e9": Known("Scorch"),
+    "41e7426167bc0bf4": Known("Decoy"),
+    "8ebf6724c1861c86": Known("Muster and Medic"),
+    "df917e38a4732e3a": Known("Muster's arrival", motion=_rise),
+    "be854042df2b7594": Known("Hero"),
+    "9884512cdf759703": Known("the puff of Hero, Spy and Morph"),
+    "227fa6807c6ea5f7": Known("a gem breaking", motion=_grow),
 }
 
 
 def apply(swf: SwfEdit) -> FixResult:
     shapes = {struct.unpack_from("<H", tag.payload)[0]: tag for tag in swf.tags if tag.code in SHAPE_CODES}
-    done, known_count, unknown = [], 0, []
+    found, unknown = [], []
     for sprite_id in swf.sprite_ids():
         tags = swf.sprite_tags(sprite_id)
         assert tags is not None     # an id from sprite_ids()
@@ -166,11 +171,18 @@ def apply(swf: SwfEdit) -> FixResult:
             continue
         snaps, keys, frames = _frames(tags, shapes)
         fingerprint = _fingerprint(frames, shapes)
-        if fingerprint not in KNOWN:
+        if fingerprint in KNOWN:
+            found.append((sprite_id, tags, snaps, keys, frames, KNOWN[fingerprint]))
+        else:
+            log.warning(f"{FIX.name}: sprite {sprite_id} is a flipbook that isn't one of the game's "
+                        f"({len(frames)} frames, fingerprint {fingerprint})")
             unknown.append(sprite_id)
-            continue
-        known_count += 1
-        known = KNOWN[fingerprint]
+    ids = ", ".join(map(str, unknown))
+    if len(unknown) > 1 or not found:
+        raise CantApply(f"{len(unknown)} flipbook(s) that aren't the game's ({ids})" if unknown
+                        else "found none of the game's flipbooks")
+    done = []
+    for sprite_id, tags, snaps, keys, frames, known in found:
         if known is None or all(b - a == 1 for a, b in pairwise(keys)):     # or not stretched
             continue
         characters = _Characters(swf, frames)
@@ -178,14 +190,11 @@ def apply(swf: SwfEdit) -> FixResult:
         swf.insert_before_sprite(sprite_id, characters.tags)
         swf.replace_sprite(sprite_id, new_tags)
         done.append((sprite_id, known.name))
-    others = f"{len(unknown)} flipbook(s) that aren't the game's left alone ({', '.join(map(str, unknown))})"
-    if not known_count:
-        raise CantApply("found none of the game's flipbooks" + (f"; {others}" if unknown else ""))
     if not done:
         return FixResult([], "the flipbooks aren't stretched, or are crossfaded already")
     return FixResult([sprite_id for sprite_id, _ in done],
                      "crossfaded " + ", ".join(f"{name} ({sprite_id})" for sprite_id, name in done)
-                     + (f"; {others}" if unknown else ""))
+                     + (f"; 1 flipbook that isn't the game's left alone ({ids})" if unknown else ""))
 
 
 def _is_flipbook(tags: list[Tag], shapes: dict[int, Tag]) -> bool:
@@ -227,29 +236,55 @@ def _after_rect(data: bytes | bytearray, offset: int) -> int:
 
 
 def _shape_key(tag: Tag) -> bytes:
-    """A shape's definition, less what differs between exports of the same picture: its character id, and
-    those of the bitmaps in its fill styles (as far as those are solid or bitmap fills)"""
+    """A shape's definition up to its edges: its type, bounds, and fill and line styles, less its character
+    id and those of the bitmaps it is filled with. Its edges are left out: exports of the same picture store
+    them in other orders and directions, and to read them all would be slow. A shape whose styles it can't
+    read is taken as it is, less its id."""
     data = bytearray(tag.payload)
     data[0:2] = b"\0\0"
     try:
         offset = _after_rect(data, 2)
         if tag.code == TagCode.DEFINE_SHAPE4:   # the edge bounds and a flags byte
             offset = _after_rect(data, offset) + 1
-        count, offset = data[offset], offset + 1
-        if count == 0xFF and tag.code != TagCode.DEFINE_SHAPE:
-            count, offset = struct.unpack_from("<H", data, offset)[0], offset + 2
-        for _ in range(count):
-            fill = data[offset]
-            if fill == SOLID_FILL:
-                offset += 5 if tag.code in (TagCode.DEFINE_SHAPE3, TagCode.DEFINE_SHAPE4) else 4
-            elif fill in BITMAP_FILLS:
-                data[offset + 1:offset + 3] = b"\0\0"
-                offset = read_matrix(data, offset + 3)[1]
-            else:
-                break
-    except (IndexError, struct.error):
+        data = data[:_skip_styles(data, offset, tag.code)]
+    except (IndexError, ValueError, struct.error):
         pass
     return struct.pack("<H", tag.code) + data
+
+
+def _skip_styles(data: bytearray, offset: int, code: int) -> int:
+    """Skip the fill and line style arrays at offset, zeroing the ids of the bitmaps they fill with; the offset
+    after them"""
+    colour = 4 if code in (TagCode.DEFINE_SHAPE3, TagCode.DEFINE_SHAPE4) else 3     # RGBA or RGB
+    for line_styles in (False, True):
+        count, offset = data[offset], offset + 1
+        if count == 0xFF and code != TagCode.DEFINE_SHAPE:
+            count, offset = struct.unpack_from("<H", data, offset)[0], offset + 2
+        for _ in range(count):
+            if not line_styles:
+                offset = _skip_fill(data, offset, colour)
+            elif code == TagCode.DEFINE_SHAPE4:
+                # A width, two bytes of flags, a miter limit if the join style is miter, a colour or a fill
+                flags = data[offset + 2]
+                offset += 4 + (2 if (flags >> 4) & 3 == 2 else 0)
+                offset = _skip_fill(data, offset, colour) if flags & 0x08 else offset + colour
+            else:
+                offset += 2 + colour    # a width and a colour
+    return offset
+
+
+def _skip_fill(data: bytearray, offset: int, colour: int) -> int:
+    kind, offset = data[offset], offset + 1
+    if kind == SOLID_FILL:
+        return offset + colour
+    if kind in GRADIENT_FILLS:
+        offset = read_matrix(data, offset)[1]
+        count = data[offset] & 0x0F
+        return offset + 1 + count * (1 + colour) + (2 if kind == FOCAL_GRADIENT else 0)
+    if kind in BITMAP_FILLS:
+        data[offset:offset + 2] = b"\0\0"
+        return read_matrix(data, offset + 2)[1]
+    raise ValueError(f"unknown fill style {kind:#x}")
 
 
 def _shape_box(tag: Tag) -> tuple[int, int, int, int]:
