@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
@@ -473,7 +474,7 @@ def game_command(args: list[str], game: Path | None) -> GameCommand | None:
 QT_VARIABLES = ("QT_PLUGIN_PATH", "QML2_IMPORT_PATH", "PYSIDE6_OPTION_PYTHON_ENUM")
 
 
-def game_environment(environ: dict[str, str], app_dir: Path | None) -> dict[str, str]:
+def game_environment(environ: Mapping[str, str], app_dir: Path | None) -> dict[str, str]:
     """The environment the merger starts the game with: its own (environ), without what loading Qt adds to it
     in the frozen merger (app_dir: the tools' folder; None when run from source): the Qt variables, and the
     tools' folder and its PySide6\\ at the front of PATH, where DLLs that the game or what it loads (overlays,

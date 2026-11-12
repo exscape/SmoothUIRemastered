@@ -53,7 +53,7 @@ import traceback
 import webbrowser
 from dataclasses import replace
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from PySide6.QtCore import Qt, QTimer  # pyright: ignore[reportMissingImports]
 from PySide6.QtGui import (  # pyright: ignore[reportMissingImports]
@@ -282,6 +282,9 @@ from .state import (
     changed_since_off,
 )
 
+if TYPE_CHECKING:
+    from .builder import BuildResult
+
 log = logging.getLogger(__name__)
 
 THEME = json.loads(Path(__file__).with_name("theme.json").read_text(encoding="utf-8"))
@@ -334,7 +337,9 @@ def make_app() -> QApplication:
 def find_candidates() -> list[GameFolder]:
     """The game folders to choose from. In test mode only the test folder: game_path ignores the settings."""
     if os.environ.get(GAME_PATH_ENV):
-        return [GameFolder(game_path(None), "test")]
+        test_folder = game_path(None)
+        assert test_folder is not None     # the variable gives it
+        return [GameFolder(test_folder, "test")]
     return find_games()
 
 
@@ -355,16 +360,18 @@ def apply_theme():
     """The palette and style sheet for the current mode (again when Windows changes it)"""
     c = colors()
     palette = QPalette(QColor(c["card"]), QColor(c["window"]))     # (button, window): the other roles from them
-    for role, name in ((QPalette.WindowText, "text"), (QPalette.Text, "text"), (QPalette.ButtonText, "text"),
-                       (QPalette.Base, "log"), (QPalette.AlternateBase, "card"), (QPalette.ToolTipBase, "card"),
-                       (QPalette.ToolTipText, "text"), (QPalette.Highlight, "accent"),
-                       (QPalette.HighlightedText, "accent_text"), (QPalette.Link, "accent"),
-                       (QPalette.PlaceholderText, "muted_text")):
+    for role, name in ((QPalette.ColorRole.WindowText, "text"), (QPalette.ColorRole.Text, "text"), (QPalette.ColorRole.ButtonText, "text"),
+                       (QPalette.ColorRole.Base, "log"), (QPalette.ColorRole.AlternateBase, "card"), (QPalette.ColorRole.ToolTipBase, "card"),
+                       (QPalette.ColorRole.ToolTipText, "text"), (QPalette.ColorRole.Highlight, "accent"),
+                       (QPalette.ColorRole.HighlightedText, "accent_text"), (QPalette.ColorRole.Link, "accent"),
+                       (QPalette.ColorRole.PlaceholderText, "muted_text")):
         palette.setColor(role, QColor(c[name]))
-    for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
-        palette.setColor(QPalette.Disabled, role, QColor(c["disabled_text"]))
+    for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(c["disabled_text"]))
     QApplication.setPalette(palette)
-    QApplication.instance().setStyleSheet(style_sheet(c))
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    app.setStyleSheet(style_sheet(c))
 
 
 def style_sheet(c) -> str:
@@ -431,7 +438,7 @@ def set_tone(widget, tone):
 def label(text="", size=13, bold=False, tone=None, wrap=False, on_click=None, family=FONT_FAMILY) -> QLabel:
     """A label showing text as it is (not as HTML); on_click: called when it is clicked"""
     widget = QLabel(text) if on_click is None else Clickable(text, on_click)
-    widget.setTextFormat(Qt.PlainText)
+    widget.setTextFormat(Qt.TextFormat.PlainText)
     widget.setFont(font(size, bold, family))
     widget.setWordWrap(wrap)
     if tone:
@@ -461,10 +468,10 @@ class Clickable(QLabel):
     def __init__(self, text, on_click):
         super().__init__(text)
         self.on_click = on_click
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.on_click()
 
 
@@ -513,7 +520,7 @@ class MergerWindow:
         self.changes = {}       # what the rows' buttons chose, for the next merge: {row's path: Change}
         self.merges_now = {}    # the files the user chose not to merge that would merge now: {path: what changed}
         self.pool_started = False   # whether start_first_pool ran
-        self.merged = None
+        self.merged: BuildResult | None = None
         self.merge_error = None
         self.progress = None        # the merge's or the update's download (done, total), once known
         self.busy = None            # what runs in a thread: "scan", "build", "remove", "update"
@@ -540,7 +547,7 @@ class MergerWindow:
         root.setWindowTitle(TITLE)
         root.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
         self.center(WIDTH, HEIGHT)
-        for key in (Qt.Key_Return, Qt.Key_Enter):
+        for key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             QShortcut(QKeySequence(key), root).activated.connect(self.press_default)
         layout = QVBoxLayout(root)
         layout.setContentsMargins(16, 12, 16, 10)
@@ -553,7 +560,7 @@ class MergerWindow:
         header.addWidget(self.title, 0, 0)
         header.setRowMinimumHeight(0, self.title.sizeHint().height())   # as high without the title
         self.update_button = button("", self.whats_new)     # in the title's place (see show_update_button)
-        self.update_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.update_button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.update_button.hide()
         header.addWidget(self.update_button, 0, 0)
         self.header_buttons = QWidget()     # Settings and Help (only on the main page)
@@ -565,7 +572,7 @@ class MergerWindow:
         row.addWidget(button(HELP, self.open_help))
         header.addWidget(self.header_buttons, 0, 1)
         self.context = label(tone="muted")
-        self.context.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)    # a long path is cut, not widening
+        self.context.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)    # a long path is cut, not widening
         self.context.setContentsMargins(0, 8, 0, 8)     # (away from the buttons above it)
         header.addWidget(self.context, 1, 0, 1, 2)
         layout.addLayout(header)
@@ -580,7 +587,8 @@ class MergerWindow:
         page = QVBoxLayout(main)
         page.setContentsMargins(0, 8, 0, 0)
         page.setSpacing(8)
-        self.card_frame = QFrame(objectName="card")
+        self.card_frame = QFrame()
+        self.card_frame.setObjectName("card")
         page.addWidget(self.card_frame)
         card = QGridLayout(self.card_frame)
         card.setContentsMargins(16, 14, 16, 14)
@@ -589,7 +597,7 @@ class MergerWindow:
         card.setColumnStretch(1, 1)
         self.card_glyph = glyph(size=26)
         self.card_glyph.setFixedWidth(32)
-        card.addWidget(self.card_glyph, 0, 0, 2, 1, Qt.AlignTop)
+        card.addWidget(self.card_glyph, 0, 0, 2, 1, Qt.AlignmentFlag.AlignTop)
         self.card_headline = label(size=17, bold=True, wrap=True)
         card.addWidget(self.card_headline, 0, 1)
         self.card_text = label(wrap=True)
@@ -603,8 +611,9 @@ class MergerWindow:
         card.addWidget(self.card_bar, 2, 1)
         self.card_grid = card
 
-        self.screens = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
-        self.screens.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.screens = QScrollArea(widgetResizable=True)
+        self.screens.setFrameShape(QFrame.Shape.NoFrame)
+        self.screens.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         holder = QWidget()
         self.screens.setWidget(holder)
         self.list_layout = QVBoxLayout(holder)
@@ -642,7 +651,8 @@ class MergerWindow:
             self.welcome_page = self.make_welcome()
             self.find_game_folders()
         self.show_page(self.welcome_page or main)
-        self.poll_timer = QTimer(interval=50, timeout=self.poll)
+        self.poll_timer = QTimer(interval=50)
+        self.poll_timer.timeout.connect(self.poll)
         # What threads hand over is shown once the window shows (handling it first would delay that), or after
         # a while at the latest (e.g. started minimized)
         QTimer.singleShot(1000, self.start_polling)
@@ -689,15 +699,16 @@ class MergerWindow:
         page = QWidget()
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
-        scroll = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll = QScrollArea(widgetResizable=True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         content = QWidget()
         scroll.setWidget(content)
         outer.addWidget(scroll, 1)
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 12, 8, 0)
         layout.setSpacing(4)
-        layout.page_layout = outer
+        layout.page_layout = outer  # pyright: ignore[reportAttributeAccessIssue] (our own, for page_buttons)
         self.pages.addWidget(page)
         return page, layout
 
@@ -800,13 +811,13 @@ class MergerWindow:
         self.heading(layout, DATA_HEADING)
         layout.addWidget(label(DATA.format(folder=gui.DATA_DIR), wrap=True))
         layout.addSpacing(4)
-        layout.addWidget(button(OPEN_DATA, lambda: os.startfile(gui.DATA_DIR)), 0, Qt.AlignLeft)
+        layout.addWidget(button(OPEN_DATA, lambda: os.startfile(gui.DATA_DIR)), 0, Qt.AlignmentFlag.AlignLeft)
         self.heading(layout, LICENSES_HEADING)
         layout.addWidget(label(LICENSES, wrap=True))
         layout.addSpacing(4)
         licenses = button(OPEN_LICENSES, lambda: os.startfile(LICENSES_DIR))
         licenses.setEnabled(LICENSES_DIR.is_dir())
-        layout.addWidget(licenses, 0, Qt.AlignLeft)
+        layout.addWidget(licenses, 0, Qt.AlignmentFlag.AlignLeft)
         self.back_button = button(BACK, lambda: self.show_page(self.main_page), primary=True)
         self.page_buttons(layout, self.back_button)
         return page
@@ -862,7 +873,7 @@ class MergerWindow:
         message = label(wrap=True)
         message.hide()      # until there is something to say
         layout.addSpacing(4)
-        layout.addWidget(button(CREATE_SHORTCUT, lambda: self.make_shortcut(chooser, message)), 0, Qt.AlignLeft)
+        layout.addWidget(button(CREATE_SHORTCUT, lambda: self.make_shortcut(chooser, message)), 0, Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(message)
         return widget
 
@@ -896,12 +907,15 @@ class MergerWindow:
         self.candidates = folders or []
         log.info(f"Game folders found: {', '.join(str(folder.path) for folder in self.candidates) or 'none'}")
         if self.page is self.welcome_page:
+            assert self.welcome_chooser is not None     # made with its page
             self.welcome_chooser.show(self.candidates, self.welcome_chooser.selected() or self.game)
         elif self.page is self.settings_page:
+            assert self.settings_chooser is not None    # made with its page
             self.settings_chooser.show(self.candidates, self.settings_chooser.selected() or self.game)
 
     def update_continue(self):
         """Continue is off until a folder is chosen and the frame rates can be built"""
+        assert self.welcome_chooser is not None     # (on the welcome page)
         self.continue_button.setEnabled(self.welcome_chooser.selected() is not None and self.welcome_rates.valid())
 
     def update_save(self):
@@ -916,6 +930,7 @@ class MergerWindow:
     def confirm_welcome(self):
         """Continue: save the settings, with the folder chosen and the frame rate section's, and show the main
         page (the scan, made with the default settings, runs again if they change it)"""
+        assert self.welcome_chooser is not None     # (on the welcome page)
         folder = self.welcome_chooser.selected()
         if folder is None or not self.welcome_rates.valid():
             return
@@ -928,6 +943,7 @@ class MergerWindow:
     def open_settings(self):
         if self.settings_page is None:
             self.settings_page = self.make_settings()
+        assert self.settings_chooser is not None and self.update_box is not None    # made with the page
         self.settings_chooser.show(self.candidates or [], self.game, searching=self.candidates is None)
         self.update_box.setChecked(self.check_updates)
         self.rates.show(*self.shown_rates(), self.smooth_hud,
@@ -941,6 +957,7 @@ class MergerWindow:
     def save_settings_page(self):
         """Save: the game folder chosen, the update check and the frame rate section's, if any changed (a new
         folder is scanned, and the folder again for settings the scan depends on); back to the main page"""
+        assert self.settings_chooser is not None and self.update_box is not None    # (on the settings page)
         folder = self.settings_chooser.selected() or self.game
         if not self.rates.valid():
             return
@@ -1042,7 +1059,7 @@ class MergerWindow:
         if tone:
             style.setForeground(QColor(colors()[tone]))
         cursor = QTextCursor(self.log_view.document())
-        cursor.movePosition(QTextCursor.End)
+        cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.insertText(text + "\n", style)
         bar = self.log_view.verticalScrollBar()
         bar.setValue(bar.maximum())
@@ -1107,15 +1124,16 @@ class MergerWindow:
             discard(item.widget())
         actions = self.card_actions()
         for text, tone, buttons in notices:
-            banner = QFrame(objectName="notice")
+            banner = QFrame()
+            banner.setObjectName("notice")
             set_tone(banner, tone)
             row = QHBoxLayout(banner)
             row.setContentsMargins(10, 4, 10, 4)
             row.setSpacing(6)
             icon = glyph(tone, 14)
             icon.setFixedWidth(16)  # the glyphs' widths differ: the texts start at one place
-            icon.setAlignment(Qt.AlignHCenter)
-            row.addWidget(icon, 0, Qt.AlignTop)
+            icon.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            row.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
             row.addWidget(label(text, wrap=True), 1)
             for name, action in buttons:
                 widget = button(name, actions[action])
@@ -1132,6 +1150,7 @@ class MergerWindow:
         keeps its height, so nothing moves). Off while a merge, a removal or an update runs."""
         show = self.update is not None and self.page is self.main_page and not self.card_offers_update()
         if show:
+            assert self.update is not None
             critical = self.update.critical
             text = CRITICAL_UPDATE if critical else UPDATE_AVAILABLE
             self.update_button.setText(text.format(version=self.update.version))
@@ -1228,7 +1247,7 @@ class MergerWindow:
         actions = self.card_actions()
         buttons = [action for _, action in self.card.buttons if action in actions] if self.card else []
         shown = self.card_buttons.findChildren(QPushButton) if self.card_buttons is not None else []
-        if buttons and self.card.default and all(widget.isEnabled() for widget in shown):  # (not while re-scanning)
+        if buttons and self.card and self.card.default and all(widget.isEnabled() for widget in shown):  # (not while re-scanning)
             actions[buttons[0]]()
 
     def card_actions(self):
@@ -1256,13 +1275,15 @@ class MergerWindow:
         made again when that changes (open details stay open)."""
         if self.rows_merging and self.busy:     # the scan after a merge: the rows show the merge's until it ends
             return
-        states = self.found.states if self.found else []
+        found = self.found
+        states = found.states if found else []
+        files = found.scan.files if found else {}
         rebuilt = [state for state in states if collapses(state)]     # one line
         shown = sorted(screen_rows([state for state in states if state.state != State.NOTHING_TO_DO
                                     and state not in rebuilt]), key=lambda row: row_order(row[0]))
         others = len(states) - len(rebuilt) - sum(len(members) for _, members in shown)
-        notes = self.notes() if self.found else []
-        content = ([(row, [(state, self.found.scan.files[state.path].shippers) for state in members])
+        notes = self.notes() if found else []
+        content = ([(row, [(state, files[state.path].shippers) for state in members])
                     for row, members in shown], others, notes, rebuilt, tuple(self.changes))
         merging, self.rows_merging = self.rows_merging, False
         if content == self.list_content and not merging:
@@ -1290,7 +1311,8 @@ class MergerWindow:
         for state, members in shown:
             self.screen_row(state, members)
         if rebuilt:
-            self.list_line(game_screens(rebuilt, self.found.scan.target_fps, others=bool(shown)))
+            assert found is not None    # its states
+            self.list_line(game_screens(rebuilt, found.scan.target_fps, others=bool(shown)))
         if others and shown:
             self.list_line(unchanged_screens(others))
         if notes:
@@ -1302,11 +1324,13 @@ class MergerWindow:
     def list_heading(self, text):
         heading = label(text, 14, bold=True)
         heading.setContentsMargins(0, 10 if self.list_row else 0, 0, 4)
+        assert self.list_grid is not None   # (while the list is made)
         self.list_grid.addWidget(heading, self.list_row, 0, 1, 6)
         self.list_row += 1
 
     def list_line(self, text, tone=None):
-        self.list_grid.addWidget(glyph(tone), self.list_row, 0, Qt.AlignTop)
+        assert self.list_grid is not None   # (while the list is made)
+        self.list_grid.addWidget(glyph(tone), self.list_row, 0, Qt.AlignmentFlag.AlignTop)
         line = label(text, wrap=True)
         line.setContentsMargins(0, 4, 0, 0)
         self.list_grid.addWidget(line, self.list_row, 1, 1, 5)
@@ -1323,6 +1347,7 @@ class MergerWindow:
                  label(row_mods(state), tone="muted", on_click=toggle), label(status, on_click=toggle),
                  label("▸", 16, tone="muted", on_click=toggle, family=SYMBOL_FONT)]
         cells[0].setFixedWidth(24)
+        assert self.list_grid is not None   # (while the list is made)
         for column, cell in enumerate(cells):
             cell.setContentsMargins(0, 1, 0 if column in (0, 4) else 16, 1)
             self.list_grid.addWidget(cell, self.list_row, column)
@@ -1360,7 +1385,9 @@ class MergerWindow:
         merge."""
         state, cells, row, members = self.rows[path]
         cells[4].setText("▾")
-        frame = QFrame(objectName="details")
+        assert self.found is not None and self.list_grid is not None   # the list shows the scan's screens
+        frame = QFrame()
+        frame.setObjectName("details")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 6, 12, 10)
         layout.setSpacing(6)
@@ -1390,7 +1417,7 @@ class MergerWindow:
             text, note = PATCH_ANYWAY, anyway_texts([file.reason for file in members if file.path in left])[0]
             command = lambda: self.mark_change(path, Change(anyway=tuple(left)))
         else:
-            text = None
+            text = note = command = None
         if text:
             actions.append((text, note, command))
         if off and path not in self.changes:
@@ -1421,6 +1448,7 @@ class MergerWindow:
 
     def notes(self) -> list[tuple[str, str]]:
         """(text, tone): the scan's problems, the compat patches, and the last merge's problems and notes"""
+        assert self.found is not None   # (called once it scanned)
         result = self.found.scan
         notes = [(problem.message, WARNING) for problem in result.problems]
         if self.merged is not None:
@@ -1460,6 +1488,7 @@ class MergerWindow:
             if self.downloaded_meanwhile:
                 self.merged = self.merge_error = None
             self.scan_again = self.downloaded_meanwhile = False
+            assert self.game is not None    # it just scanned
             start_scan(self.game, self.calls, scan_options(self.settings))
             self.set_busy("scan")
             return
@@ -1482,7 +1511,7 @@ class MergerWindow:
         self.refresh()
         if self.play_when_scanned:
             self.play_when_scanned = False
-            if any(action == "play" for _, action in self.card.buttons):
+            if self.card is not None and any(action == "play" for _, action in self.card.buttons):
                 self.start_game()
                 return
             log.warning("Not starting the game: the check found something to see first")
@@ -1495,6 +1524,7 @@ class MergerWindow:
         if not changed or not self.pool_started:     # start_first_pool tries then, with the merge's workers
             return
         found = self.found
+        assert found is not None    # changed is from it
 
         def work():
             from .builder import (
@@ -1538,6 +1568,7 @@ class MergerWindow:
         """Scan again; the last merge's result stays only with keep_result (right after that merge)"""
         if not keep_result:
             self.merged = self.merge_error = None
+        assert self.game is not None    # it scanned before
         start_scan(self.game, self.calls, scan_options(self.settings))
 
     def play(self):
@@ -1552,6 +1583,7 @@ class MergerWindow:
         """Start the game, as the launcher does without arguments, and close: nothing may merge into the Mods
         folder while the game runs. Without the merger's Qt environment (see game_environment)."""
         command = game_command([], self.game)
+        assert command is not None  # the game folder is known
         log.info(f"Starting the game: {subprocess.list2cmdline(command.args)}")
         env = game_environment(os.environ, APP_DIR if FROZEN else None)
         try:
@@ -1621,7 +1653,7 @@ class MergerWindow:
         self.settings = settings
 
     def whats_new(self):
-        if whats_new_dialog(self.root, self.update).exec() == QDialog.Accepted:
+        if whats_new_dialog(self.root, self.update).exec() == QDialog.DialogCode.Accepted:
             self.update_now()
 
     def update_now(self):
@@ -1684,21 +1716,22 @@ class MergerWindow:
         """After a scan: forget the changes that no longer apply (e.g. that mod is gone)"""
         if not self.changes:
             return
-        if self.found is None or not self.found.scan.installed.usable:
+        found = self.found
+        if found is None or not found.scan.installed.usable:
             self.changes = {}
             return
-        states = {file.path: file for file in self.found.states}
+        states = {file.path: file for file in found.states}
 
         def can_force(path):
             """Still left out, or a merge that failed halfway left no manifest to say so"""
             state = states.get(path)
-            return state is not None and self.found.scan.files[path].winner is not None and (
+            return state is not None and found.scan.files[path].winner is not None and (
                 state.state in (State.NOT_BUILT, State.DAMAGED)
                 or (state.state == State.NOT_HELD and state.cause in ("left out", "known broken")))
 
         def applies(change):
             return (all(path in states and (states[path].winner or "").lower() == mod.lower() for path, mod in change.off)
-                    and all(path in self.found.scan.screens_off for path, _ in change.on)
+                    and all(path in found.scan.screens_off for path, _ in change.on)
                     and all(can_force(path) for path in change.anyway))
         self.changes = {path: change for path, change in self.changes.items() if applies(change)}
 
@@ -1707,6 +1740,7 @@ class MergerWindow:
         patched, else saved at once and scanned again (nothing needs merging: the game already gets the mod's own
         copy, see builder.as_is_copies)"""
         paths = {path for path, _ in off}
+        assert self.found is not None   # (a row's button)
         if any(file.path in paths and file.state == State.UP_TO_DATE for file in self.found.states):
             self.mark_change(row, Change(off=tuple(off)))
         elif self.save_screens_off((*screens_off(self.settings), *self.new_choices(off))):
@@ -1719,6 +1753,7 @@ class MergerWindow:
         chosen = screens_off(self.settings) if chosen is None else chosen
         known = {(choice.path, choice.mod.lower()) for choice in chosen}
         today = datetime.date.today().isoformat()
+        assert self.found is not None   # (a row's button)
         copies = self.found.scan.files
         reviews, tools = self.found.scan.reviews.sha256, tools_version()
         paths = {path for path, _ in off}
@@ -1751,6 +1786,7 @@ class MergerWindow:
     def save_screens_off(self, chosen) -> bool:
         """Save the settings with these screens not to merge; a failure is said in a message box. (No settings
         yet: the game folder came from the test variable, and is saved with them.)"""
+        assert self.game is not None    # chosen before any screen shows
         settings = replace(self.settings or Settings(self.game), screens_off=tuple(chosen))
         try:
             save_settings(settings, gui.DATA_DIR)
@@ -1765,6 +1801,7 @@ class MergerWindow:
         """Merge every screen that was left out anyway (the card's button), once the user confirms"""
         paths = left_out(self.found, self.merged)
         screens = "\n".join(f"•  {screen_label(path)}" for path in paths)
+        assert self.found is not None   # (the card's button)
         files = self.merged.files if self.merged is not None else self.found.states
         question = anyway_texts([file.reason for file in files if file.path in paths])[1]
         if paths and ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question.format(screens=screens), warning=True):
@@ -1779,6 +1816,7 @@ class MergerWindow:
         self.merged = self.merge_error = self.progress = None
         self.refresh()
         self.merging = {}
+        assert self.found is not None   # (its rows)
         for path, (_, _, _, members) in self.rows.items():  # each says "Done" when its files are (see merged_file)
             waiting = {file.path for file in members if self.found.scan.files[file.path].winner}
             if waiting:
@@ -1823,6 +1861,7 @@ class MergerWindow:
         started = time.strftime("%Y-%m-%d %H:%M:%S")
         settings = mods_settings()
         off = scan_options(self.settings)
+        assert self.game is not None    # (merging needs it)
         force, notes = carried_force(scan(self.game, settings, **off))
         for note in notes:
             log.warning(note)
@@ -1838,6 +1877,7 @@ class MergerWindow:
         finally:
             if not (play and result is not None and result.clean and not self.critical_update()):
                 self.restart_pool()
+        assert result is not None   # build_package returned (it raises otherwise)
         self.reports.append(merge_report(result, started))
         try:
             write_file(gui.DATA_DIR / REPORT_FILE, json.dumps(self.reports, indent=1).encode("utf-8"))
@@ -1885,10 +1925,12 @@ class MergerWindow:
             return
         self.set_busy("remove")
         self.refresh()
+        assert self.found is not None and self.found.scan.mods_dir is not None     # (the card's button)
         folder = next(mod.folder for mod in self.found.scan.order if is_package_folder(mod.folder))
+        mods_dir = self.found.scan.mods_dir
 
         def work():
-            removed, unknown = remove_package(self.found.scan.mods_dir / folder)
+            removed, unknown = remove_package(mods_dir / folder)
             for name in unknown:
                 log.warning(f"{folder}\\{name} wasn't written by the merger, so it stays")
             log.info(f"Removed the package{'' if removed else ' (its folder stays)'}")
@@ -1929,12 +1971,14 @@ class MergerWindow:
         be deleted until it's done, so try again for a while. A second pass after that catches a write
         that started just before the block."""
         stop_writes()
+        assert self.found is not None   # (a merge runs)
         result = self.found.scan
         folder = next((mod.folder for mod in result.order if is_package_folder(mod.folder)), PACKAGE_FOLDER)
         package_dir = result.mods_dir / folder
 
         def delete():
             # Returns the error if it still fails after a while
+            error = None
             for _ in range(20):
                 try:
                     remove_package(package_dir)
@@ -2078,6 +2122,7 @@ class RateSection:
         shows as it did stays unset. While Smooth HUD is off, the HUD's inputs are kept as shown."""
         menus, game_fps, fg = self.menus.value(), self.game_fps.value(), self.fg_value()
         if self.unset is not None:
+            assert self.shown is not None   # set with unset
             if self.unset[0] is None and menus == self.shown[0]:
                 menus = None
             if self.unset[1] is None and (game_fps, fg) == self.shown[1:]:
@@ -2102,7 +2147,7 @@ class GameChooser:
         layout.setSpacing(4)
         self.rows = None    # the folders' grid (show makes it)
         self.layout = layout
-        layout.addWidget(button(CHOOSE_FOLDER, self.ask), 0, Qt.AlignLeft)
+        layout.addWidget(button(CHOOSE_FOLDER, self.ask), 0, Qt.AlignmentFlag.AlignLeft)
         self.message = label(wrap=True)
         layout.addWidget(self.message)
         self.say(LOOKING_FOR_GAME)
@@ -2249,8 +2294,8 @@ def show_error(parent, title, text):
 
 def ask_yes_no(parent, title, text, warning=False) -> bool:
     """A question, No the default"""
-    box = QMessageBox(QMessageBox.Warning if warning else QMessageBox.Question, title, text,
-                      QMessageBox.Yes | QMessageBox.No, parent)
-    box.setDefaultButton(QMessageBox.No)
-    return box.exec() == QMessageBox.Yes
+    box = QMessageBox(QMessageBox.Icon.Warning if warning else QMessageBox.Icon.Question, title, text,
+                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, parent)
+    box.setDefaultButton(QMessageBox.StandardButton.No)
+    return box.exec() == QMessageBox.StandardButton.Yes
 
