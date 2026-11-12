@@ -53,13 +53,7 @@ from ..swf_patcher.place_object import (
     read_matrix,
 )
 from ..swf_patcher.swf_tags import Tag, TagCode, build_sprite, parse_remove_object_depth
-from .swf_edit import AFTER_RESCALE, CantApply, FixKind, FixResult, SwfEdit
-
-NAME = "gwent-flipbook-fix"
-CONSEQUENCE = "in Gwent, the smoke, fire and sparks of card effects play at 24 fps"
-KIND = FixKind.SMOOTHUI_FIX
-# The flipbooks must be stretched: the fix fills the ticks the rescale adds between their frames
-PHASE = AFTER_RESCALE
+from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
 
 DEFINE_SHAPE, DEFINE_SHAPE3, DEFINE_SHAPE4 = 2, 32, 83
 SHAPE_CODES = (DEFINE_SHAPE, 22, DEFINE_SHAPE3, DEFINE_SHAPE4)
@@ -406,3 +400,11 @@ def _crossfade(tags: list[Tag], snaps: list, keys: list[int], frames: list[Frame
         before = state
     out.append(Tag(TagCode.END, b""))
     return out
+
+
+FIX = Fix(name="gwent-flipbook-fix",
+          kind=FixKind.SMOOTHUI_FIX,
+          consequence="in Gwent, the smoke, fire and sparks of card effects play at 24 fps",
+          apply=apply,
+          # The flipbooks must be stretched: the fix fills the ticks the rescale adds between their frames
+          phase=Phase.AFTER_RESCALE)

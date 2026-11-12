@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 import struct
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
-from typing import NamedTuple
 
 from ..swf import MalformedSwfError, swf_get_header_offsets
 from ..swf_patcher.abc_file import AbcFile, PoolAdditions, parse_abc, serialize_abc
@@ -22,19 +23,23 @@ from ..swf_patcher.swf_tags import (
     split_do_abc,
 )
 
-# When a fix runs (its module's PHASE; BEFORE_RESCALE if it has none): on the game's file, before the
-# rescale, or on the rescaled file (or the game's, if it isn't rescaled), for a fix that must keep the
-# in-between frames the rescale adds. Fixes that run before are covered by the rescale's verification.
-BEFORE_RESCALE, AFTER_RESCALE = "before rescale", "after rescale"
 # The tags that define a character (its id comes first): SWF's shapes, bitmaps, buttons, fonts, texts, sounds,
 # sprites, morph shapes and videos, and Scaleform's DefineExternalImage, DefineSubImage and DefineExternalImage2
 DEFINE_CODES = frozenset({2, 6, 7, 10, 11, 13, 14, 20, 21, 22, 32, 33, 34, 35, 36, 37, 39, 46, 48, 60, 75, 83, 84,
                           90, 91, 1001, 1008, 1009})
 
 
+class Phase(Enum):
+    """When a fix runs: on the game's file, before the rescale, or on the rescaled file (or the game's, if it
+    isn't rescaled), for a fix that must keep the in-between frames the rescale adds. Fixes that run before are
+    covered by the rescale's verification."""
+    BEFORE_RESCALE = "before rescale"
+    AFTER_RESCALE = "after rescale"
+
+
 class FixKind(Enum):
-    """What a fix is, for users (a fix module's KIND). Its value is the header of a message about it
-    missing, e.g. "Game bug fix missing: " + its CONSEQUENCE; a message may leave the header out."""
+    """What a fix is, for users (its Fix.kind). Its value is the header of a message about it missing, e.g.
+    "Game bug fix missing: " + its consequence; a message may leave the header out."""
     GAME_BUG = "Game bug fix missing:"              # a bug in the game's own file
     SMOOTHUI_FIX = "Smooth UI fix missing:"         # a problem Smooth UI's rescale causes (e.g. by interpolating)
     SMOOTHUI_FEATURE = "Smooth UI feature missing:"  # something Smooth UI adds
@@ -48,9 +53,28 @@ class CantApply(ValueError):
     """The file isn't as the fix expects (the game, or another mod, changed it), so it was left alone"""
 
 
-class FixResult(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class FixResult:
     sprites: list[int]  # ids of the sprites the fix changed; empty if there was nothing to fix
     detail: str         # what it did, or why there was nothing to do
+
+
+@dataclass(frozen=True, slots=True)
+class Fix:
+    """One fix: each fix module defines one, as FIX (see fixes/__init__.py)"""
+    name: str                                   # never renamed (see requires.FIX_NAMES)
+    kind: FixKind
+    consequence: str                            # what not having it means (see fixes/__init__.py)
+    apply: Callable[[SwfEdit], FixResult]       # raises CantApply if the file isn't as the fix expects
+    phase: Phase = Phase.BEFORE_RESCALE
+
+    def __post_init__(self):
+        if not self.consequence or self.consequence.endswith("."):
+            raise ValueError(f"{self.name}: a fix's consequence is a sentence without a full stop")
+
+    def missing_text(self) -> str:
+        """The message about the fix missing, e.g. "Game bug fix missing: in Gwent, ... (gwent-rain-loop-fix)\""""
+        return f"{self.kind.header} {self.consequence} ({self.name})"
 
 
 class AbcEdit:

@@ -33,7 +33,14 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from ..swf_patcher.abc_bytecode import NO_OP_NAMES, Instruction, assemble, disassemble
+from ..swf_patcher.abc_bytecode import (
+    NO_OP_NAMES,
+    Instruction,
+    assemble,
+    disassemble,
+    encode_getlocal,
+    read_local,
+)
 from ..swf_patcher.abc_file import (
     PACKAGE_NAMESPACE,
     AbcFile,
@@ -45,12 +52,7 @@ from ..swf_patcher.abc_file import (
 from ..swf_patcher.code_analysis import MovieAnalysis
 from ..swf_patcher.movie import SwfMovie
 from ..swf_patcher.swf_tags import Tag, TagCode
-from .swf_edit import AFTER_RESCALE, CantApply, FixKind, FixResult, SwfEdit
-
-NAME = "gwent-speed-options"
-CONSEQUENCE = "Smooth UI's Gwent speed settings do nothing"
-KIND = FixKind.SMOOTHUI_FEATURE
-PHASE = AFTER_RESCALE
+from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
 
 ABC_PATH = Path(__file__).with_name("gwent_speed.abc")
 PACKAGE, CLASS = "smoothui.gwent", "GwentSpeed"
@@ -72,7 +74,7 @@ FX_ONGOING_SUFFIX = "_Ongoing"          # weather on the rows, which CardFXManag
 # DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
 DO_ABC_LAZY = 1
 
-OP_GETLEX, OP_GETLOCAL0, OP_GETLOCAL, OP_GETPROPERTY, OP_CALLPROPVOID = 0x60, 0xD0, 0x62, 0x66, 0x4F
+OP_GETLEX, OP_GETLOCAL0, OP_GETPROPERTY, OP_CALLPROPVOID = 0x60, 0xD0, 0x66, 0x4F
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -119,10 +121,10 @@ def apply(swf: SwfEdit) -> FixResult:
         # and if the card is there already: GwentSpeed.onCardAtTarget(card, finishCallback); return null
         tween_to: _hook_tween_to(abc, tween_to,
                                  lambda local: bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                 + _getlocal(local) + bytes([OP_CALLPROPVOID])
+                                 + encode_getlocal(local) + bytes([OP_CALLPROPVOID])
                                  + encode_u30(on_card_tween) + encode_u30(1),
                                  bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                 + _getlocal(TWEEN_TO_CARD) + _getlocal(TWEEN_TO_CALLBACK) + bytes([OP_CALLPROPVOID])
+                                 + encode_getlocal(TWEEN_TO_CARD) + encode_getlocal(TWEEN_TO_CALLBACK) + bytes([OP_CALLPROPVOID])
                                  + encode_u30(on_card_at_target) + encode_u30(2)),
         # new Timer(GwentSpeed.opponentCardDelay, 1)
         ai_delay: _replace_ai_delay(abc, ai_delay, bytes([OP_GETLEX]) + encode_u30(speed_class)
@@ -130,7 +132,7 @@ def apply(swf: SwfEdit) -> FixResult:
         # ...; GwentSpeed.onOpponentCardSent(this)
         ai_sending: _insert_before_return(abc, ai_sending, f"{AI_CLASS}.state_begin_SendingCard", _this,
                                           lambda this: bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                          + _getlocal(this) + bytes([OP_CALLPROPVOID])
+                                          + encode_getlocal(this) + bytes([OP_CALLPROPVOID])
                                           + encode_u30(on_card_sent) + encode_u30(1)),
     }
     for spawner in FX_SPAWNERS:
@@ -138,7 +140,7 @@ def apply(swf: SwfEdit) -> FixResult:
         # ...; GwentSpeed.onCardFX(newCardFX); return ...
         bodies[method] = _insert_before_return(abc, method, f"{FX_CLASS}.{spawner}", _card_fx_local,
                                                lambda local: bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                               + _getlocal(local) + bytes([OP_CALLPROPVOID])
+                                               + encode_getlocal(local) + bytes([OP_CALLPROPVOID])
                                                + encode_u30(on_card_fx) + encode_u30(1))
     unit.replace_methods(bodies, additions)
     swf.insert_abc(Tag(TagCode.DO_ABC, struct.pack("<I", DO_ABC_LAZY) + PACKAGE.encode() + b"\0" + our_abc,
@@ -301,7 +303,7 @@ def _final_return(instructions: list[Instruction], description: str, only_return
     at = len(instructions) - 1
     if instructions[at].name == "returnvalue":
         # Before the statement, not between the value it pushes and the return
-        if len(instructions) < 2 or _local_of(instructions[at - 1]) is None:
+        if len(instructions) < 2 or read_local(instructions[at - 1]) is None:
             raise CantApply(f"{description}: expected it to end with return <local variable>")
         at -= 1
     return at
@@ -320,7 +322,7 @@ def _this(abc: AbcFile, instructions: list[Instruction], description: str) -> in
 
 def _returned_local(abc: AbcFile, instructions: list[Instruction], description: str) -> int:
     """The local variable a method's final `return <local variable>` returns"""
-    local = _local_of(instructions[-2]) if len(instructions) >= 2 and instructions[-1].name == "returnvalue" else None
+    local = read_local(instructions[-2]) if len(instructions) >= 2 and instructions[-1].name == "returnvalue" else None
     if local is None:
         raise CantApply(f"{description}: expected it to end with return <local variable>")
     return local
@@ -334,19 +336,6 @@ def _card_fx_local(abc: AbcFile, instructions: list[Instruction], description: s
     if len(made) != 1:
         raise CantApply(f"{description}: expected 1 new card effect stored in a variable, found {len(made)}")
     return made[0].args[0]
-
-
-def _local_of(ins: Instruction) -> int | None:
-    """The local variable (register) a getlocal instruction reads"""
-    if ins.name == "getlocal":
-        return ins.args[0]
-    if ins.name in ("getlocal0", "getlocal1", "getlocal2", "getlocal3"):
-        return int(ins.name[-1])
-    return None
-
-
-def _getlocal(local: int) -> bytes:
-    return bytes([OP_GETLOCAL0 + local]) if local <= 3 else bytes([OP_GETLOCAL]) + encode_u30(local)
 
 
 def _replace_ai_delay(abc: AbcFile, method: int, code: bytes) -> tuple[bytes, list]:
@@ -369,3 +358,10 @@ def _matches(abc: AbcFile, ins: Instruction, name: str, value: str) -> bool:
     if name == "pushstring":
         return abc.strings[ins.args[0]] == value
     return abc.name_of(ins.args[0]) == value
+
+
+FIX = Fix(name="gwent-speed-options",
+          kind=FixKind.SMOOTHUI_FEATURE,
+          consequence="Smooth UI's Gwent speed settings do nothing",
+          apply=apply,
+          phase=Phase.AFTER_RESCALE)

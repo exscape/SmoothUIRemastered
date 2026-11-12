@@ -12,11 +12,8 @@ from __future__ import annotations
 
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
 from ..swf_patcher.swf_tags import TagCode, parse_remove_object_depth
-from .swf_edit import FixKind, FixResult, SwfEdit
+from .swf_edit import Fix, FixKind, FixResult, SwfEdit
 
-NAME = "health-bar-glow-fix"
-CONSEQUENCE = "the brighter outline around the health bar stays"
-KIND = FixKind.SMOOTHUI_FEATURE
 BAR_CLASS = "BackgroundHealthIndicator"
 GLOW_NAME = "mcGainGlow"
 REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
@@ -38,3 +35,9 @@ def apply(swf: SwfEdit) -> FixResult:
             or (tag.code in REMOVE_CODES and parse_remove_object_depth(tag) in depths)]
     swf.replace_sprite(sprite_id, [tag for tag in tags if not any(tag is other for other in glow)])
     return FixResult([sprite_id], f"removed {GLOW_NAME} from {BAR_CLASS} ({len(glow)} tags)")
+
+
+FIX = Fix(name="health-bar-glow-fix",
+          kind=FixKind.SMOOTHUI_FEATURE,
+          consequence="the brighter outline around the health bar stays",
+          apply=apply)

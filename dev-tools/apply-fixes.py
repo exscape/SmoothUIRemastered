@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from smoothui.common import run_cli
-from smoothui.patcher.fixes import AFTER_RESCALE, BEFORE_RESCALE, FIXES, apply_fixes
+from smoothui.patcher.fixes import FIXES, Phase, apply_fixes
 from smoothui.patcher.swf import (
     SWF_COMPRESSED_SIGS,
     SWF_HEADER_SIZE,
@@ -47,7 +47,7 @@ def main():
     body = body[:struct.unpack_from("<I", data, 4)[0] - SWF_HEADER_SIZE]
 
     names, fixed, records = list(dict.fromkeys(args.fix)), body, []
-    for phase in (BEFORE_RESCALE, AFTER_RESCALE):
+    for phase in Phase:
         new, phase_records = apply_fixes(fixed, names, phase)
         fixed = fixed if new is None else new
         records += phase_records

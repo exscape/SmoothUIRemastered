@@ -96,7 +96,7 @@ from PySide6.QtWidgets import (  # pyright: ignore[reportMissingImports]
 from ..common import SmoothUIError, fail
 from ..files import stop_writes, write_file
 from ..launcher import CLOSED, LAUNCHER_EXE, PLAY
-from ..patcher.fixes import fix_consequence, fix_kind
+from ..patcher.fixes import get_fix
 from ..paths import APP_DIR, FROZEN, REPO_ROOT
 from ..windows import (
     MB_ICONERROR,
@@ -2211,7 +2211,7 @@ def fix_text(name):
     """What a missing fix means, e.g. "Game bug fix missing: in Gwent, the falling rain stops (gwent-rain-loop-fix)";
     only its name for a fix this merger doesn't know"""
     try:
-        return f"{fix_kind(name).header} {fix_consequence(name)} ({name})"
+        return get_fix(name).missing_text()
     except ValueError:
         return name
 

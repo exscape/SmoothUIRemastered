@@ -3,16 +3,16 @@ Smooth UI adds to them.
 
 A profile enables them per file, with "fix: NAME" (see config/profile_default.txt), or the user does in the
 merger's settings (see requires.OPTIONAL_FIXES). Each fix is a
-module here, with NAME, KIND, CONSEQUENCE, apply(swf: SwfEdit) -> FixResult and optionally PHASE (see
-swf_edit.py: most fixes run before the rescale). apply raises CantApply if the file isn't as the fix
-expects, and returns no sprites if there is nothing to fix (the bug is fixed in this version of the file).
-KIND (a FixKind) and CONSEQUENCE tell users what not having the fix means, so that they can choose
-whether to use a file the fix can't apply to (see merger/policy.py). A message shows the kind's header,
-then CONSEQUENCE: one sentence without a full stop, starting lowercase unless with a name, e.g. "Game
-bug fix missing: in Gwent, the falling rain stops for a frame on every loop".
+module here that defines FIX, a Fix (see swf_edit.py), and is listed in FIXES below. Its apply(swf: SwfEdit)
+-> FixResult raises CantApply if the file isn't as the fix expects, and returns no sprites if there is nothing
+to fix (the bug is fixed in this version of the file). Its phase says when it runs (most run before the
+rescale). Its kind (a FixKind) and consequence tell users what not having the fix means, so that they can
+choose whether to use a file the fix can't apply to (see merger/policy.py). A message shows the kind's
+header, then the consequence: one sentence without a full stop, starting lowercase unless with a name, e.g.
+"Game bug fix missing: in Gwent, the falling rain stops for a frame on every loop".
 
 Releases record the fixes they applied in their manifests, and the merger and compat builds for a
-release apply them again, so a fix's NAME also goes in smoothui/requires.py (older mergers refuse a
+release apply them again, so a fix's name also goes in smoothui/requires.py (older mergers refuse a
 release that requires a fix they don't have). Never rename a fix. Removing one (e.g. once the game fixes
 the bug) is fine, but releases that used it can then no longer be merged or get compat builds: move its
 requirement to RETIRED there, so the merger tells users to update Smooth UI.
@@ -41,18 +41,18 @@ from . import (
     text_stick_scroll_fix,
 )
 from .swf_edit import (
-    AFTER_RESCALE,
-    BEFORE_RESCALE,
     CantApply,
+    Fix,
     FixKind,
     FixResult,
+    Phase,
     SwfEdit,
 )
 
-FIXES = {fix.NAME: fix for fix in (book_fade_fix, book_stick_scroll_fix, gwent_3d_bug_fix, gwent_card_fx_filter_fix,
-                                   gwent_coin_shadow_fix, gwent_flipbook_fix, gwent_fog_intro_fix, gwent_frost_flicker_fix,
-                                   gwent_rain_loop_fix, gwent_speed_options, health_bar_glow_fix, hub_tab_hover_fix,
-                                   menu_slide_fix, text_stick_scroll_fix)}
+FIXES = {module.FIX.name: module.FIX for module in (
+    book_fade_fix, book_stick_scroll_fix, gwent_3d_bug_fix, gwent_card_fx_filter_fix, gwent_coin_shadow_fix,
+    gwent_flipbook_fix, gwent_fog_intro_fix, gwent_frost_flicker_fix, gwent_rain_loop_fix, gwent_speed_options,
+    health_bar_glow_fix, hub_tab_hover_fix, menu_slide_fix, text_stick_scroll_fix)}
 if set(FIXES) != FIX_NAMES:
     raise RuntimeError(f"requires.py's FIX_NAMES must list exactly the fixes: {', '.join(sorted(FIXES))}")
 
@@ -82,26 +82,19 @@ def check_fix_name(name: str):
         raise ValueError(f"unknown fix '{name}' (known fixes: {', '.join(FIXES)})")
 
 
-def fix_consequence(name: str) -> str:
-    """What not having a fix means (its CONSEQUENCE)"""
+def get_fix(name: str) -> Fix:
+    """The fix with this name (ValueError if there is none)"""
     check_fix_name(name)
-    return FIXES[name].CONSEQUENCE
+    return FIXES[name]
 
 
-def fix_kind(name: str) -> FixKind:
-    """What a fix is (its KIND)"""
-    check_fix_name(name)
-    return FIXES[name].KIND
-
-
-def apply_fixes(body: bytes, names, phase: str) -> tuple[bytes | None, list[FixRecord]]:
-    """Apply those of the named fixes that run in phase (BEFORE_RESCALE or AFTER_RESCALE), in order,
-    to a decompressed SWF body.
+def apply_fixes(body: bytes, names, phase: Phase) -> tuple[bytes | None, list[FixRecord]]:
+    """Apply those of the named fixes that run in phase, in order, to a decompressed SWF body.
 
     Returns (the new body, or None if nothing changed, a record per fix applied)."""
     for name in names:
         check_fix_name(name)
-    names = [name for name in names if getattr(FIXES[name], "PHASE", BEFORE_RESCALE) == phase]
+    names = [name for name in names if FIXES[name].phase is phase]
     if not names:
         return None, []
     swf = SwfEdit(body)
@@ -117,5 +110,5 @@ def apply_fixes(body: bytes, names, phase: str) -> tuple[bytes | None, list[FixR
     return (swf.body() if swf.changed else None), records
 
 
-__all__ = ["AFTER_RESCALE", "BEFORE_RESCALE", "FIXES", "CantApply", "FixKind", "FixOutcome", "FixRecord", "FixResult",
-           "SwfEdit", "apply_fixes", "check_fix_name", "fix_consequence", "fix_kind"]
+__all__ = ["FIXES", "CantApply", "Fix", "FixKind", "FixOutcome", "FixRecord", "FixResult", "Phase", "SwfEdit",
+           "apply_fixes", "check_fix_name", "get_fix"]

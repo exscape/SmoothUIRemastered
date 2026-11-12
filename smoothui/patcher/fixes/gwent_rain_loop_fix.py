@@ -17,12 +17,8 @@ from __future__ import annotations
 from ..swf_patcher.interpolation import DisplayState, simulate_timeline
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
 from ..swf_patcher.swf_tags import TagCode
-from .swf_edit import AFTER_RESCALE, CantApply, FixKind, FixResult, SwfEdit
+from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
 
-NAME = "gwent-rain-loop-fix"
-CONSEQUENCE = "in Gwent, the falling rain stops for a frame on every loop"
-KIND = FixKind.GAME_BUG
-PHASE = AFTER_RESCALE
 RAIN_CLASS = "CardFXRain_Ongoing"
 
 
@@ -98,3 +94,10 @@ def _split_frames(tags) -> tuple[list[list], list]:
             frames.append(current)
             current = []
     return frames, current
+
+
+FIX = Fix(name="gwent-rain-loop-fix",
+          kind=FixKind.GAME_BUG,
+          consequence="in Gwent, the falling rain stops for a frame on every loop",
+          apply=apply,
+          phase=Phase.AFTER_RESCALE)

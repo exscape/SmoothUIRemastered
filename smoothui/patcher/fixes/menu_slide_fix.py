@@ -15,11 +15,8 @@ from __future__ import annotations
 
 from ..swf_patcher.abc_bytecode import Instruction, assemble, disassemble
 from ..swf_patcher.abc_file import AbcFile
-from .swf_edit import FixKind, FixResult, SwfEdit
+from .swf_edit import Fix, FixKind, FixResult, SwfEdit
 
-NAME = "menu-slide-fix"
-CONSEQUENCE = "this menu still slides when it opens and closes"
-KIND = FixKind.SMOOTHUI_FEATURE
 CLASS = "red.core.CoreMenu"
 OFFSET = "SHOW_ANIM_OFFSET"
 HIDE = "hideAnimation"
@@ -68,3 +65,9 @@ def _target_push(abc: AbcFile, instructions: list[Instruction]) -> int | None:
 
 def _is_zero(push: Instruction) -> bool:
     return push.name in ("pushbyte", "pushshort") and push.args == [0]
+
+
+FIX = Fix(name="menu-slide-fix",
+          kind=FixKind.SMOOTHUI_FEATURE,
+          consequence="this menu still slides when it opens and closes",
+          apply=apply)

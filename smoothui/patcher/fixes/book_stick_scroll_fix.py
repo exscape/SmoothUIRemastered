@@ -23,14 +23,8 @@ from ..swf_patcher.abc_bytecode import (
     disassemble,
 )
 from ..swf_patcher.abc_file import PACKAGE_NAMESPACE, AbcFile, PoolAdditions, encode_u30
-from .swf_edit import AFTER_RESCALE, CantApply, FixKind, FixResult, SwfEdit
+from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
 from .text_stick_scroll_fix import CLASS, PACKAGE, abc_bytes, insert_class
-
-NAME = "book-stick-scroll-fix"
-CONSEQUENCE = "in books, the left stick scrolls text slowly, a line at a time"
-KIND = FixKind.GAME_BUG
-# Code only: the rescale needn't see it
-PHASE = AFTER_RESCALE
 
 METHOD = "textAreaNavigation"
 TEXT_CLASS = "scaleform.clik.controls.TextArea"
@@ -91,3 +85,11 @@ def _find_navigation(abc: AbcFile, instructions: list[Instruction]) -> tuple[int
                for ins, (name, prop) in zip(window, pattern)):
             matches.append((real[k], real[k + 2]))
     return matches[0] if len(matches) == 1 else None
+
+
+FIX = Fix(name="book-stick-scroll-fix",
+          kind=FixKind.GAME_BUG,
+          consequence="in books, the left stick scrolls text slowly, a line at a time",
+          apply=apply,
+          # Code only: the rescale needn't see it
+          phase=Phase.AFTER_RESCALE)

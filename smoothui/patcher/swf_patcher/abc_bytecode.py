@@ -63,6 +63,7 @@ OP_PUSHBYTE = 0x24
 OP_PUSHSHORT = 0x25
 OP_PUSHDOUBLE = 0x2F
 OP_LOOKUPSWITCH = 0x1B
+OP_GETLOCAL, OP_GETLOCAL0 = 0x62, 0xD0
 
 BRANCH_OPCODES = frozenset(op for op, (_, operands) in OPCODES.items() if operands == "s")
 
@@ -226,6 +227,16 @@ def integer_constant(abc: AbcFile, ins: Instruction) -> int | None:
 def local_register(ins: Instruction) -> int:
     """The register number of a getlocal/getlocalN/setlocal/setlocalN instruction"""
     return ins.args[0] if ins.name in ("getlocal", "setlocal") else int(ins.name[-1])
+
+
+def read_local(ins: Instruction) -> int | None:
+    """The register a getlocal/getlocalN instruction reads, otherwise None"""
+    return local_register(ins) if ins.name in ("getlocal", "getlocal0", "getlocal1", "getlocal2", "getlocal3") else None
+
+
+def encode_getlocal(local: int) -> bytes:
+    """A getlocal instruction for this register (getlocalN where there is one)"""
+    return bytes([OP_GETLOCAL0 + local]) if local <= 3 else bytes([OP_GETLOCAL]) + encode_u30(local)
 
 
 # --- Minimal stack model, used to find the operand expressions of a call ---

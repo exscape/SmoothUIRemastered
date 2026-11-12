@@ -7,7 +7,7 @@ code: the merger must be updated), or something RETIRED (a fix since removed: Sm
 Light: the merger's launch check imports it, so it must not import the patcher.
 """
 
-# The fixes in patcher/fixes/ (each one's NAME); patcher/fixes/__init__.py checks that this lists exactly
+# The fixes in patcher/fixes/ (each one's name); patcher/fixes/__init__.py checks that this lists exactly
 # them. To remove a fix, move its requirement to RETIRED.
 FIX_NAMES = frozenset({
     "book-fade-fix",

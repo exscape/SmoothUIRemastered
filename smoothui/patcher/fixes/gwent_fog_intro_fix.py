@@ -17,11 +17,8 @@ from __future__ import annotations
 from ..swf_patcher.interpolation import simulate_timeline
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
 from ..swf_patcher.swf_tags import TagCode, parse_remove_object_depth
-from .swf_edit import CantApply, FixKind, FixResult, SwfEdit, label_frames
+from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit, label_frames
 
-NAME = "gwent-fog-intro-fix"
-CONSEQUENCE = "in Gwent, the fog effect's intro usually jumps partway through"
-KIND = FixKind.GAME_BUG
 FOG_CLASS = "CardFXFog_Ongoing"
 REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
 
@@ -65,3 +62,9 @@ def _depth(tag) -> int | None:
     if tag.code in REMOVE_CODES:
         return parse_remove_object_depth(tag)
     return None
+
+
+FIX = Fix(name="gwent-fog-intro-fix",
+          kind=FixKind.GAME_BUG,
+          consequence="in Gwent, the fog effect's intro usually jumps partway through",
+          apply=apply)

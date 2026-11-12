@@ -12,11 +12,8 @@ so. The animator finds no target and does nothing.
 from __future__ import annotations
 
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
-from .swf_edit import CantApply, FixKind, FixResult, SwfEdit
+from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit
 
-NAME = "gwent-3d-bug-fix"
-CONSEQUENCE = "in Gwent, weather effects can draw far outside their rows, and causes flicker"
-KIND = FixKind.GAME_BUG
 FOG_BG_CLASS = r"gwint_game_fla\.Fog_loop_bg_\d+"
 CHILD_NAME = "__id0_"
 
@@ -32,3 +29,9 @@ def apply(swf: SwfEdit) -> FixResult:
             raise CantApply(f"{class_name}'s {CHILD_NAME} is not transparent, so removing it would change the look")
     swf.replace_sprite(sprite_id, [tag for tag in tags if not any(tag is placement for placement in placements)])
     return FixResult([sprite_id], f"removed the 3D animator target {CHILD_NAME} from {class_name}")
+
+
+FIX = Fix(name="gwent-3d-bug-fix",
+          kind=FixKind.GAME_BUG,
+          consequence="in Gwent, weather effects can draw far outside their rows, and causes flicker",
+          apply=apply)

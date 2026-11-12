@@ -23,6 +23,8 @@ from ..swf_patcher.abc_bytecode import (
     assemble,
     branch_targets,
     disassemble,
+    encode_getlocal,
+    read_local,
 )
 from ..swf_patcher.abc_file import (
     PACKAGE_NAMESPACE,
@@ -32,13 +34,7 @@ from ..swf_patcher.abc_file import (
     parse_abc,
 )
 from ..swf_patcher.swf_tags import Tag, TagCode
-from .swf_edit import AFTER_RESCALE, CantApply, FixKind, FixResult, SwfEdit
-
-NAME = "text-stick-scroll-fix"
-CONSEQUENCE = "in Glossary and Journal > Quests, the right stick scrolls text too fast (speed depends on FPS)"
-KIND = FixKind.GAME_BUG
-# Code only: the rescale needn't see it
-PHASE = AFTER_RESCALE
+from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
 
 ABC_PATH = Path(__file__).with_name("text_stick_scroll.abc")
 PACKAGE, CLASS, METHOD = "smoothui.text", "StickScroll", "scroll"
@@ -47,7 +43,7 @@ HANDLER = "handleCustomInput"
 # DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
 DO_ABC_LAZY = 1
 
-OP_GETLEX, OP_GETLOCAL0, OP_GETLOCAL, OP_CALLPROPVOID = 0x60, 0xD0, 0x62, 0x4F
+OP_GETLEX, OP_GETLOCAL0, OP_CALLPROPVOID = 0x60, 0xD0, 0x4F
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -80,7 +76,7 @@ def apply(swf: SwfEdit) -> FixResult:
     scroll_class = additions.qname(additions.namespace(PACKAGE_NAMESPACE, PACKAGE), CLASS)
     scroll = additions.qname(additions.namespace(PACKAGE_NAMESPACE, ""), METHOD)
     # StickScroll.scroll(this, tilt): at most 3 values on the stack, as the code it replaces
-    call = (bytes([OP_GETLEX]) + encode_u30(scroll_class) + bytes([OP_GETLOCAL0]) + _getlocal(tilt)
+    call = (bytes([OP_GETLEX]) + encode_u30(scroll_class) + bytes([OP_GETLOCAL0]) + encode_getlocal(tilt)
             + bytes([OP_CALLPROPVOID]) + encode_u30(scroll) + encode_u30(2))
     edits = {first: call, **{i: b"" for i in range(first + 1, last + 1)}}
     unit.replace_methods({method: assemble(body.code, instructions, edits, body.exceptions)}, additions)
@@ -116,24 +112,19 @@ def _find_scroll(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, in
     for k in range(len(real) - len(pattern) + 1):
         window = [instructions[i] for i in real[k:k + len(pattern)]]
         if all(_matches(abc, ins, name, prop) for ins, (name, prop) in zip(window, pattern)):
-            matches.append((real[k], real[k + len(pattern) - 1], _local_of(window[3])))
+            matches.append((real[k], real[k + len(pattern) - 1], read_local(window[3])))
     return matches[0] if len(matches) == 1 else None
 
 
 def _matches(abc: AbcFile, ins: Instruction, name: str, prop: str | None) -> bool:
     if name == "getlocal":
-        return _local_of(ins) is not None
+        return read_local(ins) is not None
     return ins.name == name and (prop is None or abc.name_of(ins.args[0]) == prop)
 
 
-def _local_of(ins: Instruction) -> int | None:
-    """The local variable (register) a getlocal instruction reads"""
-    if ins.name == "getlocal":
-        return ins.args[0]
-    if ins.name in ("getlocal0", "getlocal1", "getlocal2", "getlocal3"):
-        return int(ins.name[-1])
-    return None
-
-
-def _getlocal(local: int) -> bytes:
-    return bytes([OP_GETLOCAL0 + local]) if local <= 3 else bytes([OP_GETLOCAL]) + encode_u30(local)
+FIX = Fix(name="text-stick-scroll-fix",
+          kind=FixKind.GAME_BUG,
+          consequence="in Glossary and Journal > Quests, the right stick scrolls text too fast (speed depends on FPS)",
+          apply=apply,
+          # Code only: the rescale needn't see it
+          phase=Phase.AFTER_RESCALE)

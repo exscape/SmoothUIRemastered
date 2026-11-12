@@ -19,7 +19,7 @@ from ..witcher3.bundle import BundleEntry, BundleError, make_entry
 from ..witcher3.redswf import CR2W_VERSION, RedSwf, RedSwfError, replace_swf, swf_sha256
 from . import dev_mode
 from .dev_mode import dev_make_body_hook, resolve_dev_target
-from .fixes import AFTER_RESCALE, BEFORE_RESCALE, apply_fixes
+from .fixes import Phase, apply_fixes
 from .game_timing import game_fps, not_game_timed
 from .swf import (
     FPS_FIXED_POINT_SCALE,
@@ -344,7 +344,7 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True, game_rat
         """Helper that is called on the decompressed SWF bytes, and patches them in place"""
         cut_after_end_tag(body)
         # Most fixes go first, so the rescale (and its verification) works on the fixed file
-        fixed, fix_records = apply_fixes(body, settings.fixes, BEFORE_RESCALE)
+        fixed, fix_records = apply_fixes(body, settings.fixes, Phase.BEFORE_RESCALE)
         if fixed is not None:
             body[:] = fixed
         result, keep = None, not settings.retime
@@ -360,7 +360,7 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True, game_rat
             assert result is not None   # only None when accept_plan rejects the plan
         if result.new_fps is not None:
             body[:] = result.body
-        fixed_after, records_after = apply_fixes(body, settings.fixes, AFTER_RESCALE)
+        fixed_after, records_after = apply_fixes(body, settings.fixes, Phase.AFTER_RESCALE)
         if fixed_after is not None:
             body[:] = fixed_after
         fix_records = sorted(fix_records + records_after, key=lambda record: settings.fixes.index(record.name))

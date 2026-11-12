@@ -14,11 +14,8 @@ from __future__ import annotations
 
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
 from ..swf_patcher.swf_tags import TagCode, parse_remove_object_depth
-from .swf_edit import CantApply, FixKind, FixResult, SwfEdit
+from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit
 
-NAME = "gwent-coin-shadow-fix"
-CONSEQUENCE = "in Gwent, the coin toss's shadow isn't in sync with the coin itself"
-KIND = FixKind.SMOOTHUI_FIX
 COIN_CLASSES = (r"gwint_game_fla\.COINA_\d+", r"gwint_game_fla\.COINB_\d+")
 SHADOW_DEPTH = 1
 REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
@@ -42,3 +39,9 @@ def apply(swf: SwfEdit) -> FixResult:
     if not sprites:
         return FixResult([], f"the coins have nothing on depth {SHADOW_DEPTH}")
     return FixResult(sprites, f"removed the shadow (depth {SHADOW_DEPTH}) from {', '.join(details)}")
+
+
+FIX = Fix(name="gwent-coin-shadow-fix",
+          kind=FixKind.SMOOTHUI_FIX,
+          consequence="in Gwent, the coin toss's shadow isn't in sync with the coin itself",
+          apply=apply)

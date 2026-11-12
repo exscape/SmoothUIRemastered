@@ -20,13 +20,7 @@ from ..swf_patcher.abc_bytecode import (
     disassemble,
 )
 from ..swf_patcher.abc_file import AbcFile
-from .swf_edit import AFTER_RESCALE, CantApply, FixKind, FixResult, SwfEdit
-
-NAME = "book-fade-fix"
-CONSEQUENCE = "in books read from the inventory, the text fades out and back in when opening and switching between books"
-KIND = FixKind.GAME_BUG
-# Code only: the rescale needn't see it
-PHASE = AFTER_RESCALE
+from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
 
 CLASS = "red.game.witcher3.menus.overlay.BookPopup"
 METHOD = "populateSingleBookData"
@@ -82,3 +76,11 @@ def _find_fade(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int]
             return None
         return real[k], jump
     return None
+
+
+FIX = Fix(name="book-fade-fix",
+          kind=FixKind.GAME_BUG,
+          consequence="in books read from the inventory, the text fades out and back in when opening and switching between books",
+          apply=apply,
+          # Code only: the rescale needn't see it
+          phase=Phase.AFTER_RESCALE)

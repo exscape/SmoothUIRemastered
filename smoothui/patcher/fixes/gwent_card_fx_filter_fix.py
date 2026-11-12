@@ -29,11 +29,8 @@ from ..swf_patcher.place_object import (
     rewrite_place_object,
 )
 from ..swf_patcher.swf_tags import Tag
-from .swf_edit import CantApply, FixKind, FixResult, SwfEdit
+from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit
 
-NAME = "gwent-card-fx-filter-fix"
-CONSEQUENCE = "in Gwent, the Hero and Decoy card effects have graphical issues"
-KIND = FixKind.GAME_BUG
 HERO_CLASS = "CardFXHero"
 DUMMY_CLASS = "CardFXDummy"
 FILTER_LIST = 0x01      # the display option that holds the filter list
@@ -128,3 +125,9 @@ def _color_matrix_to_cxform(class_name: str, tags: list[Tag]):
         new_tags.append(tag)
     return new_tags, ", ".join(f"depth {depth}: ColorMatrix -> colour transform x{cxform.mul_r / CXFORM_ONE:.3f} "
                                f"+{cxform.add_r}" for depth, cxform in done)
+
+
+FIX = Fix(name="gwent-card-fx-filter-fix",
+          kind=FixKind.GAME_BUG,
+          consequence="in Gwent, the Hero and Decoy card effects have graphical issues",
+          apply=apply)

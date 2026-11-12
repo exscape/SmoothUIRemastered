@@ -32,7 +32,7 @@ from typing import NamedTuple
 
 from ..build.release import ReleasePatch
 from ..common import fail
-from ..patcher.fixes import FixOutcome, fix_consequence, fix_kind
+from ..patcher.fixes import FixOutcome, get_fix
 from ..patcher.patcher_core import FailedFile, KeptFile, PatchedFile
 from ..witcher3.source_file import GAME_FILES, SourceFile
 from .installed import is_smoothui_folder
@@ -200,7 +200,7 @@ class PackageFile:
                          for issue in shown) or None
 
     def _fix_lines(self):
-        return [f"- {fix_kind(issue.fix).header} {fix_consequence(issue.fix)} ({issue.fix})"
+        return ["- " + get_fix(issue.fix).missing_text()
                 for issue in self.issues if issue.kind is IssueKind.FIX and issue.fix is not None]
 
     def _copy(self):
