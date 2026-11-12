@@ -25,10 +25,11 @@ from .load_order import Group
 from .scan import is_package_folder
 from .screens import by_group
 from .state import State, check
+from .status import Level
 
 log = logging.getLogger(__name__)
 
-LEVELS = {"ok": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
+LEVELS = {Level.OK: logging.INFO, Level.WARNING: logging.WARNING, Level.ERROR: logging.ERROR}
 # After the screens, if some can't be merged (see policy.PackageFile.to_report)
 REPORT = ("Please report the screens that can't be merged (Write a bug report... in the merger's window), with each "
           "mod's version. They can then be checked, and either merged, or marked as not working with Smooth UI.")

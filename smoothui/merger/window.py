@@ -153,14 +153,12 @@ from .gui_texts import (
     CONTINUE,
     COPY_REPORT,
     CREATE_SHORTCUT,
-    CRITICAL,
     CRITICAL_UPDATE,
     DATA,
     DATA_HEADING,
     DELETE_FAILED,
     DISPLAY_RATE,
     DOWNLOAD_PAGE,
-    ERROR,
     FAILED,
     FG_OFF,
     FPS_HEADING,
@@ -178,7 +176,6 @@ from .gui_texts import (
     HIDE_LOG,
     HUD_FPS,
     HUD_FPS_NOTE,
-    INFO,
     KNOWN_BROKEN_ANYWAY_NOTE,
     LATER,
     LAUNCHER,
@@ -191,12 +188,10 @@ from .gui_texts import (
     MENU_FPS_NOTE,
     MENU_FPS_RANGE,
     MERGER_VERSION,
-    NEUTRAL,
     NEWER_RELEASE,
     NO_LAUNCHER,
     NOTES_HEADING,
     NOTHING_FOUND,
-    OK,
     OPEN_DATA,
     OPEN_LICENSES,
     OPEN_LOG_FOLDER,
@@ -230,7 +225,6 @@ from .gui_texts import (
     TURN_ON,
     UNDO,
     UNKNOWN_FILES,
-    UPDATE,
     UPDATE_AVAILABLE,
     UPDATE_FAILED,
     UPDATE_FAILED_TITLE,
@@ -238,13 +232,13 @@ from .gui_texts import (
     UPDATE_NOW,
     UPDATED,
     VERSIONS_HEADING,
-    WARNING,
     WELCOME,
     WELCOME_HEADING,
     WHATS_NEW_TITLE,
     WRITE_BUG_REPORT,
     ZIP_NOTE,
     Card,
+    Tone,
     also_changed,
     anyway_texts,
     capitalized,
@@ -281,6 +275,7 @@ from .state import (
     carried_force,
     changed_since_off,
 )
+from .status import FileStatus
 
 if TYPE_CHECKING:
     from .builder import BuildResult
@@ -376,7 +371,7 @@ def apply_theme():
 
 def style_sheet(c) -> str:
     """The window's style sheet (STYLE), and texts and the card's border colored by tone (set_tone)"""
-    tones = (OK, INFO, WARNING, ERROR, "neutral")
+    tones = (Tone.OK, Tone.INFO, Tone.WARNING, Tone.ERROR, Tone.NEUTRAL)
     return STYLE.format(**c) + "\n".join([
         *(f'#card[tone="{tone}"] {{ border-color: {c[tone]}; }}' for tone in tones),
         *(f'QLabel[tone="{tone}"] {{ color: {c[tone]}; }}' for tone in tones),
@@ -428,7 +423,7 @@ def font(size=13, bold=False, family=FONT_FAMILY) -> QFont:
 
 
 def set_tone(widget, tone):
-    """Color a label's text, or the card's border, by tone (or "muted"; None: the normal color)"""
+    """Color a label's text, or the card's border, by tone (None: the normal color)"""
     if widget.property("tone") != tone:
         widget.setProperty("tone", tone)
         widget.style().unpolish(widget)
@@ -571,7 +566,7 @@ class MergerWindow:
         row.addWidget(self.settings_button)
         row.addWidget(button(HELP, self.open_help))
         header.addWidget(self.header_buttons, 0, 1)
-        self.context = label(tone="muted")
+        self.context = label(tone=Tone.MUTED)
         self.context.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)    # a long path is cut, not widening
         self.context.setContentsMargins(0, 8, 0, 8)     # (away from the buttons above it)
         header.addWidget(self.context, 1, 0, 1, 2)
@@ -845,7 +840,7 @@ class MergerWindow:
         for state, _, _, _ in self.rows.values():
             tone, status = row_status(state)
             line = f"{row_name(state)}: {status}" + (f" ({state.winner})" if state.winner else "")
-            lines.append(f"{line}: {capitalized(state.message)}" if tone == ERROR else line)
+            lines.append(f"{line}: {capitalized(state.message)}" if tone is Tone.ERROR else line)
         return lines + [text for text, _ in self.notes()] if self.found else lines
 
     def save_report_zip(self):
@@ -889,11 +884,11 @@ class MergerWindow:
         except SmoothUIError as e:
             log.error(f"The launcher shortcut can't be made: {e}")
             message.setText(f"{capitalized(str(e))}.")
-            set_tone(message, ERROR)
+            set_tone(message, Tone.ERROR)
         else:
             log.info(f"Launcher shortcut made: {path}")
             message.setText(SHORTCUT_MADE.format(name=SHORTCUT_NAME))
-            set_tone(message, OK)
+            set_tone(message, Tone.OK)
         message.show()
 
     def find_game_folders(self):
@@ -992,7 +987,7 @@ class MergerWindow:
             save_settings(settings, gui.DATA_DIR)
         except SmoothUIError as e:
             log.error(f"The settings can't be saved: {e}")
-            chooser.say(SETTINGS_NOT_SAVED.format(error=e), ERROR)
+            chooser.say(SETTINGS_NOT_SAVED.format(error=e), Tone.ERROR)
             return False
         log.info(f"Settings saved: the game folder is {folder}; update check {'on' if check_updates else 'off'}; "
                  f"HUD merging {'on' if smooth_hud else 'off'}; frame rates: menus "
@@ -1054,7 +1049,7 @@ class MergerWindow:
 
     def show_log(self, record):
         text = ("\n" if getattr(record, "heading", None) else "") + LogFormatter().format(record)
-        tone = ERROR if record.levelno >= logging.ERROR else WARNING if record.levelno >= logging.WARNING else None
+        tone = Tone.ERROR if record.levelno >= logging.ERROR else Tone.WARNING if record.levelno >= logging.WARNING else None
         style = QTextCharFormat()
         if tone:
             style.setForeground(QColor(colors()[tone]))
@@ -1112,9 +1107,9 @@ class MergerWindow:
         they change. Their buttons are off while a merge, a removal or an update runs."""
         notices = []
         if self.updated_from:
-            notices.append((UPDATED.format(version=tools_version()), OK, ()))
+            notices.append((UPDATED.format(version=tools_version()), Tone.OK, ()))
         if installed and installed.newer_release:
-            notices.append((NEWER_RELEASE.format(version=installed.newer_release), INFO,
+            notices.append((NEWER_RELEASE.format(version=installed.newer_release), Tone.INFO,
                             ((DOWNLOAD_PAGE, "files_page"),)))
         enabled = self.busy not in EXCLUSIVE
         if (notices, enabled) == self.notices_shown:
@@ -1154,7 +1149,7 @@ class MergerWindow:
             critical = self.update.critical
             text = CRITICAL_UPDATE if critical else UPDATE_AVAILABLE
             self.update_button.setText(text.format(version=self.update.version))
-            set_tone(self.update_button, CRITICAL if critical else UPDATE)
+            set_tone(self.update_button, Tone.CRITICAL if critical else Tone.UPDATE)
             self.update_button.setEnabled(self.busy not in EXCLUSIVE)
         self.update_button.setVisible(show)
         self.title.setVisible(not show)
@@ -1304,7 +1299,7 @@ class MergerWindow:
         if shown:
             self.list_heading(SCREENS_HEADING)
             if any("merged" in row_status(state)[1].lower() for state, _ in shown):
-                note = label(SCREENS_NOTE, tone="muted", wrap=True)
+                note = label(SCREENS_NOTE, tone=Tone.MUTED, wrap=True)
                 note.setContentsMargins(0, 0, 0, 4)
                 self.list_grid.addWidget(note, self.list_row, 0, 1, 6)
                 self.list_row += 1
@@ -1341,11 +1336,11 @@ class MergerWindow:
         details, in the grid row below it, kept for them"""
         tone, status = row_status(state)
         if change := self.changes.get(state.path):
-            tone, status = INFO, (TO_OWN_COPY if change.off else TO_SMOOTH)
+            tone, status = Tone.INFO, (TO_OWN_COPY if change.off else TO_SMOOTH)
         toggle = lambda: self.toggle_row(state.path)
         cells = [glyph(tone, on_click=toggle), label(row_name(state), on_click=toggle),
-                 label(row_mods(state), tone="muted", on_click=toggle), label(status, on_click=toggle),
-                 label("▸", 16, tone="muted", on_click=toggle, family=SYMBOL_FONT)]
+                 label(row_mods(state), tone=Tone.MUTED, on_click=toggle), label(status, on_click=toggle),
+                 label("▸", 16, tone=Tone.MUTED, on_click=toggle, family=SYMBOL_FONT)]
         cells[0].setFixedWidth(24)
         assert self.list_grid is not None   # (while the list is made)
         for column, cell in enumerate(cells):
@@ -1354,7 +1349,7 @@ class MergerWindow:
         self.rows[state.path] = (state, cells, self.list_row + 1, members)
         self.row_of.update((file.path, state.path) for file in members)
         self.list_row += 2
-        if (tone == ERROR or state.fixes) and state.path not in self.auto_opened:
+        if (tone is Tone.ERROR or state.fixes) and state.path not in self.auto_opened:
             self.auto_opened.add(state.path)    # the status alone doesn't say what went wrong
             self.expanded.add(state.path)
         if state.path in self.expanded:
@@ -1391,26 +1386,28 @@ class MergerWindow:
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 6, 12, 10)
         layout.setSpacing(6)
-        layout.addWidget(label(row_label(state, members), tone="muted", wrap=True))
+        layout.addWidget(label(row_label(state, members), tone=Tone.MUTED, wrap=True))
         off = dont_merge(members)
         chosen = {self.found.scan.screens_off[file.path] for file in members
-                  if file.cause == "by choice" and file.path in self.found.scan.screens_off}
+                  if file.cause is FileStatus.BY_CHOICE and file.path in self.found.scan.screens_off}
         layout.addWidget(label(capitalized(state.message) + (":" if state.fixes else ""), wrap=True))
         for name in state.fixes:
             layout.addWidget(label(f"•  {fix_text(name)}", wrap=True))
         if not state.group and (also := also_changed(self.found.scan.files[path], state.winner)):
             layout.addWidget(label(also, wrap=True))
         actions = []    # (text, note, command)
-        left = [file.path for file in members if file.state == State.NOT_HELD and file.cause in ("left out", "known broken")]
-        known_broken = any(file.state == State.NOT_HELD and file.cause == "known broken" for file in members)
+        left = [file.path for file in members if file.state is State.NOT_HELD
+                and file.cause in (FileStatus.LEFT_OUT, FileStatus.KNOWN_BROKEN)]
+        known_broken = any(file.state is State.NOT_HELD and file.cause is FileStatus.KNOWN_BROKEN for file in members)
         # A group with a file that can't be merged at all stays left out, forced or not
-        failed = any(file.state == State.NOT_HELD and file.cause == "failed" for file in members)
+        failed = any(file.state is State.NOT_HELD and file.cause is FileStatus.FAILED for file in members)
         if path in self.changes:
             text, note, command = UNDO, "", lambda: self.undo_change(path)
         elif left and not failed and known_broken:
             text, note = PATCH_ANYWAY, KNOWN_BROKEN_ANYWAY_NOTE
             question = known_broken_question(sorted({file.winner for file in members if file.state == State.NOT_HELD
-                                                     and file.cause == "known broken"}, key=str.lower), row_name(state))
+                                                     and file.cause is FileStatus.KNOWN_BROKEN}, key=str.lower),
+                                             row_name(state))
             command = lambda: ask_yes_no(self.root, PATCH_ANYWAY_TITLE, question, warning=True) and self.mark_change(
                 path, Change(anyway=tuple(left)))
         elif left and not failed:
@@ -1450,15 +1447,15 @@ class MergerWindow:
         """(text, tone): the scan's problems, the compat patches, and the last merge's problems and notes"""
         assert self.found is not None   # (called once it scanned)
         result = self.found.scan
-        notes = [(problem.message, WARNING) for problem in result.problems]
+        notes = [(problem.message, Tone.WARNING) for problem in result.problems]
         if self.merged is not None:
-            notes += [(problem, ERROR) for problem in self.merged.check_problems]
-            notes += [(note, INFO) for note in self.merged.notes]
+            notes += [(problem, Tone.ERROR) for problem in self.merged.check_problems]
+            notes += [(note, Tone.INFO) for note in self.merged.notes]
             if unknown := self.merged.installation.written.unknown_files:
-                notes.append((UNKNOWN_FILES.format(names=", ".join(unknown)), INFO))
+                notes.append((UNKNOWN_FILES.format(names=", ".join(unknown)), Tone.INFO))
         else:
             held = {state.path for state in self.found.states if state.state == State.UP_TO_DATE}
-            notes += [(COMPAT_REMOVABLE.format(folder=folder), INFO) for folder in result.removable_compat(held)]
+            notes += [(COMPAT_REMOVABLE.format(folder=folder), Tone.INFO) for folder in result.removable_compat(held)]
         return [(capitalized(text), tone) for text, tone in notes]
 
     # ---- The scan ----
@@ -1504,7 +1501,7 @@ class MergerWindow:
             for problem in self.found.scan.problems:
                 log.warning(problem.message)
             for tone, line in group_log_lines(self.found.states):
-                log.log(logging.WARNING if tone in (ERROR, WARNING) else logging.INFO, line)
+                log.log(logging.WARNING if tone in (Tone.ERROR, Tone.WARNING) else logging.INFO, line)
         self.merges_now = {}
         self.keep_changes()
         self.try_merging()
@@ -1727,7 +1724,7 @@ class MergerWindow:
             state = states.get(path)
             return state is not None and found.scan.files[path].winner is not None and (
                 state.state in (State.NOT_BUILT, State.DAMAGED)
-                or (state.state == State.NOT_HELD and state.cause in ("left out", "known broken")))
+                or (state.state is State.NOT_HELD and state.cause in (FileStatus.LEFT_OUT, FileStatus.KNOWN_BROKEN)))
 
         def applies(change):
             return (all(path in states and (states[path].winner or "").lower() == mod.lower() for path, mod in change.off)
@@ -2032,7 +2029,7 @@ class RateSection:
         self.display_text = ""
         layout.addLayout(self.row((MENU_FPS, self.menus)))
         layout.addWidget(self.display)
-        self.menus_warning = label(tone=WARNING, wrap=True)
+        self.menus_warning = label(tone=Tone.WARNING, wrap=True)
         layout.addWidget(self.menus_warning)
         layout.addSpacing(10)
         self.hud_box = QCheckBox(SMOOTH_HUD.replace("&", "&&"))
@@ -2044,14 +2041,14 @@ class RateSection:
         self.fg.addItems([FG_OFF, *(f"{n}x" for n in FG_MULTIPLIERS[1:])])
         self.fg.currentIndexChanged.connect(self.changed)
         layout.addLayout(self.row((HUD_FPS, self.game_fps), (FRAME_GENERATION, self.fg)))
-        self.hud_note = label(HUD_FPS_NOTE, tone="muted", wrap=True)
+        self.hud_note = label(HUD_FPS_NOTE, tone=Tone.MUTED, wrap=True)
         layout.addWidget(self.hud_note)
         self.advice = label(wrap=True)
         layout.addWidget(self.advice)
-        self.hud_warning = label(tone=WARNING, wrap=True)
+        self.hud_warning = label(tone=Tone.WARNING, wrap=True)
         layout.addWidget(self.hud_warning)
         layout.addSpacing(10)
-        layout.addWidget(label(FPS_UNSURE, tone="muted", wrap=True))
+        layout.addWidget(label(FPS_UNSURE, tone=Tone.MUTED, wrap=True))
         layout.addWidget(QLabel(f'<a href="{TOOLS_README_URL}#frame-rates">{FPS_LINK}</a>', openExternalLinks=True))
 
     @staticmethod
@@ -2090,13 +2087,13 @@ class RateSection:
         lowest, highest = FPS_RANGES["target_fps"]
         menus_ok = self.menus_valid()
         self.display.setText(self.display_text if menus_ok else MENU_FPS_RANGE.format(lowest=lowest, highest=highest))
-        set_tone(self.display, "muted" if menus_ok else ERROR)
+        set_tone(self.display, Tone.MUTED if menus_ok else Tone.ERROR)
         on = self.hud_box.isChecked()
         for widget in (self.game_fps, self.fg, self.hud_note, self.advice):
             widget.setEnabled(on)
         tone, text = hud_advice(self.game_fps.value(), self.fg_value(), self.frames and self.frames.cap)
         self.advice.setText(text)
-        set_tone(self.advice, tone if on and tone != NEUTRAL else "muted")
+        set_tone(self.advice, tone if on and tone is not Tone.NEUTRAL else Tone.MUTED)
         warnings = rate_warnings(self.frames, self.menus.value(), on, self.game_fps.value(), self.fg_value())
         for widget, text in zip((self.menus_warning, self.hud_warning), warnings):
             widget.setText(text)
@@ -2112,7 +2109,7 @@ class RateSection:
         return lowest <= self.menus.value() <= highest
 
     def hud_valid(self) -> bool:
-        return hud_advice(self.game_fps.value(), self.fg_value())[0] != ERROR
+        return hud_advice(self.game_fps.value(), self.fg_value())[0] is not Tone.ERROR
 
     def fg_value(self) -> int:
         return FG_MULTIPLIERS[self.fg.currentIndex()]
@@ -2173,7 +2170,7 @@ class GameChooser:
             radio = QRadioButton(str(folder.path).replace("&", "&&"))
             radio.clicked.connect(lambda checked=False: self.chosen())
             grid.addWidget(radio, index, 0)
-            grid.addWidget(label(folder.source or "", tone="muted"), index, 1)
+            grid.addWidget(label(folder.source or "", tone=Tone.MUTED), index, 1)
             self.radios.append(radio)
         self.layout.insertWidget(0, self.rows)
         index = next((index for index, folder in enumerate(self.folders) if same_folder(folder.path, selected)),
@@ -2192,7 +2189,7 @@ class GameChooser:
 
     def say(self, text, tone=None):
         self.message.setText(text)
-        set_tone(self.message, tone or "muted")
+        set_tone(self.message, tone or Tone.MUTED)
         self.message.setVisible(bool(text))
 
     def ask(self):
@@ -2203,7 +2200,7 @@ class GameChooser:
         try:
             folder = game_folder_of(Path(chosen))
         except SmoothUIError as e:
-            self.say(f"{capitalized(str(e))}.", ERROR)
+            self.say(f"{capitalized(str(e))}.", Tone.ERROR)
             return
         log.info(f"Game folder chosen: {folder}")
         self.show(self.folders, folder)
@@ -2235,7 +2232,7 @@ def bug_report_dialog(parent, text, save_zip) -> QDialog:
     edit = QPlainTextEdit(text)
     edit.setFont(font(12, family=MONO_FAMILY))
     layout.addWidget(edit, 1)
-    copied = label(tone="muted")
+    copied = label(tone=Tone.MUTED)
     link = QLabel(f'<a href="{REPORT_URL}">{REPORT_LINK}</a>', openExternalLinks=True)
 
     def copy():
@@ -2248,7 +2245,7 @@ def bug_report_dialog(parent, text, save_zip) -> QDialog:
     row.addStretch()
     row.addWidget(link)
     layout.addLayout(row)
-    layout.addWidget(label(ZIP_NOTE, wrap=True, tone="muted"))
+    layout.addWidget(label(ZIP_NOTE, wrap=True, tone=Tone.MUTED))
     zip_row = QHBoxLayout()
     zip_row.addWidget(button(SAVE_ZIP, save_zip))
     zip_row.addStretch()
@@ -2278,7 +2275,7 @@ def whats_new_dialog(parent, update) -> QDialog:
             QTextCursor(block).mergeBlockFormat(spaced)
         block = block.next()
     layout.addWidget(notes, 1)
-    layout.addWidget(label(UPDATE_NOTE, wrap=True, tone="muted"))
+    layout.addWidget(label(UPDATE_NOTE, wrap=True, tone=Tone.MUTED))
     row = QHBoxLayout()
     row.setSpacing(8)
     row.addStretch()

@@ -38,6 +38,7 @@ from ..witcher3.source_file import SourceFile
 from .installed import Installed, installed_build, is_smoothui_folder
 from .load_order import Mod, compare, load_order, make_mods, undetermined_for
 from .screens import file_name, screen_name
+from .status import FromGame
 
 log = logging.getLogger(__name__)
 
@@ -157,10 +158,8 @@ class Scan:
     hud_fps: int | None = None
     # The optional fixes to apply (see requires.OPTIONAL_FIXES)
     optional_fixes: frozenset[str] = frozenset()
-    # The files whose winner is the game's own copy, and why: {profile key: "merger-only" (no download holds
-    # it), "fps" (the menus' rate isn't the installed build's), "game" (the game's copy changed since the
-    # installed build's release) or "optional" (an optional fix was chosen for it)}
-    from_game: dict[str, str] = field(default_factory=dict)
+    # The files whose winner is the game's own copy, and why
+    from_game: dict[str, FromGame] = field(default_factory=dict)
 
     def fps_of(self, key: str) -> int:
         """The frame rate to patch a file (profile key) for (of a scan that found a usable Smooth UI)"""
@@ -233,9 +232,9 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     target_fps = target_fps or installed.fps
     hud_fps = hud_fps or installed.fps
     # The files built from the game's copy where no other mod ships them: {key: why} (see Scan.from_game)
-    merger_only = {key: "merger-only" for key, record in records.items() if game_copy(record) == MERGER_ONLY}
+    merger_only = {key: FromGame.MERGER_ONLY for key, record in records.items() if game_copy(record) == MERGER_ONLY}
     if target_fps != installed.fps:
-        merger_only = {key: "fps" for key in keys - unused} | merger_only
+        merger_only = {key: FromGame.FPS for key in keys - unused} | merger_only
     off = {key for key, record in records.items() if record.get("group") in groups_off}
     # The folders of the groups' files, but those turned off: {folder: group}
     group_dirs = {posixpath.dirname(key): record["group"] for key, record in records.items()
@@ -255,8 +254,8 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
     # The game's copies of the shipped files too (only their TOC entries), to tell a game update
     optional = {key for fix in optional_fixes for key in OPTIONAL_FIXES[fix]} & (keys - unused)
     game = _game_copies(game_path, keys - unused - off, (merger_only.keys() | optional) - off, problems)
-    merger_only |= {key: "game" for key, copy in game.items() if key not in merger_only and _game_updated(records[key], copy)}
-    merger_only |= {key: "optional" for key in optional if key not in merger_only}
+    merger_only |= {key: FromGame.GAME for key, copy in game.items() if key not in merger_only and _game_updated(records[key], copy)}
+    merger_only |= {key: FromGame.OPTIONAL for key in optional if key not in merger_only}
 
     files = {}
     for key in sorted(group_of.keys() | keys):

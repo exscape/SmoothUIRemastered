@@ -38,27 +38,11 @@ from .installed import is_smoothui_folder
 from .scan import COMPAT_PATCH, Scan
 from .screens import file_name, screen_label
 from .state import merged_anyway, not_merged, original_frame_rate, played_slowly
+from .status import FileStatus, Level, Reason
 
 # A copy kept at a rate above the target counts as playing slowly below this speed (e.g. a 120 fps copy below
 # 102 fps); a little slower than made for is hard to notice
 SLOW_BELOW = 0.85
-
-
-class FileStatus(Enum):
-    PATCHED = "patched"             # in the package
-    FORCED = "forced"               # in the package although its rescale had problems, as the user asked
-    LEFT_OUT = "left out"           # its rescale had problems, so it isn't in the package (it can be forced)
-    KNOWN_BROKEN = "known broken"   # its mod's copy is known not to work with Smooth UI, so it isn't in the
-                                    # package (it can be forced)
-    UNCHANGED = "unchanged"         # nothing changed it: its own frame rate is kept (at or above the target, or
-                                    # already rescaled, see patcher_core.ALREADY_RESCALED_FPS), and each of its
-                                    # fixes wasn't needed (or can't apply): not needed in the package
-    FAILED = "failed"               # couldn't be patched, so it isn't in the package (it can't be forced)
-    GROUP_LEFT_OUT = "group left out"   # left out, as its group can't be merged whole (see the module's doc)
-
-    @property
-    def included(self) -> bool:
-        return self in (FileStatus.PATCHED, FileStatus.FORCED)
 
 
 class IssueKind(Enum):
@@ -79,7 +63,7 @@ class Issue:
     @property
     def keeps_out(self) -> bool:
         """Whether it keeps the file out of the package, unless forced"""
-        return self.kind != IssueKind.FIX
+        return self.kind is not IssueKind.FIX
 
 
 class AsIs(NamedTuple):
@@ -88,7 +72,7 @@ class AsIs(NamedTuple):
     path: str               # profile key
     source: SourceFile
     entry: object | None    # the copy as a BundleEntry; None if it can't be read: then the package can't hold it
-    status: str             # its status in the manifest (see package_manifest)
+    status: FileStatus      # its status in the manifest (see package_manifest)
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +94,7 @@ class PackageFile:
 
     @property
     def forced(self) -> bool:
-        return self.status == FileStatus.FORCED
+        return self.status is FileStatus.FORCED
 
     @property
     def entry(self):
@@ -141,32 +125,31 @@ class PackageFile:
     @property
     def known_broken(self) -> list[str]:
         """The reviews of the warnings that mean its copy is known not to work"""
-        return [issue.review for issue in self.issues if issue.kind == IssueKind.KNOWN_BROKEN and issue.review is not None]
+        return [issue.review for issue in self.issues if issue.kind is IssueKind.KNOWN_BROKEN and issue.review is not None]
 
     @property
     def fixes_not_applied(self) -> list[str]:
-        return [issue.fix for issue in self.issues if issue.kind == IssueKind.FIX and issue.fix is not None]
+        return [issue.fix for issue in self.issues if issue.kind is IssueKind.FIX and issue.fix is not None]
 
     @property
-    def severity(self) -> str:
-        """"ok" (as Smooth UI would patch it, or patched anyway as the user chose, or known not to work);
-        "warning" (without some fixes); or "error" (not in the package, although it needs to be)"""
-        if self.status == FileStatus.KNOWN_BROKEN:
-            return "ok"
+    def severity(self) -> Level:
+        """OK (as Smooth UI would patch it, or patched anyway as the user chose, or known not to work), WARNING
+        (without some fixes) or ERROR (not in the package, although it needs to be)"""
+        if self.status is FileStatus.KNOWN_BROKEN:
+            return Level.OK
         if self.status in (FileStatus.PATCHED, FileStatus.UNCHANGED, FileStatus.FORCED) and not self.fixes_not_applied:
-            return "ok"
+            return Level.OK
         # A group left out whole is consistent (the file that keeps it out is the error)
         if self.status.included or self.status in (FileStatus.UNCHANGED, FileStatus.GROUP_LEFT_OUT):
-            return "warning"
-        return "error"
+            return Level.WARNING
+        return Level.ERROR
 
     @property
-    def reason(self) -> str | None:
-        """Why its rescale has problems, in a word for the user (see state.WHY): "known broken" (a warning that
-        means its copy doesn't work), "code" (a warning that isn't reviewed) or "changes" (a setting that wasn't
-        followed, or no longer matches); None if none"""
+    def reason(self) -> Reason | None:
+        """Why its rescale has problems, in a word for the user (see state.WHY); None if none"""
         kinds = {issue.kind for issue in self.issues}
-        for kind, reason in ((IssueKind.KNOWN_BROKEN, "known broken"), (IssueKind.WARNING, "code"), (IssueKind.RULE, "changes")):
+        for kind, reason in ((IssueKind.KNOWN_BROKEN, Reason.KNOWN_BROKEN), (IssueKind.WARNING, Reason.CODE),
+                             (IssueKind.RULE, Reason.CHANGES)):
             if kind in kinds:
                 return reason
         return None
@@ -182,18 +165,18 @@ class PackageFile:
         screen_label); the others are indented: the fixes it lacks, and the technical details. A group's files
         left out with it say the same, so that they can be told as one (see screens.by_group)."""
         status, copy = self.status, self._copy()
-        if status == FileStatus.PATCHED:
+        if status is FileStatus.PATCHED:
             summary = f"merged ({copy})" + (", without some fixes:" if self.issues else "")
-        elif status == FileStatus.UNCHANGED:
+        elif status is FileStatus.UNCHANGED:
             summary = f"{copy[0].upper() + copy[1:] if self.mod == GAME_FILES else copy} runs at {self.fps:g} fps: used as it is" + (", without some fixes:" if self.issues else "")
-        elif status == FileStatus.FORCED:
+        elif status is FileStatus.FORCED:
             summary = merged_anyway(copy, self.reason) + (". Without some fixes:" if self.fixes_not_applied else ".")
-        elif status == FileStatus.GROUP_LEFT_OUT:
-            summary = f"{not_merged(status.value, copy, group=self.group, kept_out_by=self.error)} {self._runs()}"
+        elif status is FileStatus.GROUP_LEFT_OUT:
+            summary = f"{not_merged(status, copy, group=self.group, kept_out_by=self.error)} {self._runs()}"
         else:
-            reason = self.reason if status == FileStatus.LEFT_OUT else None
-            summary = f"{not_merged(status.value, copy, reason=reason)} {self._runs()}"
-        lines = self._fix_lines() if status.included or status == FileStatus.UNCHANGED else []
+            reason = self.reason if status is FileStatus.LEFT_OUT else None
+            summary = f"{not_merged(status, copy, reason=reason)} {self._runs()}"
+        lines = self._fix_lines() if status.included or status is FileStatus.UNCHANGED else []
         if self.speed is not None and self.result is not None:
             lines.append(played_slowly(self.result["report"]["target_fps"], self.speed))
         if details := self._details():
@@ -203,21 +186,21 @@ class PackageFile:
     def _details(self):
         """The technical reasons, for the log: the warnings' reviews (see mod_reviews.py), the settings'
         problems, the failure, the fixes that can't apply; none for a file left out with its group"""
-        if self.status == FileStatus.FAILED:
+        if self.status is FileStatus.FAILED:
             return self.error
-        if self.status == FileStatus.GROUP_LEFT_OUT:
+        if self.status is FileStatus.GROUP_LEFT_OUT:
             return None
         shown = self.issues
-        if self.status == FileStatus.KNOWN_BROKEN:
-            shown = [issue for issue in shown if issue.kind == IssueKind.KNOWN_BROKEN]
+        if self.status is FileStatus.KNOWN_BROKEN:
+            shown = [issue for issue in shown if issue.kind is IssueKind.KNOWN_BROKEN]
         elif self.status in (FileStatus.PATCHED, FileStatus.UNCHANGED):
-            shown = [issue for issue in shown if issue.kind == IssueKind.FIX]
+            shown = [issue for issue in shown if issue.kind is IssueKind.FIX]
         return "; ".join(issue.review if issue.review else f"{issue.fix}: {issue.message}" if issue.fix else issue.message
                          for issue in shown) or None
 
     def _fix_lines(self):
         return [f"- {fix_kind(issue.fix).header} {fix_consequence(issue.fix)} ({issue.fix})"
-                for issue in self.issues if issue.kind == IssueKind.FIX and issue.fix is not None]
+                for issue in self.issues if issue.kind is IssueKind.FIX and issue.fix is not None]
 
     def _copy(self):
         """The copy that was patched, for the user: the game's copy, or <mod>'s copy"""
@@ -227,7 +210,7 @@ class PackageFile:
         """What the game shows instead, as a sentence: the file's own copy (said of its whole group, if it is
         left out with it), or another"""
         if self.fallback is None or self.fallback == self.mod:
-            return original_frame_rate(self.group if self.status == FileStatus.GROUP_LEFT_OUT else None)
+            return original_frame_rate(self.group if self.status is FileStatus.GROUP_LEFT_OUT else None)
         return f"The game uses {self._fallback()} instead."
 
     def _fallback(self):
@@ -261,15 +244,15 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
         source = file.winner
         assert source is not None   # patch holds the winners
         fallback = file.loaded_without_package.folder if file.loaded_without_package else None
-        if status == FileStatus.FAILED:
+        if status is FileStatus.FAILED:
             files.append(PackageFile(path, source, status, error=result["error"], fallback=fallback))
             continue
         file_issues = issues[path]
-        if status == FileStatus.UNCHANGED:
+        if status is FileStatus.UNCHANGED:
             # Not rescaled, so its rescale settings (which then match nothing) and warnings don't apply
-            file_issues = [issue for issue in file_issues if issue.kind == IssueKind.FIX]
-        if status == FileStatus.PATCHED and any(issue.keeps_out for issue in file_issues):
-            known_broken = any(issue.kind == IssueKind.KNOWN_BROKEN for issue in file_issues)
+            file_issues = [issue for issue in file_issues if issue.kind is IssueKind.FIX]
+        if status is FileStatus.PATCHED and any(issue.keeps_out for issue in file_issues):
+            known_broken = any(issue.kind is IssueKind.KNOWN_BROKEN for issue in file_issues)
             status = (FileStatus.FORCED if path in force else
                       FileStatus.KNOWN_BROKEN if known_broken else FileStatus.LEFT_OUT)
         files.append(PackageFile(path, source, status, file_issues, result, fallback=fallback))
@@ -284,11 +267,11 @@ def _whole_groups(scan: Scan, files: list[PackageFile]) -> list[PackageFile]:
         groups[group].add(key)
     by_path = {file.path: file for file in files}
     def merged(file):   # in the package, or needs no patch
-        return file is not None and (file.status.included or file.status == FileStatus.UNCHANGED)
+        return file is not None and (file.status.included or file.status is FileStatus.UNCHANGED)
     causes = {}     # group: why it can't be merged whole
     for group, keys in sorted(groups.items()):
         missing = sorted(key for key in keys if not merged(by_path.get(key)))
-        broken = [file_name(key) for key in missing if key in by_path and by_path[key].status == FileStatus.KNOWN_BROKEN]
+        broken = [file_name(key) for key in missing if key in by_path and by_path[key].status is FileStatus.KNOWN_BROKEN]
         cant = [file_name(key) for key in missing if key in by_path and file_name(key) not in broken]
         no_copy = [file_name(key) for key in missing if key not in by_path]
         found = ([f"{_join(broken)} {'is' if len(broken) == 1 else 'are'} known not to work"] if broken else []) + \

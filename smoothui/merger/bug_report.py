@@ -29,6 +29,7 @@ from .game import MODS_SETTINGS_BACKUP, SETTINGS_FILE, frame_settings
 from .package import PACKAGE_MANIFEST, RECORDS
 from .scan import PACKAGE_FOLDER
 from .state import Check, State
+from .status import FileStatus
 
 FOLDER = "bug-reports"
 # The logs and merge reports in the data folder, of every generation kept (see files.rotate)
@@ -193,8 +194,8 @@ def _not_fully_merged(found: Check) -> list[str]:
     blanks for the user to fill in (their versions aren't on disk)"""
     mods = {}
     for file in found.states:
-        if file.winner and ((file.state == State.NOT_HELD and file.cause in ("left out", "failed"))
-                            or (file.state == State.UP_TO_DATE and (file.cause == "forced" or file.fixes))):
+        if file.winner and ((file.state is State.NOT_HELD and file.cause in (FileStatus.LEFT_OUT, FileStatus.FAILED))
+                            or (file.state is State.UP_TO_DATE and (file.cause is FileStatus.FORCED or file.fixes))):
             mods.setdefault(file.winner.lower(), file.winner)
     if not mods:
         return []

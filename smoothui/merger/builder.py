@@ -28,9 +28,10 @@ from ..witcher3.bundle import BundleError, read_entry
 from ..witcher3.mods_settings import read_mods_settings, write_entry
 from .game import MODS_SETTINGS_BACKUP
 from .package import Written, record_path, write_package
-from .policy import AsIs, FileStatus, PackageFile, decide
+from .policy import AsIs, PackageFile, decide
 from .scan import PACKAGE_FOLDER, Scan, entry_needed, is_package_folder, scan
 from .screens import file_name, screen_label
+from .status import FileStatus, Level
 
 log = logging.getLogger(__name__)
 
@@ -120,8 +121,8 @@ def as_is_copies(scan: Scan, files: list[PackageFile]) -> list[AsIs]:
     """The mods' copies that aren't merged, but that the game wouldn't load, as Smooth UI's copy comes first:
     the package holds them as they are, as a mod is installed for its changes. So the game gets what it would if
     the mod came first. Not a group's: it is merged whole or not at all, and Smooth UI doesn't ship the HUD."""
-    copies = [(file.path, file.source, file.status.value) for file in files if not file.status.included]
-    copies += [(key, copy, "by rule" if scan.screens_off[key].reason else "by choice")
+    copies = [(file.path, file.source, file.status) for file in files if not file.status.included]
+    copies += [(key, copy, FileStatus.BY_RULE if scan.screens_off[key].reason else FileStatus.BY_CHOICE)
                for key, copy in scan.off_copies.items()]
     return [AsIs(path, source, _read_copy(source), status) for path, source, status in copies
             if path not in scan.group_of and scan.files[path].smoothui_first and source.toc_entry is not None]
@@ -197,7 +198,7 @@ class BuildResult:
     def clean(self) -> bool:
         """Whether every file is patched as Smooth UI would, and nothing needs the user's attention"""
         return (not self.check_problems and not self.problems
-                and all(file.severity == "ok" for file in self.files)
+                and all(file.severity is Level.OK for file in self.files)
                 and not self.installation.written.unknown_files)
 
 
@@ -242,7 +243,7 @@ def merge_report(result: BuildResult, started: str) -> dict:
     return {
         "started": started,
         "smoothui": result.scan.installed.version,
-        "files": {file.path: {"mod": file.mod, "status": file.status.value,
+        "files": {file.path: {"mod": file.mod, "status": file.status,
                               "issues": [issue.message for issue in file.issues], "error": file.error,
                               "report": file.result["report"] if file.result else None}
                   for file in result.files},

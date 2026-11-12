@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from .. import mod_reviews
@@ -18,14 +19,26 @@ from .installed import Status
 from .scan import FileResult, is_own_folder
 from .screens import file_name, group_name, screen_label, screen_name
 from .state import Check, FileState, Severity, State
+from .status import Cause, FileStatus, Level, Reason
 
 if TYPE_CHECKING:
     from .builder import BuildResult
 
-# The card's tones (its color and glyph); UPDATE and CRITICAL: the button for a newer version, for a critical one
-NEUTRAL, OK, INFO, WARNING, ERROR, UPDATE, CRITICAL = "neutral", "ok", "info", "warning", "error", "update", "critical"
+
+class Tone(StrEnum):
+    """A text's tone: its color (theme.json) and the card's glyph"""
+    NEUTRAL = "neutral"
+    OK = "ok"
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    UPDATE = "update"       # the button for a newer version
+    CRITICAL = "critical"   # the button for a critical one
+    MUTED = "muted"         # a label's secondary text
+
+
 # Glyphs by tone, from Segoe UI Symbol (in Windows 10 and later)
-GLYPHS = {NEUTRAL: "", OK: "✓", INFO: "ⓘ", WARNING: "⚠", ERROR: "✕"}
+GLYPHS = {Tone.NEUTRAL: "", Tone.OK: "✓", Tone.INFO: "ⓘ", Tone.WARNING: "⚠", Tone.ERROR: "✕"}
 
 # ---- The window ----
 
@@ -237,7 +250,7 @@ class Card:
     merge, merge_and_play, merge_anyway, merge_anyway_and_play, play, abort, remove, remove_and_play, rescan,
     undo_changes, bug_report, smoothui_page, update.
     (The notices also use files_page.)"""
-    tone: str
+    tone: Tone
     headline: str
     sentences: tuple[str, ...] = ()
     buttons: tuple[tuple[str, str], ...] = ()
@@ -272,13 +285,14 @@ PLAY_WITHOUT_MERGING = {
 OPTIONAL_HEADLINE = "Merge to apply your change"
 OPTIONAL_COST = "Until you merge, the game keeps the previous look."
 OPTIONAL_PLAY = "Play without merging (change not applied)"
-TONES ={Severity.HIGH: ERROR, Severity.MEDIUM: WARNING, Severity.LOW: INFO}
+TONES ={Severity.HIGH: Tone.ERROR, Severity.MEDIUM: Tone.WARNING, Severity.LOW: Tone.INFO}
 
-# Causes are keyed by FileState.cause, or its state's value, and by policy.FileStatus's values, with "fixes"
+# Causes are keyed by FileState.cause, or its state (see _cause), and by a merge's FileStatus, with Cause.FIXES
 # for a copy merged without some fixes. The card names no screens: the list below it does. Those about
 # mods' copies name the mods: one sentence per kind (MOD_CAUSES), from MODS (for one mod, for more).
-MOD_CAUSES = {"updated": "changed", "load order": "changed", "no longer needed": "changed", "not built": "not merged",
-              "left out": "left out", "failed": "left out", "fixes": "fixes"}
+MOD_CAUSES = {Cause.UPDATED: "changed", Cause.LOAD_ORDER: "changed", State.NO_LONGER_NEEDED: "changed",
+              State.NOT_BUILT: "not merged", FileStatus.LEFT_OUT: "left out", FileStatus.FAILED: "left out",
+              Cause.FIXES: "fixes"}
 MODS = {
     "changed": ("{count} changed since the last merge: {mods}.", "{count} changed since the last merge: {mods}."),
     "not merged": ("{count} contains screens that aren't merged: {mods}.",
@@ -306,22 +320,24 @@ GAME_COPIES = {
 # Below the sentences about mods' copies (left out, or merged without some fixes)
 REPORT_MODS = f"Please report this ({WRITE_BUG_REPORT}), with each mod's version."
 NUMBERS = ("No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten")
-# The other causes, one sentence each: one with {mod} once per mod, one without it once
+# The other causes, one sentence each: one with {mod} once per mod, one without it once. _ENTRY: an OVERRIDDEN
+# file that a merge fixes, as the package's own mods.settings entry is the cause
+_ENTRY = "entry"
 CAUSES = {
-    "smoothui": "Smooth UI was updated.",
-    "merger": "The merger was updated.",
-    "fps": "The frame rate changed since the last merge.",
-    "game": "The game was updated since this Smooth UI's release: merge to rebuild its changed screens (untested).",
-    "damaged": "The merged patches are damaged.",
-    "entry": "The merged patches' mods.settings entry is missing or changed.",
-    "overridden": "{mod} has priority 0 too, and its name sorts first.",
-    "undetermined": "The load order doesn't decide which mod's copy the game uses for some screens.",
-    "group left out": "The HUD only works if all of it is merged, so it is left out.",
-    "setting": "The \"Smooth HUD\" setting changed since the last merge.",
-    "optional": "An optional change was turned on or off since the last merge.",
-    "by choice": "Your choice of screens not to merge changed since the last merge.",
-    "by rule": "Smooth UI's list of screens not to merge changed since the last merge.",
-    "smoothui first": "The game uses Smooth UI's copy of some screens, without your mods' changes.",
+    Cause.SMOOTHUI: "Smooth UI was updated.",
+    Cause.MERGER: "The merger was updated.",
+    Cause.FPS: "The frame rate changed since the last merge.",
+    Cause.GAME: "The game was updated since this Smooth UI's release: merge to rebuild its changed screens (untested).",
+    State.DAMAGED: "The merged patches are damaged.",
+    _ENTRY: "The merged patches' mods.settings entry is missing or changed.",
+    State.OVERRIDDEN: "{mod} has priority 0 too, and its name sorts first.",
+    State.UNDETERMINED: "The load order doesn't decide which mod's copy the game uses for some screens.",
+    FileStatus.GROUP_LEFT_OUT: "The HUD only works if all of it is merged, so it is left out.",
+    Cause.SETTING: "The \"Smooth HUD\" setting changed since the last merge.",
+    Cause.OPTIONAL: "An optional change was turned on or off since the last merge.",
+    FileStatus.BY_CHOICE: "Your choice of screens not to merge changed since the last merge.",
+    FileStatus.BY_RULE: "Smooth UI's list of screens not to merge changed since the last merge.",
+    Cause.SMOOTHUI_FIRST: "The game uses Smooth UI's copy of some screens, without your mods' changes.",
 }
 # What a Smooth UI that can't be used costs, beyond the mods' screens (by installed.Status)
 RISKS = {
@@ -346,11 +362,11 @@ def hud_speed(game_fps: int, fg: int, cap: int | None) -> float:
     return min(round(min(game_fps, cap or game_fps) / fg) / hud_rate(game_fps, fg)[0], 1.0)
 
 
-def hud_advice(game_fps: int, fg: int, cap: int | None = None) -> tuple[str, str]:
+def hud_advice(game_fps: int, fg: int, cap: int | None = None) -> tuple[Tone, str]:
     """The tone and text below the HUD's inputs (see game.hud_rate; cap: see hud_speed). The limit changes the
     speed it plays at, not what it's built for or how well that works."""
     rate, _, level = hud_rate(game_fps, fg)
-    tone = {"ok": NEUTRAL, "slowed": WARNING, "too-high": ERROR, "too-low": ERROR}[level]
+    tone = {"ok": Tone.NEUTRAL, "slowed": Tone.WARNING, "too-high": Tone.ERROR, "too-low": Tone.ERROR}[level]
     limited = level == "slowed" and cap and cap < game_fps
     shown = f"the game's {cap} fps limit" if limited else game_fps
     rendered = round(min(game_fps, cap) / fg) if limited and cap else round(game_fps / fg)
@@ -411,7 +427,7 @@ def status_card(found: Check | None, *, stale: bool, busy: str | None = None, sc
     leads with the update if there is one."""
     if busy == "update":
         fraction = progress[0] / progress[1] if progress and progress[1] else None
-        return Card(NEUTRAL, DOWNLOADING_UPDATE.format(version=update), busy=True, progress=fraction)
+        return Card(Tone.NEUTRAL, DOWNLOADING_UPDATE.format(version=update), busy=True, progress=fraction)
     card = _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_now, changes)
     if stale and not busy and found is not None and found.scan.installed.status == Status.UNKNOWN:
         if update:
@@ -429,12 +445,12 @@ def _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_
     if busy == "build":
         return _merging(stale, progress)
     if busy == "remove":
-        return Card(NEUTRAL, "Removing the merged patches...", busy=True)
+        return Card(Tone.NEUTRAL, "Removing the merged patches...", busy=True)
     if busy == "scan" or (found is None and scan_error is None):
         buttons = (("Play without waiting", "play"), DONT_START) if stale else ()
-        return Card(NEUTRAL, "Checking your mods...", buttons=buttons, default=False, busy=True)
+        return Card(Tone.NEUTRAL, "Checking your mods...", buttons=buttons, default=False, busy=True)
     if scan_error is not None:
-        return Card(ERROR, "Can't read your mods", (_sentence(scan_error),), (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
+        return Card(Tone.ERROR, "Can't read your mods", (_sentence(scan_error),), (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
     assert found is not None    # (the scan is done)
     # Smooth UI can't be used now (by the scan after the merge): merging again would fail, so it isn't offered.
     # (Downloaded manifests or reviews that may change that make the window scan again, without the merge's result.)
@@ -449,10 +465,10 @@ def _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_
             buttons = (("Merge again and play", "merge_and_play"), (_play_without_merging(found), "play"), DONT_START)
         else:
             buttons = (("Merge again", "merge"), (WRITE_BUG_REPORT, "bug_report"))
-        return Card(ERROR, "Merging failed", sentences, buttons)
+        return Card(Tone.ERROR, "Merging failed", sentences, buttons)
     if changes:
         headline = f"{_count(changes, 'change')} not applied yet"
-        return Card(INFO, headline, (), (("Merge and play", "merge_and_play") if stale else ("Merge", "merge"),
+        return Card(Tone.INFO, headline, (), (("Merge and play", "merge_and_play") if stale else ("Merge", "merge"),
                                          ("Undo changes", "undo_changes"), *((DONT_START,) if stale else ())))
     if merged is not None:
         return _merged(merged, stale, cant_merge)
@@ -472,7 +488,7 @@ def _play_without_merging(found: Check | None) -> str:
 
 def _only_optional(found: Check) -> bool:
     """Whether a merge is only asked for to apply an optional change"""
-    return all(file.cause == "optional" for file in found.states if file.severity is not None)
+    return all(file.cause is Cause.OPTIONAL for file in found.states if file.severity is not None)
 
 
 def _merging(stale, progress):
@@ -482,7 +498,7 @@ def _merging(stale, progress):
         headline, fraction = f"Merging: {progress[0]} of {_count(progress[1], 'screen')}", progress[0] / progress[1]
     else:
         headline, fraction = "Writing the merged patches...", 1.0
-    return Card(NEUTRAL, headline, ("The game starts when it's done.",) if stale else (), busy=True, progress=fraction)
+    return Card(Tone.NEUTRAL, headline, ("The game starts when it's done.",) if stale else (), busy=True, progress=fraction)
 
 
 def _merged(result: BuildResult, stale, cant_merge):
@@ -491,7 +507,7 @@ def _merged(result: BuildResult, stale, cant_merge):
     rules = [(key, scan.group_of.get(key), choice.mod, choice.reason) for key, choice in scan.screens_off.items()
              if choice.reason is not None]
     known = _screens(KNOWN_BROKEN, [*((file.path, file.group, file.mod) for file in result.files
-                                      if file.status.value == "known broken"),
+                                      if file.status is FileStatus.KNOWN_BROKEN),
                                     *((path, group, mod) for path, group, mod, reason in rules
                                       if reason == mod_reviews.KNOWN_BROKEN)])
     known += _by_rule([rule for rule in rules if rule[3] != mod_reviews.KNOWN_BROKEN])
@@ -504,23 +520,22 @@ def _merged(result: BuildResult, stale, cant_merge):
         text = _patched(included)
         headline = (f"Merged: {text}" if text else "Merged" if included
                     else "Merged: your mods' copies already run at a high frame rate"
-                    if any(file.status.value == "unchanged" for file in result.files)
+                    if any(file.status is FileStatus.UNCHANGED for file in result.files)
                     else "Nothing to merge")
-        return Card(INFO if slow else OK, headline, known,
+        return Card(Tone.INFO if slow else Tone.OK, headline, known,
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     causes = []
     for file in result.files:
-        status = file.status.value
-        if status in ("left out", "failed", "group left out"):
-            causes.append((status, _who(file.mod, file)))
+        if file.status in (FileStatus.LEFT_OUT, FileStatus.FAILED, FileStatus.GROUP_LEFT_OUT):
+            causes.append((file.status, _who(file.mod, file)))
         elif file.fixes_not_applied:
-            causes.append(("fixes", _who(file.mod, file)))
+            causes.append((Cause.FIXES, _who(file.mod, file)))
     notes = []
     if result.check_problems:
         notes.append("Some merged screens don't load as they should: see the notes below.")
     if result.problems or result.installation.written.unknown_files:
         notes.append("See the notes below.")
-    headline = ("Merged, but some screens couldn't be merged" if any(file.severity == "error" for file in result.files)
+    headline = ("Merged, but some screens couldn't be merged" if any(file.severity is Level.ERROR for file in result.files)
                 else "Merged, with problems")
     report = _report(causes)
     anyway = () if cant_merge else anyway_button(len(left_out(None, result)), stale)
@@ -530,15 +545,16 @@ def _merged(result: BuildResult, stale, cant_merge):
     buttons = ((PLAY_ANYWAY, *anyway, DONT_START) if stale
                else (*play, RESCAN, *anyway, *([(WRITE_BUG_REPORT, "bug_report")] if causes else [])))
     # (Not what is known not to work, or turned off: that is fine, and the problems come first)
-    return Card(WARNING, headline, _sentences(causes, [*report, *notes]), buttons)
+    return Card(Tone.WARNING, headline, _sentences(causes, [*report, *notes]), buttons)
 
 
 def left_out(found: Check | None, merged: BuildResult | None = None) -> list[str]:
     """The screens left out for problems with their rescale (never for a failure), which can be merged
     anyway: by the window's last merge if there is one (merged), else by the last check (found)"""
     if merged is not None:
-        return [file.path for file in merged.files if file.status.value == "left out"]
-    return [state.path for state in found.states if state.state == State.NOT_HELD and state.cause == "left out"] if found else []
+        return [file.path for file in merged.files if file.status is FileStatus.LEFT_OUT]
+    return ([state.path for state in found.states if state.state is State.NOT_HELD and state.cause is FileStatus.LEFT_OUT]
+            if found else [])
 
 
 def anyway_button(count: int, stale: bool) -> tuple[tuple[str, str], ...]:
@@ -552,7 +568,7 @@ def anyway_button(count: int, stale: bool) -> tuple[tuple[str, str], ...]:
 def anyway_texts(reasons) -> tuple[str, str]:
     """(the note by a row's Merge anyway, the card's question) for screens left out, by their reasons (see
     state.WHY): gentle if each one only uses code Smooth UI hasn't been checked with, which often works"""
-    if reasons and all(reason == "code" for reason in reasons):
+    if reasons and all(reason is Reason.CODE for reason in reasons):
         return PATCH_ANYWAY_CODE_NOTE, PATCH_ANYWAY_CODE_QUESTION
     return PATCH_ANYWAY_NOTE, PATCH_ANYWAY_QUESTION
 
@@ -567,19 +583,19 @@ def _checked(found: Check, stale, merges_now=()):
                          f"Remove them, or {'enable' if disabled else 'install'} Smooth UI again.")
             buttons = ((("Remove them and play", "remove_and_play"), PLAY_ANYWAY, DONT_START) if stale
                        else (("Remove the merged patches", "remove"), RESCAN))
-            return Card(ERROR, f"Smooth UI is {'disabled' if disabled else 'not installed'}, but its merged patches "
+            return Card(Tone.ERROR, f"Smooth UI is {'disabled' if disabled else 'not installed'}, but its merged patches "
                         "are still installed", sentences, buttons)
-        return Card(ERROR, "The merged patches don't fit the installed Smooth UI", (_sentence(installed.message),),
+        return Card(Tone.ERROR, "The merged patches don't fit the installed Smooth UI", (_sentence(installed.message),),
                     (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
     if not installed.usable:
         if found.scan.conflicts and installed.status in RISKS:
             card = _unusable(installed, stale)
             mods = f"These mods' screens may look wrong too: {_join(found.scan.conflicts)}."
-            return replace(card, tone=ERROR, sentences=(*card.sentences, *((mods,) if installed.status == Status.UNKNOWN else ())))
+            return replace(card, tone=Tone.ERROR, sentences=(*card.sentences, *((mods,) if installed.status == Status.UNKNOWN else ())))
         if found.scan.conflicts:
             sentences = (_sentence(installed.message),
                          f"Until then, these mods' screens may look wrong: {_join(found.scan.conflicts)}.")
-            return Card(ERROR, "Smooth UI can't be used with your mods right now", sentences,
+            return Card(Tone.ERROR, "Smooth UI can't be used with your mods right now", sentences,
                         (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
         return _unusable(installed, stale)
 
@@ -589,7 +605,7 @@ def _checked(found: Check, stale, merges_now=()):
         if not found.needs_build:
             # Only another mod at Priority 0 that sorts first: a merge changes nothing
             fix = "Give it a priority above 0 (in your mod manager or mods.settings), then re-scan."
-            return Card(WARNING, "Another mod loads before the merged patches", _sentences(causes, [fix]),
+            return Card(Tone.WARNING, "Another mod loads before the merged patches", _sentences(causes, [fix]),
                         (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
         severity = found.severity
         assert severity is not None     # stale
@@ -604,41 +620,42 @@ def _checked(found: Check, stale, merges_now=()):
     causes = [(_cause(file), _who(file.winner, file)) for file in found.states
               if file.state == State.UNDETERMINED
               or (file.state == State.NOT_HELD
-                  and file.cause not in ("unchanged", "turned off", "known broken", "by choice", "by rule"))
-              or file.cause == "fixes"]
+                  and file.cause not in (FileStatus.UNCHANGED, Cause.TURNED_OFF, FileStatus.KNOWN_BROKEN,
+                                         FileStatus.BY_CHOICE, FileStatus.BY_RULE))
+              or file.cause is Cause.FIXES]
     patched = [(file.winner, file.path, file.group) for file in found.states if file.state == State.UP_TO_DATE]
     known = _screens(KNOWN_BROKEN, ((file.path, file.group, file.winner) for file in found.states
-                                    if file.state == State.NOT_HELD and (file.cause == "known broken" or (
-                                        file.cause == "by rule" and file.reason == mod_reviews.KNOWN_BROKEN))))
+                                    if file.state is State.NOT_HELD and (file.cause is FileStatus.KNOWN_BROKEN or (
+                                        file.cause is FileStatus.BY_RULE and file.reason == mod_reviews.KNOWN_BROKEN))))
     known += _by_rule([(file.path, file.group, file.winner, file.reason) for file in found.states
-                       if file.state == State.NOT_HELD and file.cause == "by rule"
+                       if file.state is State.NOT_HELD and file.cause is FileStatus.BY_RULE
                        and file.reason != mod_reviews.KNOWN_BROKEN])
     slow = _slow((file.path, file.group, file.winner) for file in found.states if file.speed)
     known += slow
-    off = [file for file in found.states if file.state == State.NOT_HELD and file.cause == "by choice"]
+    off = [file for file in found.states if file.state is State.NOT_HELD and file.cause is FileStatus.BY_CHOICE]
     now_groups = {file.group for file in off if file.path in merges_now and file.group}
     now = [file for file in off if file.path in merges_now or file.group in now_groups]
     known += _screens(TURNED_OFF, ((file.path, file.group, file.winner) for file in off if file not in now))
     known += _screens(MERGES_NOW, ((file.path, file.group, file.winner) for file in now))
     if causes:
-        headline = ("Some screens are merged without all fixes" if all(cause == "fixes" for cause, _ in causes)
+        headline = ("Some screens are merged without all fixes" if all(cause is Cause.FIXES for cause, _ in causes)
                     else "Some screens can't be merged")
         anyway = anyway_button(len(left_out(found)), stale)
         buttons = (PLAY, *anyway, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge"), *anyway)
         # (Not for missing fixes alone: that card shows whenever the window opens, and a merge asks once)
         # (Not what is known not to work, or turned off: that is fine, and the problems come first)
-        return Card(WARNING, headline, _sentences(causes, _report(causes, fixes=False)), buttons)
+        return Card(Tone.WARNING, headline, _sentences(causes, _report(causes, fixes=False)), buttons)
     if patched:
         held = _patched(patched)
-        return Card(INFO if slow else OK, "Your merged patches are up to date",
+        return Card(Tone.INFO if slow else Tone.OK, "Your merged patches are up to date",
                     (*([f"They hold {held}."] if held else []), *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN, ("Merge again", "merge")))
-    if any(file.state == State.NOT_HELD and file.cause == "unchanged" for file in found.states):
-        return Card(OK, "Nothing to merge", ("Your mods' copies already run at a high frame rate.", *known),
+    if any(file.state is State.NOT_HELD and file.cause is FileStatus.UNCHANGED for file in found.states):
+        return Card(Tone.OK, "Nothing to merge", ("Your mods' copies already run at a high frame rate.", *known),
                     (PLAY, DONT_START) if stale else (PLAY, RESCAN))
     if known:
-        return Card(OK, "Nothing to merge", known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
-    return Card(OK, "Nothing to merge", ("No other mod changes Smooth UI's screens.",),
+        return Card(Tone.OK, "Nothing to merge", known, (PLAY, DONT_START) if stale else (PLAY, RESCAN))
+    return Card(Tone.OK, "Nothing to merge", ("No other mod changes Smooth UI's screens.",),
                 (PLAY, DONT_START) if stale else (PLAY, RESCAN))
 
 
@@ -646,66 +663,68 @@ def _report(causes, fixes=True) -> list[str]:
     """The card's request for a bug report, for causes ((key, mod), see _sentences): for screens left out, or
     (fixes) merged without some fixes; not for a group left out alone (another cause keeps it out)"""
     keys = {key for key, _ in causes}
-    return [REPORT_MODS] if keys & {"left out", "failed"} or (fixes and "fixes" in keys) else []
+    return [REPORT_MODS] if keys & {FileStatus.LEFT_OUT, FileStatus.FAILED} or (fixes and Cause.FIXES in keys) else []
 
 
 def _unusable(installed, stale):
     """Smooth UI can't be used, and nothing installed depends on it (in stale mode, the launcher doesn't
     open the window then; a re-scan may find it)"""
     if installed.status == Status.NOT_INSTALLED:
-        card = Card(WARNING, "Smooth UI Remastered isn't installed",
+        card = Card(Tone.WARNING, "Smooth UI Remastered isn't installed",
                     ("Install it, then re-scan.", "Using Mod Organizer 2? Start the merger from it."),
                     (("Get Smooth UI Remastered", "smoothui_page"), RESCAN))
     elif installed.status == Status.DISABLED:
-        card = Card(INFO, "Smooth UI Remastered is disabled",
+        card = Card(Tone.INFO, "Smooth UI Remastered is disabled",
                     ("Enable it (in your mod manager, for example), then re-scan.",), (RESCAN,))
     else:
         headline = {Status.TOO_OLD: "Smooth UI Remastered is too old",
                     Status.TWO_FOLDERS: "Two Smooth UI folders are installed"}.get(installed.status,
                                                                                     "Unknown Smooth UI build")
-        card = Card(WARNING, headline, (_sentence(installed.message), *([RISKS[installed.status]] if installed.status in RISKS else [])),
+        card = Card(Tone.WARNING, headline, (_sentence(installed.message), *([RISKS[installed.status]] if installed.status in RISKS else [])),
                     (RESCAN,))
     return replace(card, buttons=(PLAY_ANYWAY, DONT_START)) if stale else card
 
 
-def row_status(file: FileState) -> tuple[str, str]:
+def row_status(file: FileState) -> tuple[Tone, str]:
     """A screen's tone (its glyph and color) and short status in the list"""
-    state, cause = file.state, file.cause or ""
-    if state == State.UP_TO_DATE:
-        if cause == "fixes":
-            return WARNING, "Merged, fixes missing"
+    state, cause = file.state, file.cause
+    if state is State.UP_TO_DATE:
+        if cause is Cause.FIXES:
+            return Tone.WARNING, "Merged, fixes missing"
         if file.speed:
-            return WARNING, "Merged, plays slowly"
-        return (INFO, "Merged with warnings") if cause == "forced" else (OK, "Merged")
-    if state == State.NOT_HELD and cause == "unchanged":
+            return Tone.WARNING, "Merged, plays slowly"
+        return (Tone.INFO, "Merged with warnings") if cause is FileStatus.FORCED else (Tone.OK, "Merged")
+    if state is State.NOT_HELD and cause is FileStatus.UNCHANGED:
         if file.speed:
-            return WARNING, "Plays slowly"
-        return OK, f"Runs at {file.fps:g} fps" if file.fps else "High frame rate"
-    if state == State.NOT_HELD:
-        return {"known broken": (INFO, "Known not to work"),
-                "by choice": (INFO, "Mod's own copy"),
-                "by rule": (INFO, "High frame rate" if file.reason == mod_reviews.ALREADY_SMOOTH else
-                            "Known not to work" if file.reason == mod_reviews.KNOWN_BROKEN else "Left out"),
-                "failed": (ERROR, "Can't merge"),
-                "group left out": (WARNING, "Left out with its group"),
-                "turned off": (OK, "Turned off")}.get(cause, (ERROR, "Left out"))
-    if state == State.CHANGED:
-        return {"merger": (INFO, "Merger updated"), "smoothui": (WARNING, "Smooth UI updated"),
-                "load order": (WARNING, "Load order changed"), "smoothui first": (WARNING, "Uses Smooth UI's copy"),
-                "fps": (WARNING, "Frame rate changed"),
-                "setting": (WARNING, "Setting changed"), "optional": (WARNING, "Setting changed"),
-                "by choice": (WARNING, "Setting changed"), "by rule": (WARNING, "Rules changed")}.get(cause, (WARNING, "Mod updated"))
-    if state == State.NOT_BUILT and cause in ("setting", "by choice", "by rule", "fps"):
-        return WARNING, {"by rule": "Rules changed", "fps": "Frame rate changed"}.get(cause, "Setting changed")
-    return {State.NOTHING_TO_DO: (OK, "Smooth UI's own copy"), State.NOT_BUILT: (WARNING, "Not merged yet"),
-            State.NO_LONGER_NEEDED: (WARNING, "Mod removed"), State.DAMAGED: (ERROR, "Damaged"),
-            State.OVERRIDDEN: (WARNING, "Another mod loads first"),
-            State.UNDETERMINED: (WARNING, "Load order unclear")}[state]
+            return Tone.WARNING, "Plays slowly"
+        return Tone.OK, f"Runs at {file.fps:g} fps" if file.fps else "High frame rate"
+    if state is State.NOT_HELD:
+        return {FileStatus.KNOWN_BROKEN: (Tone.INFO, "Known not to work"),
+                FileStatus.BY_CHOICE: (Tone.INFO, "Mod's own copy"),
+                FileStatus.BY_RULE: (Tone.INFO, "High frame rate" if file.reason == mod_reviews.ALREADY_SMOOTH else
+                                     "Known not to work" if file.reason == mod_reviews.KNOWN_BROKEN else "Left out"),
+                FileStatus.FAILED: (Tone.ERROR, "Can't merge"),
+                FileStatus.GROUP_LEFT_OUT: (Tone.WARNING, "Left out with its group"),
+                Cause.TURNED_OFF: (Tone.OK, "Turned off")}.get(cause, (Tone.ERROR, "Left out"))
+    if state is State.CHANGED:
+        return {Cause.MERGER: (Tone.INFO, "Merger updated"), Cause.SMOOTHUI: (Tone.WARNING, "Smooth UI updated"),
+                Cause.LOAD_ORDER: (Tone.WARNING, "Load order changed"),
+                Cause.SMOOTHUI_FIRST: (Tone.WARNING, "Uses Smooth UI's copy"),
+                Cause.FPS: (Tone.WARNING, "Frame rate changed"),
+                Cause.SETTING: (Tone.WARNING, "Setting changed"), Cause.OPTIONAL: (Tone.WARNING, "Setting changed"),
+                FileStatus.BY_CHOICE: (Tone.WARNING, "Setting changed"),
+                FileStatus.BY_RULE: (Tone.WARNING, "Rules changed")}.get(cause, (Tone.WARNING, "Mod updated"))
+    if state is State.NOT_BUILT and cause in (Cause.SETTING, FileStatus.BY_CHOICE, FileStatus.BY_RULE, Cause.FPS):
+        return Tone.WARNING, {FileStatus.BY_RULE: "Rules changed", Cause.FPS: "Frame rate changed"}.get(cause, "Setting changed")
+    return {State.NOTHING_TO_DO: (Tone.OK, "Smooth UI's own copy"), State.NOT_BUILT: (Tone.WARNING, "Not merged yet"),
+            State.NO_LONGER_NEEDED: (Tone.WARNING, "Mod removed"), State.DAMAGED: (Tone.ERROR, "Damaged"),
+            State.OVERRIDDEN: (Tone.WARNING, "Another mod loads first"),
+            State.UNDETERMINED: (Tone.WARNING, "Load order unclear")}[state]
 
 
 def row_rank(file: FileState) -> int:
     """For sorting rows: errors first, then warnings, then the rest"""
-    return {ERROR: 0, WARNING: 1, INFO: 2, OK: 3}[row_status(file)[0]]
+    return {Tone.ERROR: 0, Tone.WARNING: 1, Tone.INFO: 2, Tone.OK: 3}[row_status(file)[0]]
 
 
 def row_order(file: FileState):
@@ -737,7 +756,7 @@ def screen_rows(states: list[FileState]) -> list[tuple[FileState, tuple[FileStat
 def _group_message(members: list[FileState]) -> str:
     """One message for a group's files: the one most of them have, and each other one by file. But while
     some keep it out, only theirs: the others are left out as the group is, which is what matters."""
-    keep_out = [file for file in members if file.cause != "group left out"]
+    keep_out = [file for file in members if file.cause is not FileStatus.GROUP_LEFT_OUT]
     if keep_out and len(keep_out) < len(members):
         group = members[0].group
         assert group is not None    # a group's files
@@ -798,13 +817,13 @@ def row_mods(file: FileState) -> str:
     return f"{len(text.split(', '))} {group_name(file.group)} mods" if file.group else f"{text[:MAX_ROW_MODS - 1]}…"
 
 
-def merging_status(patched: str | None) -> tuple[str, str]:
+def merging_status(patched: str | None) -> tuple[Tone, str]:
     """A screen's tone and short status in the list while merging: patched is None until its file is
     patched, then how ("patched", "kept" or "failed"). What goes in is only decided once every file is
     patched (a patched screen may still be left out), so until then it is only "Done"."""
     if patched is None:
-        return NEUTRAL, "Waiting"
-    return (ERROR, "Can't merge") if patched == "failed" else (NEUTRAL, "Done")
+        return Tone.NEUTRAL, "Waiting"
+    return (Tone.ERROR, "Can't merge") if patched == "failed" else (Tone.NEUTRAL, "Done")
 
 
 def also_changed(file: FileResult, winner: str | None) -> str | None:
@@ -877,7 +896,7 @@ def dont_merge(members: list[FileState]) -> list[tuple[str, str]]:
     mods' copies if it's merged. None: the row has no such button."""
     return sorted({(file.path, file.winner) for file in members if file.winner not in (None, GAME_FILES) and (
                    file.state == State.UP_TO_DATE
-                   or (file.state == State.NOT_HELD and file.cause in ("left out", "failed")))})
+                   or (file.state is State.NOT_HELD and file.cause in (FileStatus.LEFT_OUT, FileStatus.FAILED)))})
 
 
 def _screens(sentence, files) -> tuple[str, ...]:
@@ -920,11 +939,11 @@ def _by_rule(files) -> tuple[str, ...]:
     return tuple(sentences)
 
 
-def _cause(file: FileState) -> str:
-    """The CAUSES key for a file in a check"""
-    if file.state == State.OVERRIDDEN:
-        return "entry" if file.needs_build else "overridden"
-    return file.cause or file.state.value
+def _cause(file: FileState) -> Cause | FileStatus | State | str:
+    """The CAUSES (or MOD_CAUSES) key for a file in a check"""
+    if file.state is State.OVERRIDDEN:
+        return _ENTRY if file.needs_build else State.OVERRIDDEN
+    return file.cause or file.state
 
 
 def _changed_mod(file: FileState, found: Check) -> str | None:
@@ -934,7 +953,7 @@ def _changed_mod(file: FileState, found: Check) -> str | None:
     copy is always there, so when a mod's copy replaced it, that mod is what changed."""
     if file.state == State.NO_LONGER_NEEDED:
         return file.previous
-    if file.cause == "load order" and file.previous and file.previous != GAME_FILES:
+    if file.cause is Cause.LOAD_ORDER and file.previous and file.previous != GAME_FILES:
         result = found.scan.files.get(file.path)
         if file.previous.lower() not in {mod.folder.lower() for mod in (result.shippers if result else [])}:
             return file.previous

@@ -27,6 +27,7 @@ from ..manifests import patcher_commit
 from ..witcher3.mod_bundles import pack_entries
 from . import tools_version
 from .installed import Installed
+from .status import FileStatus
 
 if TYPE_CHECKING:
     # Not imported otherwise: the launch check reads PACKAGE_MANIFEST, and policy.py imports the patcher
@@ -185,16 +186,16 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
                 "bundle": file.source.file.name,
                 "source_size": file.source.size,
                 "source_crc32": file.source.toc_entry.crc,
-                "status": file.status.value,
+                "status": file.status,
                 "reasons": [file.error] if file.error else [issue.message for issue in file.issues],
             }
-            if file.status.value == "left out":
+            if file.status is FileStatus.LEFT_OUT:
                 not_held[file.path]["reason"] = file.reason      # see above
-            if file.status.value == "unchanged":
+            if file.status is FileStatus.UNCHANGED:
                 not_held[file.path]["fps"] = file.fps
                 if file.speed is not None:
                     not_held[file.path]["speed"] = file.speed
-            if file.status.value == "known broken":
+            if file.status is FileStatus.KNOWN_BROKEN:
                 # Its other issues don't matter: it is left out anyway
                 not_held[file.path]["reasons"] = [issue.message for issue in file.issues if issue.review in file.known_broken]
                 # Whether it still is, once the reviews of mods' code change (see state.package_state)
