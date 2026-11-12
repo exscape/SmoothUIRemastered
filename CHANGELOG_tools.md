@@ -1,3 +1,9 @@
+# v0.9.8
+
+* Improved: about 30% faster merges. In part due to using up to 6 cores (vs 4 before), but also because of code improvements. On 4-core computers, only a small benefit (5% or so).
+* Improved: slightly faster launches -- about 0.2 s vs 0.25 s on my system.
+
+
 # v0.9.7
 
 * Added: support for Smooth UI v0.3.4 (controller text scroll speed fixes, book fade fix, Gwent animation improvements): all are applied to other mods' screens when merged).

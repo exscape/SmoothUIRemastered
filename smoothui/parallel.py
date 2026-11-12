@@ -38,8 +38,9 @@ JOB_OBJECT_ASSIGN_PROCESS = 0x0001
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 
-# More workers stop helping here: it saves no time, but adds 50-120 MiB of RAM usage per extra worker.
-MAX_WORKERS = 4
+# More workers stop helping here: the slowest file (gwint_game, ~4 s) sets the time, and each extra worker adds
+# 50-120 MiB of RAM usage. (Never more than the physical cores: see worker_count.)
+MAX_WORKERS = 6
 
 
 def physical_cores() -> int:
