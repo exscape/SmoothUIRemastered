@@ -16,11 +16,14 @@ from __future__ import annotations
 
 from ..swf_patcher.interpolation import simulate_timeline
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
-from ..swf_patcher.swf_tags import TagCode, parse_remove_object_depth
+from ..swf_patcher.swf_tags import (
+    REMOVE_OBJECT_CODES,
+    TagCode,
+    parse_remove_object_depth,
+)
 from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit, label_frames
 
 FOG_CLASS = "CardFXFog_Ongoing"
-REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -48,7 +51,7 @@ def apply(swf: SwfEdit) -> FixResult:
             if frame == start:
                 kept += moved
 
-    if any(tag.code in REMOVE_CODES for tag in moved):
+    if any(tag.code in REMOVE_OBJECT_CODES for tag in moved):
         raise CantApply(f"{FOG_CLASS} removes its intro clip before \"start\"")
     swf.replace_sprite(sprite_id, kept)
     where = ", ".join(f"depth {depth}" for depth in depths)
@@ -59,7 +62,7 @@ def apply(swf: SwfEdit) -> FixResult:
 def _depth(tag) -> int | None:
     if tag.code in PLACE_OBJECT_CODES:
         return parse_place_object(tag).depth
-    if tag.code in REMOVE_CODES:
+    if tag.code in REMOVE_OBJECT_CODES:
         return parse_remove_object_depth(tag)
     return None
 

@@ -13,12 +13,14 @@ The fix removes the shadow's tags, so the coins have no shadow.
 from __future__ import annotations
 
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
-from ..swf_patcher.swf_tags import TagCode, parse_remove_object_depth
+from ..swf_patcher.swf_tags import (
+    REMOVE_OBJECT_CODES,
+    parse_remove_object_depth,
+)
 from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit
 
 COIN_CLASSES = (r"gwint_game_fla\.COINA_\d+", r"gwint_game_fla\.COINB_\d+")
 SHADOW_DEPTH = 1
-REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -27,7 +29,7 @@ def apply(swf: SwfEdit) -> FixResult:
         sprite_id, class_name, tags = swf.linked_sprite_matching(pattern)
         shadow = [tag for tag in tags
                   if (tag.code in PLACE_OBJECT_CODES and parse_place_object(tag).depth == SHADOW_DEPTH)
-                  or (tag.code in REMOVE_CODES and parse_remove_object_depth(tag) == SHADOW_DEPTH)]
+                  or (tag.code in REMOVE_OBJECT_CODES and parse_remove_object_depth(tag) == SHADOW_DEPTH)]
         if not shadow:
             continue
         if sum(tag.code in PLACE_OBJECT_CODES and parse_place_object(tag).character_id is not None

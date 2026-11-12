@@ -45,9 +45,9 @@ from ..swf_patcher.abc_bytecode import (
     read_local,
 )
 from ..swf_patcher.abc_file import (
-    PACKAGE_NAMESPACE,
     AbcFile,
     MethodBody,
+    NamespaceKind,
     PoolAdditions,
     encode_u30,
     parse_abc,
@@ -91,8 +91,8 @@ def apply(swf: SwfEdit) -> FixResult:
         raise CantApply(f"expected 1 sprite linked to {BANNER_CLASS}, found {len(banners)}")
 
     additions = PoolAdditions(abc)
-    public = additions.namespace(PACKAGE_NAMESPACE, "")
-    speed_class = additions.qname(additions.namespace(PACKAGE_NAMESPACE, PACKAGE), CLASS)
+    public = additions.namespace(NamespaceKind.PACKAGE, "")
+    speed_class = additions.qname(additions.namespace(NamespaceKind.PACKAGE, PACKAGE), CLASS)
     install = additions.qname(public, "install")
     card_speed = additions.qname(public, "cardSpeed")
     opponent_card_delay = additions.qname(public, "opponentCardDelay")

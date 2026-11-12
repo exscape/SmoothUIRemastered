@@ -11,12 +11,14 @@ the clip has nothing to fix: a mod's copy mustn't be reported as lacking a fix t
 from __future__ import annotations
 
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
-from ..swf_patcher.swf_tags import TagCode, parse_remove_object_depth
+from ..swf_patcher.swf_tags import (
+    REMOVE_OBJECT_CODES,
+    parse_remove_object_depth,
+)
 from .swf_edit import Fix, FixKind, FixResult, SwfEdit
 
 BAR_CLASS = "BackgroundHealthIndicator"
 GLOW_NAME = "mcGainGlow"
-REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -32,7 +34,7 @@ def apply(swf: SwfEdit) -> FixResult:
         return FixResult([], f"{BAR_CLASS} has no {GLOW_NAME}")
     glow = [tag for tag in tags
             if (tag.code in PLACE_OBJECT_CODES and parse_place_object(tag).depth in depths)
-            or (tag.code in REMOVE_CODES and parse_remove_object_depth(tag) in depths)]
+            or (tag.code in REMOVE_OBJECT_CODES and parse_remove_object_depth(tag) in depths)]
     swf.replace_sprite(sprite_id, [tag for tag in tags if not any(tag is other for other in glow)])
     return FixResult([sprite_id], f"removed {GLOW_NAME} from {BAR_CLASS} ({len(glow)} tags)")
 

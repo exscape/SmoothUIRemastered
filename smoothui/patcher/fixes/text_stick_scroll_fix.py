@@ -27,7 +27,7 @@ from ..swf_patcher.abc_bytecode import (
     find_pattern,
     local_register,
 )
-from ..swf_patcher.abc_file import PACKAGE_NAMESPACE, AbcFile, PoolAdditions
+from ..swf_patcher.abc_file import AbcFile, NamespaceKind, PoolAdditions
 from .swf_edit import (
     CantApply,
     Fix,
@@ -60,8 +60,8 @@ def apply(swf: SwfEdit) -> FixResult:
         raise CantApply(f"{TEXT_CLASS}.{HANDLER} doesn't do mcScrollbar.position -= <tilt>")
     first, last, tilt = found
     additions = PoolAdditions(abc)
-    scroll_class = additions.qname(additions.namespace(PACKAGE_NAMESPACE, PACKAGE), CLASS)
-    scroll = additions.qname(additions.namespace(PACKAGE_NAMESPACE, ""), METHOD)
+    scroll_class = additions.qname(additions.namespace(NamespaceKind.PACKAGE, PACKAGE), CLASS)
+    scroll = additions.qname(additions.namespace(NamespaceKind.PACKAGE, ""), METHOD)
     # StickScroll.scroll(this, tilt): at most 3 values on the stack, as the code it replaces
     call = (encode(Op.GETLEX, scroll_class) + encode(Op.GETLOCAL0) + encode_getlocal(tilt)
             + encode(Op.CALLPROPVOID, scroll, 2))

@@ -29,7 +29,12 @@ from pathlib import Path
 
 from ..common import SmoothUIError, profile_key
 from .swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
-from .swf_patcher.swf_tags import TagCode, parse_frame_label, parse_remove_object_depth
+from .swf_patcher.swf_tags import (
+    REMOVE_OBJECT_CODES,
+    TagCode,
+    parse_frame_label,
+    parse_remove_object_depth,
+)
 
 DATA_FILE = Path(__file__).with_name("game_timings.txt")
 
@@ -37,7 +42,6 @@ DATA_FILE = Path(__file__).with_name("game_timings.txt")
 # so a stale file can't be used.
 FORMAT_LINE = "smoothui game timings 2"
 
-REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
 
 # The class names Flash makes up for library clips: the file's name, "_fla.", the symbol's name, and a number
 # that changes whenever the file is saved (panel_alchemy_fla.InputFeedbackButton_icon_steam_42)
@@ -63,7 +67,7 @@ def timing_pattern(tags) -> str:
             place = parse_place_object(tag)
             changes.append((place.depth, "move" if place.is_move else "place", place.character_id is not None,
                             place.matrix is not None, place.color_transform is not None, place.ratio is not None))
-        elif tag.code in REMOVE_CODES:
+        elif tag.code in REMOVE_OBJECT_CODES:
             changes.append((parse_remove_object_depth(tag), "remove", False, False, False, False))
     return hashlib.sha256(repr((labels, frames)).encode()).hexdigest()[:16]
 

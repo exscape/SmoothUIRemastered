@@ -6,7 +6,7 @@ import functools
 import struct
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import NamedTuple
 
 from .bits import BitReader, BitWriter, signed_bits_needed
@@ -23,18 +23,43 @@ FLAG_HAS_CLIP_DEPTH = 0x40
 
 # PlaceObject3's second flag byte. (Scaleform GFX sets HasImage without a class name string.)
 FLAG3_HAS_CLASS_NAME = 0x08
-# ... and the display options it can set, with the size of each field (None: the filter list, whose
-# size varies), in the order the fields appear in the tag
+
+
+class DisplayOption(IntEnum):
+    """The display options PlaceObject3 can set: their flags in its second flag byte"""
+    FILTER_LIST = 0x01
+    BLEND_MODE = 0x02
+    CACHE_AS_BITMAP = 0x04
+    VISIBLE = 0x20
+    BACKGROUND_COLOR = 0x40     # opaque background colour
+
+
+# The size of each one's field (None: the filter list, whose size varies), in the order the fields appear in the tag
 DISPLAY_OPTIONS = {
-    0x01: None,     # filter list
-    0x02: 1,        # blend mode
-    0x04: 1,        # cacheAsBitmap
-    0x20: 1,        # visible
-    0x40: 4,        # opaque background colour
+    DisplayOption.FILTER_LIST: None,
+    DisplayOption.BLEND_MODE: 1,
+    DisplayOption.CACHE_AS_BITMAP: 1,
+    DisplayOption.VISIBLE: 1,
+    DisplayOption.BACKGROUND_COLOR: 4,
 }
+BLEND_ADD = 8   # the blend mode "add"
+
+
+class FilterId(IntEnum):
+    """A filter's id, the first byte of its record in a filter list"""
+    DROP_SHADOW = 0
+    BLUR = 1
+    GLOW = 2
+    BEVEL = 3
+    GRADIENT_GLOW = 4
+    CONVOLUTION = 5
+    COLOR_MATRIX = 6
+    GRADIENT_BEVEL = 7
+
 
 # Sizes of the filter records by filter id (gradient and convolution filters vary, see _filter_list_end)
-FILTER_SIZES = {0: 23, 1: 9, 2: 15, 3: 27, 6: 80}
+FILTER_SIZES: dict[int, int] = {FilterId.DROP_SHADOW: 23, FilterId.BLUR: 9, FilterId.GLOW: 15, FilterId.BEVEL: 27,
+                                 FilterId.COLOR_MATRIX: 80}
 
 PLACE_OBJECT_CODES = (TagCode.PLACE_OBJECT2, TagCode.PLACE_OBJECT3)
 
@@ -159,9 +184,9 @@ def _filter_list_end(data: bytes, offset: int) -> int:
     for _ in range(count):
         filter_id = data[offset]
         offset += 1
-        if filter_id in (4, 7):     # gradient glow / bevel: colours and their ratios, then 19 bytes
+        if filter_id in (FilterId.GRADIENT_GLOW, FilterId.GRADIENT_BEVEL):    # colours and their ratios, then 19 bytes
             offset += 1 + data[offset] * 5 + 19
-        elif filter_id == 5:        # convolution: the matrix size, then 4-byte values and 5 more bytes
+        elif filter_id == FilterId.CONVOLUTION:     # the matrix size, then 4-byte values and 5 more bytes
             offset += 2 + (2 + data[offset] * data[offset + 1]) * 4 + 5
         else:
             offset += FILTER_SIZES[filter_id]

@@ -47,6 +47,11 @@ SAFE_HANDLER_PREFIXES = (
     "scaleform.clik.core.UIComponent.",     # CLIK's validation pass: one-shot via validateNow()
 )
 
+# Reasons not to stretch a clip that the planner tests for, as well as writing them (the texts are in reports)
+EXCLUDED = "excluded by the exclude list"
+UNRECOGNISED_FRAME_SCRIPTS = "addFrameScript constructor has an unrecognised shape (cannot re-index)"
+COMPUTED_GOTO = "computed "     # the start of a reason that a computed gotoAndStop/Play gives (see _describe_goto)
+
 
 @dataclass(slots=True)
 class IncrementPatch:
@@ -141,7 +146,7 @@ def _describe_goto(call: GotoCall, unknown="...") -> str:
         return f"literal {call.call}({call.arg.value})"
     if call.arg.choices:
         return f"{call.call}({' or '.join(map(str, call.arg.choices))})"
-    return f"computed {call.call}({unknown})"
+    return f"{COMPUTED_GOTO}{call.call}({unknown})"
 
 
 def _comes_to_rest(frame_count, start, changes, stops, scripted) -> bool:
@@ -214,8 +219,7 @@ class Planner:
         for class_name, scripts in frame_scripts.items():
             if not scripts.recognised:
                 for character_id in self.movie.sprites_of_class.get(class_name, []):
-                    self.reasons[character_id].append(
-                        "addFrameScript constructor has an unrecognised shape (cannot re-index)")
+                    self.reasons[character_id].append(UNRECOGNISED_FRAME_SCRIPTS)
 
     def _check_selectors(self, frame_scripts: dict[str, FrameScripts]):
         """Clips where every frame has a label or a script are "selectors" (icon sets and the like),
@@ -322,11 +326,11 @@ class Planner:
         plan.exclude_matches = [self._matching_sprites(token) for token in self.options.exclude]
         plan.include_matches = [self._matching_sprites(token) for token in self.options.include]
         for character_id in set().union(*plan.exclude_matches):
-            self.reasons[character_id].append("excluded by the exclude list")
+            self.reasons[character_id].append(EXCLUDED)
         for character_id in set().union(*plan.include_matches):
             # Overrides everything except an explicit exclude, and code that can't be patched
             self.reasons[character_id] = [reason for reason in self.reasons[character_id]
-                                          if reason.startswith("excluded by") or "unrecognised" in reason]
+                                          if reason in (EXCLUDED, UNRECOGNISED_FRAME_SCRIPTS)]
 
     def _matching_sprites(self, token) -> list[int]:
         """The ids of the sprites an include/exclude token (a SpriteRef, InstanceRef or class name regex) matches"""
@@ -344,7 +348,7 @@ class Planner:
         would need magic numbers, so the value is almost certainly a label"""
         for sprite in self.movie.multi_frame_sprites():
             reasons = self.reasons.get(sprite.character_id, [])
-            if reasons and sprite.labels and all(reason.startswith("computed ") for reason in reasons):
+            if reasons and sprite.labels and all(reason.startswith(COMPUTED_GOTO) for reason in reasons):
                 self.plan.probably_safe[sprite.character_id] = sorted(sprite.labels.values())
 
     def _apply_speed_rules(self):

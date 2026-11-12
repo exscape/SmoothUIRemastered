@@ -27,14 +27,20 @@ SPRITE_FIELDS_SIZE = 4
 class TagCode(IntEnum):
     END = 0
     SHOW_FRAME = 1
+    DEFINE_SHAPE = 2
     REMOVE_OBJECT = 5
+    DEFINE_SHAPE2 = 22
     PLACE_OBJECT2 = 26
     REMOVE_OBJECT2 = 28
+    DEFINE_SHAPE3 = 32
     DEFINE_SPRITE = 39
     FRAME_LABEL = 43
     PLACE_OBJECT3 = 70
     SYMBOL_CLASS = 76
     DO_ABC = 82
+    DEFINE_SHAPE4 = 83
+
+REMOVE_OBJECT_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
 
 @dataclass(frozen=True, slots=True)
 class Tag:

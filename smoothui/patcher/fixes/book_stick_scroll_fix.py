@@ -23,7 +23,7 @@ from ..swf_patcher.abc_bytecode import (
     encode,
     find_pattern,
 )
-from ..swf_patcher.abc_file import PACKAGE_NAMESPACE, AbcFile, PoolAdditions
+from ..swf_patcher.abc_file import AbcFile, NamespaceKind, PoolAdditions
 from .swf_edit import (
     CantApply,
     Fix,
@@ -56,8 +56,8 @@ def apply(swf: SwfEdit) -> FixResult:
             return FixResult([], f"{TEXT_CLASS}.{HANDLER} already calls {CLASS}.{METHOD}")
         raise CantApply(f"{TEXT_CLASS}.{HANDLER} doesn't read event.details.navEquivalent once")
     additions = PoolAdditions(abc)
-    scroll_class = additions.qname(additions.namespace(PACKAGE_NAMESPACE, PACKAGE), CLASS)
-    navigation = additions.qname(additions.namespace(PACKAGE_NAMESPACE, ""), METHOD)
+    scroll_class = additions.qname(additions.namespace(NamespaceKind.PACKAGE, PACKAGE), CLASS)
+    navigation = additions.qname(additions.namespace(NamespaceKind.PACKAGE, ""), METHOD)
     # StickScroll.textAreaNavigation(this, event) in place of event.details.navEquivalent: 3 values on the stack
     # at most, as in the method's `elapsed > AXIS_INPUT_DELAY * 2` after it
     call = (encode(Op.GETLEX, scroll_class) + encode(Op.GETLOCAL0) + encode(Op.GETLOCAL1)

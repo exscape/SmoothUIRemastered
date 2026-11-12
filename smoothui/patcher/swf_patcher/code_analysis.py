@@ -31,13 +31,11 @@ from .abc_bytecode import (
     stack_effect,
 )
 from .abc_file import (
-    CONSTANT_UTF8,
-    PRIVATE_NAMESPACE,
-    PROTECTED_NAMESPACE,
-    QNAME,
-    TRAIT_CONST,
-    TRAIT_METHOD,
     VALUE_TRAIT_KINDS,
+    ConstantKind,
+    MultinameKind,
+    NamespaceKind,
+    TraitKind,
 )
 from .movie import CLASS_NAMING_OPS, AbcUnit, SwfMovie
 
@@ -415,12 +413,12 @@ class CodeAnalysis:
         if trait is None or abc is None or trait.kind not in VALUE_TRAIT_KINDS:
             return None
         multiname = abc.multinames[trait.name]
-        if multiname is None or multiname.kind != QNAME:
+        if multiname is None or multiname.kind != MultinameKind.QNAME:
             return None
         access = abc.namespaces[multiname.namespace][0]
-        if access == PRIVATE_NAMESPACE and owner == class_name:
+        if access == NamespaceKind.PRIVATE and owner == class_name:
             writers = {owner}
-        elif access == PROTECTED_NAMESPACE:
+        elif access == NamespaceKind.PROTECTED:
             writers = {c for c in movie.superclass if self._inherits(c, owner)}
         else:
             return None
@@ -592,7 +590,7 @@ class CodeAnalysis:
             abc = unit.abc
             for trait in abc.classes[abc.instances.index(instance)].traits:
                 if abc.name_of(trait.name) == const:
-                    ok = trait.kind == TRAIT_CONST and trait.value_kind == CONSTANT_UTF8
+                    ok = trait.kind == TraitKind.CONST and trait.value_kind == ConstantKind.UTF8
                     return abc.strings[trait.value_index] if ok else None
             class_name = self.movie.superclass.get(class_name)
         return None
@@ -666,7 +664,7 @@ class CodeAnalysis:
         """Does the frame script `function` (a method of class_name) only call stop()?"""
         _, instance = self.movie.instance_of[class_name]     # a class of this tag
         methods = [self.unit.method_base + trait.method for trait in instance.traits
-                   if trait.kind == TRAIT_METHOD and trait.method is not None and self.abc.name_of(trait.name) == function]
+                   if trait.kind == TraitKind.METHOD and trait.method is not None and self.abc.name_of(trait.name) == function]
         code = _significant(self.code.get(methods[0], [])) if len(methods) == 1 else []
         return [(ins.opcode, self.name(ins) if ins.opcode in (Op.FINDPROPSTRICT, Op.CALLPROPVOID) else None)
                 for ins in code] == STOP_ONLY

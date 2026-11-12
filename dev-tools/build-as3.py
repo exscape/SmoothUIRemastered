@@ -26,7 +26,14 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from smoothui.build.shared import load_config
 from smoothui.common import IN_WSL, fail, run_cli, to_native, to_windows
-from smoothui.patcher.swf_patcher.abc_file import encode_u30, parse_abc
+from smoothui.patcher.swf_patcher.abc_bytecode import Op
+from smoothui.patcher.swf_patcher.abc_file import (
+    MultinameKind,
+    NamespaceKind,
+    TraitKind,
+    encode_u30,
+    parse_abc,
+)
 from smoothui.patcher.swf_patcher.swf_tags import (
     TagCode,
     encode_tag_header,
@@ -36,11 +43,7 @@ from smoothui.patcher.swf_patcher.swf_tags import (
 
 # ABC 46.16, as Flash and FFDec write it
 ABC_MINOR, ABC_MAJOR = 16, 46
-CONSTANT_QNAME = 0x07
-CONSTANT_PACKAGE_NAMESPACE = 0x16
-TRAIT_CLASS = 4
-# getlocal0, pushscope, returnvoid
-EMPTY_METHOD = bytes([0xD0, 0x30, 0x47])
+EMPTY_METHOD = bytes([Op.GETLOCAL0, Op.PUSHSCOPE, Op.RETURNVOID])
 
 
 def parse_args():
@@ -89,10 +92,10 @@ def stub_abc(names: list[str]) -> bytes:
     abc += encode_u30(0) + encode_u30(0) + encode_u30(0)    # int, uint and double pools
     abc += encode_u30(len(strings) + 1) + b"".join(map(string, strings))
     abc += encode_u30(len(namespaces) + 1) + b"".join(
-        bytes([CONSTANT_PACKAGE_NAMESPACE]) + encode_u30(string_index[package]) for package in namespaces)
+        bytes([NamespaceKind.PACKAGE]) + encode_u30(string_index[package]) for package in namespaces)
     abc += encode_u30(0)    # namespace sets
     abc += encode_u30(len(multinames) + 1) + b"".join(
-        bytes([CONSTANT_QNAME]) + encode_u30(namespace_index[package]) + encode_u30(string_index[name])
+        bytes([MultinameKind.QNAME]) + encode_u30(namespace_index[package]) + encode_u30(string_index[name])
         for package, name in multinames)
     # Method signatures: no parameters, any return type, no name, no flags
     abc += encode_u30(method_count) + (encode_u30(0) * 3 + b"\0") * method_count
@@ -104,7 +107,7 @@ def stub_abc(names: list[str]) -> bytes:
     abc += b"".join(encode_u30(count + i) + encode_u30(0) for i in range(count))
     # Scripts: initializer, and a class trait for the class
     abc += encode_u30(count) + b"".join(
-        encode_u30(2 * count + i) + encode_u30(1) + encode_u30(i + 2) + bytes([TRAIT_CLASS]) + encode_u30(0) + encode_u30(i)
+        encode_u30(2 * count + i) + encode_u30(1) + encode_u30(i + 2) + bytes([TraitKind.CLASS]) + encode_u30(0) + encode_u30(i)
         for i in range(count))
     # Method bodies: max stack, locals, initial and max scope depth; code; no exceptions or traits
     abc += encode_u30(method_count) + b"".join(

@@ -17,15 +17,13 @@ from .abc_bytecode import (
     stack_effect,
 )
 from .abc_file import (
-    CONSTANT_UTF8,
     METHOD_TRAIT_KINDS,
-    TRAIT_CONST,
-    TRAIT_GETTER,
-    TRAIT_METHOD,
     VALUE_TRAIT_KINDS,
     AbcFile,
+    ConstantKind,
     InstanceInfo,
     Trait,
+    TraitKind,
     parse_abc,
 )
 from .place_object import PLACE_OBJECT_CODES, parse_place_object
@@ -41,7 +39,7 @@ from .swf_tags import (
 )
 
 # Traits that a property read can give the value of (a setter's property is read through its getter)
-READABLE_TRAIT_KINDS = (*VALUE_TRAIT_KINDS, TRAIT_GETTER, TRAIT_METHOD)
+READABLE_TRAIT_KINDS = VALUE_TRAIT_KINDS | {TraitKind.GETTER, TraitKind.METHOD}
 
 ROOT_TIMELINE = 0   # stands in for the main timeline's id where a sprite id is expected
 
@@ -233,7 +231,7 @@ class SwfMovie:
                         property_types[name].add(self.value_type(trait, abc))
                     if trait.kind in VALUE_TRAIT_KINDS:
                         variables.add(name)
-                    if trait.kind == TRAIT_METHOD and trait.method is not None:
+                    if trait.kind == TraitKind.METHOD and trait.method is not None:
                         return_type = abc.methods[trait.method].return_type
                         return_types[name].add(abc.full_name_of(return_type) if return_type else None)
         self.string_properties = {name for name, types in property_types.items()
@@ -247,13 +245,13 @@ class SwfMovie:
         if trait.kind in VALUE_TRAIT_KINDS:
             if trait.type_name:
                 return abc.full_name_of(trait.type_name)
-            if trait.kind == TRAIT_CONST and trait.value_kind == CONSTANT_UTF8:
+            if trait.kind == TraitKind.CONST and trait.value_kind == ConstantKind.UTF8:
                 return "String"     # an untyped constant with a string value
             return None
-        if trait.kind == TRAIT_GETTER and trait.method is not None:
+        if trait.kind == TraitKind.GETTER and trait.method is not None:
             return_type = abc.methods[trait.method].return_type
             return abc.full_name_of(return_type) if return_type else None
-        if trait.kind == TRAIT_METHOD:
+        if trait.kind == TraitKind.METHOD:
             return "Function"   # reading a method gives the method itself
         return None
 

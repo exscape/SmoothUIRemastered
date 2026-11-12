@@ -25,6 +25,8 @@ from ..swf_patcher.place_object import (
     FILTER_SIZES,
     PLACE_OBJECT_CODES,
     ColorTransform,
+    DisplayOption,
+    FilterId,
     parse_place_object,
     rewrite_place_object,
 )
@@ -33,8 +35,6 @@ from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit
 
 HERO_CLASS = "CardFXHero"
 DUMMY_CLASS = "CardFXDummy"
-FILTER_LIST = 0x01      # the display option that holds the filter list
-BLUR, COLOR_MATRIX = 1, 6
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -53,7 +53,7 @@ def apply(swf: SwfEdit) -> FixResult:
 
 def _filters(tag: Tag) -> list[tuple[int, bytes]]:
     """[(filter id, its record after the id)] of a PlaceObject's filter list (none: [])"""
-    raw = dict(parse_place_object(tag).display_options).get(FILTER_LIST)
+    raw = dict(parse_place_object(tag).display_options).get(DisplayOption.FILTER_LIST)
     if raw is None:
         return []
     filters, offset = [], 1
@@ -67,7 +67,7 @@ def _filters(tag: Tag) -> list[tuple[int, bytes]]:
 
 
 def _without_filters(tag: Tag, **changes) -> Tag:
-    options = tuple((flag, field) for flag, field in parse_place_object(tag).display_options if flag != FILTER_LIST)
+    options = tuple((flag, field) for flag, field in parse_place_object(tag).display_options if flag != DisplayOption.FILTER_LIST)
     return rewrite_place_object(tag, display_options=options, **changes)
 
 
@@ -77,7 +77,7 @@ def _filtered_depths(tags: list[Tag], filter_id: int) -> set[int]:
 
 
 def _drop_blur(class_name: str, tags: list[Tag]):
-    depths = _filtered_depths(tags, BLUR)
+    depths = _filtered_depths(tags, FilterId.BLUR)
     if not depths:
         return None, "no Blur"
     if len(depths) != 1:
@@ -86,7 +86,7 @@ def _drop_blur(class_name: str, tags: list[Tag]):
     new_tags = []
     for tag in tags:
         if tag.code in PLACE_OBJECT_CODES and parse_place_object(tag).depth == depth and _filters(tag):
-            if [fid for fid, _ in _filters(tag)] != [BLUR]:
+            if [fid for fid, _ in _filters(tag)] != [FilterId.BLUR]:
                 raise CantApply(f"{class_name}'s depth {depth} has other filters than a Blur")
             tag = _without_filters(tag)
         new_tags.append(tag)
@@ -105,7 +105,7 @@ def _brightness_cxform(class_name: str, depth: int, record: bytes) -> ColorTrans
 
 
 def _color_matrix_to_cxform(class_name: str, tags: list[Tag]):
-    depths = _filtered_depths(tags, COLOR_MATRIX)
+    depths = _filtered_depths(tags, FilterId.COLOR_MATRIX)
     if not depths:
         return None, "no ColorMatrix"
     new_tags, done = [], []
@@ -117,7 +117,7 @@ def _color_matrix_to_cxform(class_name: str, tags: list[Tag]):
                 # The colour transform would replace the one standing in for the filter
                 raise CantApply(f"{class_name}'s depth {place.depth} has a colour transform")
             if filters:
-                if [fid for fid, _ in filters] != [COLOR_MATRIX]:
+                if [fid for fid, _ in filters] != [FilterId.COLOR_MATRIX]:
                     raise CantApply(f"{class_name}'s depth {place.depth} has other filters than a ColorMatrix")
                 cxform = _brightness_cxform(class_name, place.depth, filters[0][1])
                 tag = _without_filters(tag, color_transform=cxform)

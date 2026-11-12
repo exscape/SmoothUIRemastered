@@ -42,30 +42,35 @@ from typing import NamedTuple
 from ..swf_patcher.bits import BitReader, BitWriter, signed_bits_needed
 from ..swf_patcher.interpolation import simulate_timeline
 from ..swf_patcher.place_object import (
+    BLEND_ADD,
     FIXED_ONE,
     IDENTITY_COLOR_TRANSFORM,
     IDENTITY_MATRIX,
     PLACE_OBJECT_CODES,
+    DisplayOption,
+    FilterId,
     Matrix,
     build_move,
     build_place,
     parse_place_object,
     read_matrix,
 )
-from ..swf_patcher.swf_tags import Tag, TagCode, build_sprite, parse_remove_object_depth
+from ..swf_patcher.swf_tags import (
+    REMOVE_OBJECT_CODES,
+    Tag,
+    TagCode,
+    build_sprite,
+    parse_remove_object_depth,
+)
 from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
 
-DEFINE_SHAPE, DEFINE_SHAPE3, DEFINE_SHAPE4 = 2, 32, 83
-SHAPE_CODES = (DEFINE_SHAPE, 22, DEFINE_SHAPE3, DEFINE_SHAPE4)
+SHAPE_CODES = (TagCode.DEFINE_SHAPE, TagCode.DEFINE_SHAPE2, TagCode.DEFINE_SHAPE3, TagCode.DEFINE_SHAPE4)
 SOLID_FILL, BITMAP_FILLS = 0x00, (0x40, 0x41, 0x42, 0x43)
-REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
-FLIPBOOK_CODES = {*PLACE_OBJECT_CODES, *REMOVE_CODES, TagCode.SHOW_FRAME, TagCode.FRAME_LABEL, TagCode.END}
+FLIPBOOK_CODES = {*PLACE_OBJECT_CODES, *REMOVE_OBJECT_CODES, TagCode.SHOW_FRAME, TagCode.FRAME_LABEL, TagCode.END}
 MIN_SWAPS = 5                   # a flipbook swaps its picture at least this often
 FLIP = 1                        # the depth a flipbook shows its pictures at
 DARKENER, COLOUR = 1, 3         # the new timeline's depths: the darkener; frame j's colour at COLOUR + j % 3
-FILTER_LIST, BLEND_MODE = 0x01, 0x02    # PlaceObject3 display options
-COLOR_MATRIX_FILTER, BLEND_ADD = 6, 8
-ADD = ((BLEND_MODE, bytes([BLEND_ADD])),)
+ADD = ((DisplayOption.BLEND_MODE, bytes([BLEND_ADD])),)
 TWIPS = 20
 MARGIN = 10 * TWIPS             # around a flipbook's bounds, for what the motion moves outward
 
@@ -188,7 +193,7 @@ def _is_flipbook(tags: list[Tag], shapes: dict[int, Tag]) -> bool:
     if {tag.code for tag in tags} - FLIPBOOK_CODES:
         return False
     places = [parse_place_object(tag) for tag in tags if tag.code in PLACE_OBJECT_CODES]
-    removes = {parse_remove_object_depth(tag) for tag in tags if tag.code in REMOVE_CODES}
+    removes = {parse_remove_object_depth(tag) for tag in tags if tag.code in REMOVE_OBJECT_CODES}
     return (removes <= {FLIP} and sum(place.is_move for place in places) >= MIN_SWAPS
             and all(place.depth == FLIP and place.character_id in shapes and not place.name
                     and not place.display_options and place.color_transform is None
@@ -228,15 +233,15 @@ def _shape_key(tag: Tag) -> bytes:
     data[0:2] = b"\0\0"
     try:
         offset = _after_rect(data, 2)
-        if tag.code == DEFINE_SHAPE4:   # the edge bounds and a flags byte
+        if tag.code == TagCode.DEFINE_SHAPE4:   # the edge bounds and a flags byte
             offset = _after_rect(data, offset) + 1
         count, offset = data[offset], offset + 1
-        if count == 0xFF and tag.code != DEFINE_SHAPE:
+        if count == 0xFF and tag.code != TagCode.DEFINE_SHAPE:
             count, offset = struct.unpack_from("<H", data, offset)[0], offset + 2
         for _ in range(count):
             fill = data[offset]
             if fill == SOLID_FILL:
-                offset += 5 if tag.code in (DEFINE_SHAPE3, DEFINE_SHAPE4) else 4
+                offset += 5 if tag.code in (TagCode.DEFINE_SHAPE3, TagCode.DEFINE_SHAPE4) else 4
             elif fill in BITMAP_FILLS:
                 data[offset + 1:offset + 3] = b"\0\0"
                 offset = read_matrix(data, offset + 3)[1]
@@ -283,7 +288,7 @@ def _colour_matrix(**rows) -> tuple:
     for channel, factors in rows.items():
         at = "rgba".index(channel) * 5
         values[at:at + 4] = factors
-    return ((FILTER_LIST, bytes([1, COLOR_MATRIX_FILTER]) + struct.pack("<20f", *values)),)
+    return ((DisplayOption.FILTER_LIST, bytes([1, FilterId.COLOR_MATRIX]) + struct.pack("<20f", *values)),)
 
 
 def _rect_shape(character_id: int, box) -> Tag:
@@ -312,7 +317,7 @@ def _rect_shape(character_id: int, box) -> Tag:
         bits.write_signed(delta, width)
     bits.write(0, 6)            # end
     # One fill style (solid, black), no line styles
-    return Tag(DEFINE_SHAPE, struct.pack("<H", character_id) + bounds.to_bytes() + bytes([1, SOLID_FILL, 0, 0, 0, 0])
+    return Tag(TagCode.DEFINE_SHAPE, struct.pack("<H", character_id) + bounds.to_bytes() + bytes([1, SOLID_FILL, 0, 0, 0, 0])
                + bits.to_bytes())
 
 

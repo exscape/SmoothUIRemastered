@@ -12,17 +12,33 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
+from enum import IntEnum
 
-# Multiname kinds
-QNAME, QNAME_A = 0x07, 0x0D
-RTQNAME, RTQNAME_A = 0x0F, 0x10
-RTQNAME_L, RTQNAME_LA = 0x11, 0x12
-MULTINAME, MULTINAME_A = 0x09, 0x0E
-MULTINAME_L, MULTINAME_LA = 0x1B, 0x1C
-TYPENAME = 0x1D
+
+class MultinameKind(IntEnum):
+    """A multiname's kind. Each _A kind is the same for an attribute name (@x)."""
+    QNAME = 0x07
+    QNAME_A = 0x0D
+    RTQNAME = 0x0F          # the namespace is only known at runtime
+    RTQNAME_A = 0x10
+    RTQNAME_L = 0x11        # the name and the namespace are
+    RTQNAME_LA = 0x12
+    MULTINAME = 0x09        # a name in one of a set of namespaces
+    MULTINAME_A = 0x0E
+    MULTINAME_L = 0x1B      # ... whose name is only known at runtime
+    MULTINAME_LA = 0x1C
+    TYPENAME = 0x1D         # a generic type: Vector.<T>
+
+
+QNAME_KINDS = frozenset({MultinameKind.QNAME, MultinameKind.QNAME_A})
+# The kinds whose name is in the string pool
+_NAMED_KINDS = QNAME_KINDS | {MultinameKind.RTQNAME, MultinameKind.RTQNAME_A, MultinameKind.MULTINAME,
+                              MultinameKind.MULTINAME_A}
 
 # How many values a property access pops from the stack at runtime for its name, per multiname kind
-RUNTIME_NAME_OPERANDS = {RTQNAME: 1, RTQNAME_A: 1, RTQNAME_L: 2, RTQNAME_LA: 2, MULTINAME_L: 1, MULTINAME_LA: 1}
+RUNTIME_NAME_OPERANDS: dict[int, int] = {MultinameKind.RTQNAME: 1, MultinameKind.RTQNAME_A: 1, MultinameKind.RTQNAME_L: 2,
+                                         MultinameKind.RTQNAME_LA: 2, MultinameKind.MULTINAME_L: 1,
+                                         MultinameKind.MULTINAME_LA: 1}
 
 # method_info flags
 METHOD_HAS_OPTIONAL = 0x08
@@ -31,21 +47,36 @@ METHOD_HAS_PARAM_NAMES = 0x80
 # instance_info flags
 INSTANCE_PROTECTED_NS = 0x08
 
-# Namespace kinds
-PACKAGE_NAMESPACE = 0x16    # a package's public namespace; "" is the top level ("public")
-PRIVATE_NAMESPACE = 0x05    # a class's private members
-PROTECTED_NAMESPACE = 0x18  # a class's protected members
 
-# Trait kinds, and the trait attribute bit for attached metadata
-TRAIT_SLOT, TRAIT_METHOD, TRAIT_GETTER, TRAIT_SETTER, TRAIT_CLASS, TRAIT_FUNCTION, TRAIT_CONST = range(7)
-METHOD_TRAIT_KINDS = (TRAIT_METHOD, TRAIT_GETTER, TRAIT_SETTER)
-VALUE_TRAIT_KINDS = (TRAIT_SLOT, TRAIT_CONST)
+
+class NamespaceKind(IntEnum):
+    """The kinds of namespace the patcher uses"""
+    PACKAGE = 0x16      # a package's public namespace; "" is the top level ("public")
+    PRIVATE = 0x05      # a class's private members
+    PROTECTED = 0x18    # a class's protected members
+
+
+class TraitKind(IntEnum):
+    SLOT = 0
+    METHOD = 1
+    GETTER = 2
+    SETTER = 3
+    CLASS = 4
+    FUNCTION = 5
+    CONST = 6
+
+
+METHOD_TRAIT_KINDS = frozenset({TraitKind.METHOD, TraitKind.GETTER, TraitKind.SETTER})
+VALUE_TRAIT_KINDS = frozenset({TraitKind.SLOT, TraitKind.CONST})
+# The trait attribute bit for attached metadata
 TRAIT_ATTR_METADATA = 0x4
 
-# Constant kinds of a slot's default value
-CONSTANT_UTF8 = 0x01
-CONSTANT_INT = 0x03
-CONSTANT_UINT = 0x04
+
+class ConstantKind(IntEnum):
+    """The kinds of a slot's default value the patcher reads"""
+    UTF8 = 0x01
+    INT = 0x03
+    UINT = 0x04
 
 
 class AbcReader:
@@ -209,13 +240,13 @@ class AbcFile:
             return "*"
         mn = self.multinames[index]
         assert mn is not None   # only entry 0 is None
-        if mn.kind in (QNAME, QNAME_A, RTQNAME, RTQNAME_A, MULTINAME, MULTINAME_A):
+        if mn.kind in _NAMED_KINDS:
             return self.strings[mn.name]
-        if mn.kind in (RTQNAME_L, RTQNAME_LA):
+        if mn.kind in (MultinameKind.RTQNAME_L, MultinameKind.RTQNAME_LA):
             return "<rt>"
-        if mn.kind in (MULTINAME_L, MULTINAME_LA):
+        if mn.kind in (MultinameKind.MULTINAME_L, MultinameKind.MULTINAME_LA):
             return "<rtns>"
-        if mn.kind == TYPENAME:
+        if mn.kind == MultinameKind.TYPENAME:
             return self.name_of(mn.base_type)
         return "?"
 
@@ -225,7 +256,7 @@ class AbcFile:
             return "*"
         mn = self.multinames[index]
         assert mn is not None   # only entry 0 is None
-        if mn.kind in (QNAME, QNAME_A):
+        if mn.kind in QNAME_KINDS:
             ns_name_index = self.namespaces[mn.namespace][1]
             package = self.strings[ns_name_index] if ns_name_index else ""
             return f"{package}.{self.strings[mn.name]}" if package else self.strings[mn.name]
@@ -302,19 +333,19 @@ def parse_abc(data: bytes) -> AbcFile:
 
 def _read_multiname(r: AbcReader) -> Multiname:
     kind = r.u8()
-    if kind in (QNAME, QNAME_A):
+    if kind in QNAME_KINDS:
         namespace = r.u30()
         return Multiname(kind, name=r.u30(), namespace=namespace)
-    if kind in (RTQNAME, RTQNAME_A):
+    if kind in (MultinameKind.RTQNAME, MultinameKind.RTQNAME_A):
         return Multiname(kind, name=r.u30())
-    if kind in (RTQNAME_L, RTQNAME_LA):
+    if kind in (MultinameKind.RTQNAME_L, MultinameKind.RTQNAME_LA):
         return Multiname(kind)
-    if kind in (MULTINAME, MULTINAME_A):
+    if kind in (MultinameKind.MULTINAME, MultinameKind.MULTINAME_A):
         name = r.u30()
         return Multiname(kind, name=name, ns_set=r.u30())
-    if kind in (MULTINAME_L, MULTINAME_LA):
+    if kind in (MultinameKind.MULTINAME_L, MultinameKind.MULTINAME_LA):
         return Multiname(kind, ns_set=r.u30())
-    if kind == TYPENAME:
+    if kind == MultinameKind.TYPENAME:
         base_type = r.u30()
         return Multiname(kind, base_type=base_type, type_params=tuple(r.u30() for _ in range(r.u30())))
     raise ValueError(f"bad multiname kind {kind:#x}")
@@ -361,7 +392,7 @@ def _read_traits(r: AbcReader) -> list[Trait]:
             trait.value_index = r.u30()
             if trait.value_index:
                 trait.value_kind = r.u8()
-        elif kind in (TRAIT_CLASS, TRAIT_FUNCTION):
+        elif kind in (TraitKind.CLASS, TraitKind.FUNCTION):
             r.u30()     # slot id
             r.u30()     # class / function index
         elif kind in METHOD_TRAIT_KINDS:
@@ -407,7 +438,7 @@ class PoolAdditions:
     def qname(self, namespace: int, name: str) -> int:
         """A QName multiname: name in the namespace with that index (see namespace())"""
         return self._index(self.abc.multinames, self.multinames,
-                           Multiname(QNAME, name=self.string(name), namespace=namespace))
+                           Multiname(MultinameKind.QNAME, name=self.string(name), namespace=namespace))
 
     @staticmethod
     def _index(existing: list, added: list, entry) -> int:
@@ -421,7 +452,7 @@ class PoolAdditions:
 
 
 def _encode_multiname(multiname: Multiname) -> bytes:
-    if multiname.kind not in (QNAME, QNAME_A):
+    if multiname.kind not in QNAME_KINDS:
         raise ValueError(f"can't add a multiname of kind {multiname.kind:#x}")
     return bytes([multiname.kind]) + encode_u30(multiname.namespace) + encode_u30(multiname.name)
 

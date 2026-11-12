@@ -13,11 +13,10 @@ frame, which follows on smoothly from the fade-in. The fade-out works as before.
 from __future__ import annotations
 
 from ..swf_patcher.place_object import PLACE_OBJECT_CODES, parse_place_object
-from ..swf_patcher.swf_tags import TagCode
+from ..swf_patcher.swf_tags import REMOVE_OBJECT_CODES, TagCode
 from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit, label_frames
 
 FROST_CLASS = "CardFXFrost_Ongoing"
-REMOVE_CODES = (TagCode.REMOVE_OBJECT, TagCode.REMOVE_OBJECT2)
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -32,7 +31,7 @@ def apply(swf: SwfEdit) -> FixResult:
         if tag.code == TagCode.SHOW_FRAME:
             frame += 1
         if frame in frozen:
-            if tag.code in REMOVE_CODES:
+            if tag.code in REMOVE_OBJECT_CODES:
                 raise CantApply(f"{FROST_CLASS}'s loop removes objects")
             if tag.code in PLACE_OBJECT_CODES:
                 place = parse_place_object(tag)
