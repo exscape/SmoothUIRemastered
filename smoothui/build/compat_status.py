@@ -25,6 +25,7 @@ from .shared import (
     REPO_ROOT,
     build_fps,
     load_manifest,
+    read_manifest,
     version_key,
 )
 
@@ -42,7 +43,7 @@ def newest_compat_patches(version: str, mod_name: str | None = None, exclude=Non
     for path in COMPAT_MANIFEST_DIR.glob("*.json"):
         if path == exclude:
             continue
-        patch = load_manifest(path)
+        patch = read_manifest(path)
         built_for = version_key(patch["smooth_version"])
         if built_for is None or key is None or built_for > key or build_fps(patch["smooth_version"]) != fps:
             continue

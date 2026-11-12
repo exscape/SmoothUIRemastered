@@ -6,7 +6,7 @@ from __future__ import annotations
 class BitReader:
     """Reads MSB-first bit fields, starting at a byte offset"""
 
-    def __init__(self, data: bytes, offset: int):
+    def __init__(self, data: bytes | bytearray, offset: int):
         self.data = data
         self.offset = offset    # current byte
         self.bit = 0            # bits already consumed from the current byte

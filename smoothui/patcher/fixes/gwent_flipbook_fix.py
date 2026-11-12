@@ -162,6 +162,7 @@ def apply(swf: SwfEdit) -> FixResult:
     done, known_count, unknown = [], 0, []
     for sprite_id in swf.sprite_ids():
         tags = swf.sprite_tags(sprite_id)
+        assert tags is not None     # an id from sprite_ids()
         if not _is_flipbook(tags, shapes):
             continue
         snaps, keys, frames = _frames(tags, shapes)
@@ -218,7 +219,7 @@ def _fingerprint(frames: list[Frame], shapes: dict[int, Tag]) -> str:
     return digest.hexdigest()[:16]
 
 
-def _after_rect(data: bytes, offset: int) -> int:
+def _after_rect(data: bytes | bytearray, offset: int) -> int:
     bits = BitReader(data, offset)
     width = bits.read(5)
     for _ in range(4):
@@ -256,7 +257,8 @@ def _shape_box(tag: Tag) -> tuple[int, int, int, int]:
     """A shape's bounds in twips: x min, x max, y min, y max"""
     bits = BitReader(tag.payload, 2)
     width = bits.read(5)
-    return tuple(bits.read_signed(width) for _ in range(4))
+    x_min, x_max, y_min, y_max = (bits.read_signed(width) for _ in range(4))
+    return x_min, x_max, y_min, y_max
 
 
 def _placed_box(box, m: Matrix) -> tuple[int, int, int, int]:

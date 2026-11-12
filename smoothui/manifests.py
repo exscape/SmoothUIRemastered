@@ -43,6 +43,13 @@ def version_key(version):
     suffix = match[2] or ""
     return tuple(int(number) for number in match[1].split(".")), SUFFIXES.index(suffix) if suffix in SUFFIXES else -1
 
+def known_version_key(version):
+    """version_key of a version known to be one (ValueError if it isn't)"""
+    key = version_key(version)
+    if key is None:
+        raise ValueError(f"not a version: {version}")
+    return key
+
 def is_dev_version(version):
     key = version_key(version)
     return key is not None and key[1] == SUFFIXES.index("dev")
@@ -67,7 +74,7 @@ def release_manifests(fps):
     """(version, path) of each release manifest of a build at fps, oldest first"""
     found = [(version, path) for version, path in release_manifest_paths().items()
              if version_key(version) is not None and build_fps(version) == fps]
-    return sorted(found, key=lambda item: version_key(item[0]))
+    return sorted(found, key=lambda item: known_version_key(item[0]))
 
 def latest_manifests():
     """{fps: path} of the most recent release manifest at each release frame rate, dev builds included"""
@@ -86,6 +93,10 @@ def load_manifest(version_or_path):
         path = release_manifest_paths().get(normalize_version(version_or_path))
     if path is None or not path.is_file():
         return None
+    return read_manifest(path)
+
+def read_manifest(path):
+    """The manifest at path, which must exist"""
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 

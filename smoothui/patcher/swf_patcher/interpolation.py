@@ -124,7 +124,8 @@ class DisplayList:
                     _merge_options(old.display_options if old else (), place.display_options),
                 )
             elif place.is_move and depth in current:
-                changes = {"display_options": _merge_options(current[depth].display_options, place.display_options)}
+                changes: dict[str, object] = {
+                    "display_options": _merge_options(current[depth].display_options, place.display_options)}
                 if place.matrix:
                     changes["matrix"] = place.matrix
                 if place.color_transform:

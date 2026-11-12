@@ -43,6 +43,7 @@ from .shared import (
     finish_work_dir,
     install_and_launch,
     is_dev_version,
+    known_version_key,
     load_config,
     pack_content,
     patcher_commit,
@@ -214,8 +215,8 @@ def check_not_outdated(smooth_version, force):
     manifest, unless force. Dev versions (e.g. v0.4dev) don't count as releases."""
     releases = {split_build_version(version)[0] for version in release_manifest_paths()}
     releases = [version for version in releases if version_key(version) is not None and not is_dev_version(version)]
-    newest = max(releases, key=version_key, default=None)
-    if newest is None or version_key(smooth_version) is None or version_key(smooth_version) >= version_key(newest):
+    newest = max(releases, key=known_version_key, default=None)
+    if newest is None or version_key(smooth_version) is None or known_version_key(smooth_version) >= known_version_key(newest):
         return
     if not force:
         fail(f"--smooth-version {smooth_version} is older than {newest}, the most recent release with a "
@@ -311,9 +312,8 @@ def main():
         if not (args.only_fps or args.dev_dump or args.dev_insert or args.dev_pause):
             unneeded += write_patch_manifest(version, manifests[fps], args, mod_version, zip_out,
                                              their_files, patched)
-
-    if args.only_fps:
-        install_and_launch(mod_root / mod_name, game_path, args.install, args.launch)
+        if args.only_fps:   # the one build
+            install_and_launch(mod_root / mod_name, game_path, args.install, args.launch)
 
     finish_work_dir(work_dir, args.keep_work)
 

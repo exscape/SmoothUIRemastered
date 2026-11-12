@@ -31,6 +31,7 @@ from .shared import (
     load_config,
     load_manifest,
     manifest_path,
+    read_manifest,
 )
 
 log = logging.getLogger(__name__)
@@ -105,9 +106,9 @@ def main(argv=None):
             ap.error(f"{patch_arg} is not a compat patch's manifest (those are in {COMPAT_MANIFEST_DIR})")
         if patch["fps"] not in targets:
             ap.error(f"no {patch['fps']} fps build of {against} to check against")
-    elif patch_arg and not any(newest_compat_patches(load_manifest(target)["created_mod_version"], patch_arg)
+    elif patch_arg and not any(newest_compat_patches(read_manifest(target)["created_mod_version"], patch_arg)
                                for target in targets.values()):
-        known = sorted({load_manifest(path)["mod_name"] for path in COMPAT_MANIFEST_DIR.glob("*.json")})
+        known = sorted({read_manifest(path)["mod_name"] for path in COMPAT_MANIFEST_DIR.glob("*.json")})
         if patch_arg.lower() in (name.lower() for name in known):
             ap.error(f"{patch_arg}'s compat patches are all for releases after {against}")
         ap.error(f"no compat patch manifests of {patch_arg}; there are some for: {', '.join(known) or 'no mods'}")
@@ -123,7 +124,7 @@ def main(argv=None):
     sys.exit(1 if outdated else 0)
 
 
-def release_builds(ap, version_or_path) -> dict[int, Path]:
+def release_builds(ap: argparse.ArgumentParser, version_or_path) -> dict[int, Path]:
     """The release manifests a command-line argument names, by frame rate: a path, or a build's version
     (e.g. v0.3.1-60fps), names one; a release's version (e.g. v0.3.1) names each of its builds"""
     path = Path(version_or_path) if version_or_path.endswith(".json") else manifest_path(version_or_path)

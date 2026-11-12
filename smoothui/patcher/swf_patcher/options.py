@@ -46,8 +46,8 @@ class SpeedRule:
     speed is target fps / the file's original frame rate, where no frames are repeated; higher would
     need frames dropped, which is not supported.
 
-    The pattern is matched against the class name with re.search, case-sensitively."""
-    pattern: str | re.Pattern
+    The pattern is matched against the class name with re.search, case-sensitively (a string is compiled)."""
+    pattern: re.Pattern
     speed: Fraction
 
     def __post_init__(self):

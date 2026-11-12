@@ -102,9 +102,9 @@ def _brightness_cxform(class_name: str, depth: int, record: bytes) -> ColorTrans
     rows = [m[i * 5:i * 5 + 5] for i in range(4)]
     if rows[3] != (0, 0, 0, 1, 0) or any(row[3] for row in rows[:3]):
         raise CantApply(f"{class_name}'s ColorMatrix at depth {depth} changes alpha")
-    mul = [round(sum(row[:3]) * CXFORM_ONE) for row in rows[:3]]
-    add = [round(row[4]) for row in rows[:3]]
-    return ColorTransform(*mul, CXFORM_ONE, *add, 0)
+    mul_r, mul_g, mul_b = (round(sum(row[:3]) * CXFORM_ONE) for row in rows[:3])
+    add_r, add_g, add_b = (round(row[4]) for row in rows[:3])
+    return ColorTransform(mul_r, mul_g, mul_b, CXFORM_ONE, add_r, add_g, add_b, 0)
 
 
 def _color_matrix_to_cxform(class_name: str, tags: list[Tag]):

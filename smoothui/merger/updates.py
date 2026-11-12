@@ -199,7 +199,9 @@ def download_manifests(assets: list[Asset], folder: Path, timeout: float = TIMEO
             make_dirs(folder)
             download(asset, part, timeout)
             try:
-                text = read_file(part).decode("utf-8")
+                data = read_file(part)
+                assert data is not None     # just downloaded
+                text = data.decode("utf-8")
                 is_manifest = asset.name == MOD_REVIEWS or isinstance(json.loads(text), dict)
             except ValueError as e:
                 fail(f"it can't be read: {e}")
@@ -265,9 +267,9 @@ class _HttpsRedirects(urllib.request.HTTPRedirectHandler):
         if not allowed_url(newurl):
             raise urllib.error.URLError(f"redirected to {newurl}, which isn't HTTPS")
         new = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if new is not None:
-            new.urls = req.urls
-            new.urls.append(newurl)
+        if new is not None:     # (urls: our own attribute on urllib's Request, see _open)
+            new.urls = req.urls  # pyright: ignore[reportAttributeAccessIssue]
+            new.urls.append(newurl)  # pyright: ignore[reportAttributeAccessIssue]
         return new
 
 
@@ -289,11 +291,12 @@ def _open(url, timeout, accept):
     if (secret := token()) and urlsplit(url).hostname == TOKEN_HOST:
         # Unredirected: not sent on to the host an asset download redirects to
         request.add_unredirected_header("Authorization", f"Bearer {secret}")
-    request.urls = [url]    # then where it was redirected to
+    request.urls = [url]    # then where it was redirected to  # pyright: ignore[reportAttributeAccessIssue]
     try:
         return _opener().open(request, timeout=timeout)
     except (OSError, http.client.HTTPException) as e:
-        e.failed_url = request.urls[-1]     # for _describe: after a redirect, the other host failed
+        # For _describe: after a redirect, the other host failed
+        e.failed_url = request.urls[-1]  # pyright: ignore[reportAttributeAccessIssue]
         if isinstance(e, urllib.error.HTTPError):
             e.close()       # its body isn't read (_describe needs only the code and headers)
         raise

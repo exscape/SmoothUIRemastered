@@ -115,14 +115,16 @@ def main(args: list[str], log: Log) -> int:
         # It asks for the game folder on its first run
         game = game_path(read_settings(log))
         log(f"Game folder: {game or 'still not chosen'}")
-    elif package_stale(game, log, scan_options(settings)) and not open_merger(log):
+    elif game is not None and package_stale(game, log, scan_options(settings)) and not open_merger(log):
         return 0
     return start_game(command_for(args, game, log), log)
 
 
 def check_only(log: Log) -> int:
     try:
-        found = check(game_path(None), mods_settings())
+        game = game_path(None)
+        assert game is not None     # the test sets the game folder's variable too
+        found = check(game, mods_settings())
     except Exception as e:  # noqa: BLE001 (the exit code says so)
         log.failure("The check failed", e)
         return 1
@@ -178,6 +180,7 @@ def package_stale(game: Path, log: Log, off=None) -> bool:
     if not found.stale:
         log("Up to date")
         return False
+    assert found.severity is not None   # stale
     log(f"Stale (playing without merging: {found.severity.name.lower()}): opening the merger")
     return True
 

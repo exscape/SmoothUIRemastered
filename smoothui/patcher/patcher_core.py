@@ -91,7 +91,7 @@ def patch_files(inputs, profile, *, on_file=None, pool=None):
     resolve_dev_target(profile)
     jobs = [(source, profile[source.path]) for source in inputs]
 
-    results = [None] * len(jobs)
+    results: list = [None] * len(jobs)
     for i, result in _patch_jobs(jobs, pool):
         results[i] = result
         if on_file:
@@ -321,6 +321,7 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True, game_rat
                 raise MalformedSwfError("can't read the frame rate in its header")
             result = rescale_body(body, settings.target_fps, rules=settings.rules, include=settings.include,
                                   exclude=settings.exclude, shares_classes=shares_classes, keep=keep)
+            assert result is not None   # only None when accept_plan rejects the plan
         if result.new_fps is not None:
             body[:] = result.body
         fixed_after, records_after = apply_fixes(body, settings.fixes, AFTER_RESCALE)

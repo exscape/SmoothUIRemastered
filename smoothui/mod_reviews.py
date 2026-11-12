@@ -174,7 +174,7 @@ def load() -> ModReviews:
 def parse(text: str, tools: str | None = None) -> tuple[ModReviews, list[str]]:
     """(the reviews in a file's text, a line for each problem). tools: the tools version (X.Y.Z), for the
     dont-merge lines whose reason is "before-X-Y-Z" (None: they all apply)."""
-    tools = tuple(map(int, tools.split("."))) if tools else None
+    tools_key = tuple(map(int, tools.split("."))) if tools else None
     groups, problems = [], []
     # [pattern, reviews, leave-outs, dont-merges, dont-stretches] of the last header; its pattern is None if it
     # isn't valid
@@ -196,7 +196,7 @@ def parse(text: str, tools: str | None = None) -> tuple[ModReviews, list[str]]:
         elif line.startswith(f"{DONT_MERGE} "):
             found = DONT_MERGE_LINE.fullmatch(line)
             before = BEFORE.fullmatch(found[1]) if found else None
-            if before and tools and tools >= tuple(map(int, before.groups())):
+            if before and tools_key and tools_key >= tuple(map(int, before.groups())):
                 continue    # for older tools only
             if found:
                 group[3].append(DontMerge(found[1], frozenset(found[3].lower().split()), bool(found[2])))
@@ -210,7 +210,7 @@ def parse(text: str, tools: str | None = None) -> tuple[ModReviews, list[str]]:
             except ValueError as e:
                 problems.append(f"line {number}: '{line}': {e}: skipped")
                 continue
-            if found:
+            if found and patterns is not None:
                 group[4].append(DontStretch(found[1].lower(), patterns))
             else:
                 problems.append(f"line {number}: '{line}' isn't a review ('{DONT_STRETCH} <screen> <pattern> "

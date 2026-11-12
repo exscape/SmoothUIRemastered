@@ -84,7 +84,7 @@ class AbcEdit:
 class SwfEdit:
     """A decompressed SWF body (the data after the 8-byte header), whose sprites fixes replace"""
 
-    def __init__(self, body: bytes):
+    def __init__(self, body: bytes | bytearray):
         first_tag = swf_get_header_offsets(body)[1]
         if first_tag is None:
             raise MalformedSwfError("not a valid SWF body")

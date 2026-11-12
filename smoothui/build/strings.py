@@ -107,7 +107,7 @@ def check_menu_defaults(xml_path: Path, scripts: str):
         fail(f"{xml_path.name}: settings without a working default:\n  " + "\n  ".join(problems))
 
 
-def build_strings(tool: Path, work_dir: Path, mod_name: str, dry_run=False):
+def build_strings(tool: Path | None, work_dir: Path, mod_name: str, dry_run=False):
     """Check the strings against the mod's settings menu, then (unless dry_run) replace the mod's .w3strings
     files with new ones; tool is w3stringsr, work_dir a folder for temporary files"""
     log.info("Building the settings menu's strings", extra=HEADING)

@@ -20,9 +20,9 @@ from ..patcher.swf_patcher import format_unmet_rule, report_settings
 from .shared import (
     OLD_MANIFEST_FPS,
     build_fps,
+    known_version_key,
     load_manifest,
     release_manifests,
-    version_key,
 )
 
 log = logging.getLogger(__name__)
@@ -33,7 +33,8 @@ FILE_ASPECTS = ("source", "frame rate", "settings", "fixes", "warnings", "unmet 
 
 def print_changes_since_previous(version):
     """Print what changed in a build's manifest since the previous version's at the same frame rate"""
-    older = [path for other, path in release_manifests(build_fps(version)) if version_key(other) < version_key(version)]
+    older = [path for other, path in release_manifests(build_fps(version))
+             if known_version_key(other) < known_version_key(version)]
     if not older:
         log.info(f"No {build_fps(version)} fps manifest of a version before {normalize_version(version)} to compare with")
         return

@@ -22,11 +22,13 @@ from ..manifests import (  # noqa: F401 (re-exported for the build tools)
     build_fps,
     build_version,
     is_dev_version,
+    known_version_key,
     latest_manifests,
     load_manifest,
     manifest_format,
     manifest_path,
     patcher_commit,
+    read_manifest,
     release_manifest_paths,
     release_manifests,
     split_build_version,
@@ -65,6 +67,7 @@ def run_command(cmd, cwd=None, filter_predicate=None, detach=False):
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
         ) as proc:
+            assert proc.stdout is not None  # stdout=PIPE
             for line in proc.stdout:
                 line = line.rstrip()
                 if filter_predicate is None or not filter_predicate(line):
@@ -132,6 +135,7 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
     if status == "failed":
         log.error(f"{rel}: {error}")
         return
+    assert report is not None   # patched and kept files have one
     why_kept = ("not retimed (retime: false)" if report.get("retime") is False
                 else f"already at or above the target {report['target_fps']:g} fps")
     if status == "kept":

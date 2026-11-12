@@ -36,6 +36,7 @@ def verify(movie: SwfMovie, plan: RescalePlan, new_body: bytes) -> list[str]:
     """Returns a list of problems; empty if all is well"""
     problems = []
     fps_offset, first_tag_offset = swf_get_header_offsets(new_body)
+    assert fps_offset is not None and first_tag_offset is not None     # our output
     if first_tag_offset != movie.first_tag_offset:
         problems.append("header length changed")
     if struct.unpack_from("<H", new_body, fps_offset)[0] != raw_fps(plan.target_fps):

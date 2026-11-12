@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import functools
 import struct
+from collections.abc import Iterable
 from dataclasses import dataclass
+from enum import Enum
 from typing import NamedTuple
 
 from .bits import BitReader, BitWriter, signed_bits_needed
@@ -201,10 +203,12 @@ def _build(flags, depth, character, matrix, color_transform, ratio, display_opti
     return Tag(TagCode.PLACE_OBJECT3 if display_options else TagCode.PLACE_OBJECT2, payload)
 
 
-_KEEP = object()
+class _Keep(Enum):
+    KEEP = 0    # rewrite_place_object's default: leave the field as it is
 
 
-def rewrite_place_object(tag: Tag, *, color_transform=_KEEP, display_options=_KEEP) -> Tag:
+def rewrite_place_object(tag: Tag, *, color_transform: ColorTransform | None | _Keep = _Keep.KEEP,
+                         display_options: Iterable[tuple[int, bytes]] | _Keep = _Keep.KEEP) -> Tag:
     """The PlaceObject2/3 tag with its colour transform and/or display options (see PlaceObject)
     replaced; None / () removes them. Other fields stay as they are."""
     data = tag.payload
@@ -238,8 +242,8 @@ def rewrite_place_object(tag: Tag, *, color_transform=_KEEP, display_options=_KE
             offset = end
     tail = data[offset:]    # clip actions (AS2 only)
 
-    color_transform = old_color_transform if color_transform is _KEEP else color_transform
-    display_options = tuple(old_options) if display_options is _KEEP else tuple(display_options)
+    color_transform = old_color_transform if color_transform is _Keep.KEEP else color_transform
+    display_options = tuple(old_options) if display_options is _Keep.KEEP else tuple(display_options)
     flags = flags & ~FLAG_HAS_COLOR_TRANSFORM | (FLAG_HAS_COLOR_TRANSFORM if color_transform else 0)
     flags3 = flags3 & ~sum(DISPLAY_OPTIONS) | sum(flag for flag, _ in display_options)
     code = TagCode.PLACE_OBJECT3 if tag.code == TagCode.PLACE_OBJECT3 or display_options else TagCode.PLACE_OBJECT2
@@ -250,7 +254,7 @@ def rewrite_place_object(tag: Tag, *, color_transform=_KEEP, display_options=_KE
     return Tag(code, payload)
 
 
-def read_matrix(data: bytes, offset: int) -> tuple[Matrix, int]:
+def read_matrix(data: bytes | bytearray, offset: int) -> tuple[Matrix, int]:
     """The MATRIX record at offset, and the offset after it"""
     bits = BitReader(data, offset)
     scale_x = scale_y = FIXED_ONE

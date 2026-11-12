@@ -107,7 +107,7 @@ class FileResult:
     @property
     def hides_mod(self) -> bool:
         """Whether the game loads Smooth UI's copy now where a mod ships the file, so that mod's changes don't show"""
-        return self.smoothui_first and is_smoothui_folder(self.loaded.folder)
+        return self.smoothui_first and self.loaded is not None and is_smoothui_folder(self.loaded.folder)
 
 
 class ScreenOff(NamedTuple):
@@ -162,9 +162,11 @@ class Scan:
     # installed build's release) or "optional" (an optional fix was chosen for it)}
     from_game: dict[str, str] = field(default_factory=dict)
 
-    def fps_of(self, key: str) -> int | None:
-        """The frame rate to patch a file (profile key) for"""
-        return self.hud_fps if self.group_of.get(key) == "hud" else self.target_fps
+    def fps_of(self, key: str) -> int:
+        """The frame rate to patch a file (profile key) for (of a scan that found a usable Smooth UI)"""
+        fps = self.hud_fps if self.group_of.get(key) == "hud" else self.target_fps
+        assert fps is not None
+        return fps
 
     @property
     def compat_patches(self) -> list[str]:
@@ -224,6 +226,7 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
         return Scan(mods_dir, installed, order, {}, [], _conflicts(mods_dir, order), groups_off=frozenset(groups_off),
                     reviews=reviews)
 
+    assert mods_dir is not None and installed.manifest is not None     # usable: its folder in Mods\ is known
     records = {profile_key(key): record for key, record in installed.manifest["files"].items()}
     keys = set(records)
     unused = {key for key, record in records.items() if game_copy(record) == UNUSED}
@@ -263,11 +266,12 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
         result = files[key] = FileResult(key, shippers)
         others = [mod for mod in result.shippers if not is_own_folder(mod.folder)]
         result.undetermined = undetermined_for(others) if key not in off else []
-        if COMPAT_PATCH.fullmatch(result.loaded.folder if result.loaded else "") and not others:
+        loaded = result.loaded
+        if loaded and COMPAT_PATCH.fullmatch(loaded.folder) and not others:
             # The merger replaces these compat patches, so one that the game still uses should go
             problems.append(Problem(ProblemKind.ORPHANED_COMPAT,
-                                    f"{result.loaded.folder} is an old Smooth UI compat patch, which the merger "
-                                    "replaces: remove it", result.loaded.folder, key))
+                                    f"{loaded.folder} is an old Smooth UI compat patch, which the merger "
+                                    "replaces: remove it", loaded.folder, key))
         if result.undetermined:
             names = ", ".join(mod.folder for mod in result.undetermined)
             problems.append(Problem(ProblemKind.UNDETERMINED, f"the load order doesn't decide whose {screen_name(key)} the "

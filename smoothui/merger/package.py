@@ -156,7 +156,9 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: d
     before = (previous or {}).get("files", {})
     today = datetime.date.today().isoformat()
     held, not_held = {}, {}
+    assert installed.manifest is not None   # usable
     for file in files:
+        assert file.source.toc_entry is not None    # a copy in a bundle
         if file.status.included:
             held[file.path] = {
                 "mod": file.mod,

@@ -133,7 +133,7 @@ def _add_setting(entry: Entry, text: str, where: str, is_override: bool):
     if speed is not None:
         if not isinstance(pattern, str):
             raise ValueError("speed only takes class name regexes, not sprite ids or instance names")
-        entry.rules.append(SpeedRule(pattern, parse_speed(speed)))
+        entry.rules.append(SpeedRule(re.compile(pattern), parse_speed(speed)))
         return
     if where != FILE and isinstance(pattern, SpriteRef):
         raise ValueError(f"sprite ids can't be used under {'*' if where == STAR else 'a group'}, as they differ "
@@ -252,7 +252,7 @@ def load_profile(path, fps: int) -> tuple[dict[str, PatchSettings], list[str], d
 
     profile, group_of, game_copy_of = {}, {}, {}
     for key, entry in files.items():
-        group = groups.get(entry.group)
+        group = groups.get(entry.group) if entry.group is not None else None
         if group:
             group_of[key] = group
         profile[key] = settings(entry, group.settings if group else Entry())

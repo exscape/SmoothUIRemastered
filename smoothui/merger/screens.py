@@ -8,6 +8,7 @@ check's messages use it.
 from __future__ import annotations
 
 from collections import Counter
+from typing import Any
 
 from ..common import profile_key
 
@@ -79,7 +80,7 @@ def screen_label(path: str) -> str:
     return name if name == file_name(path) else f"{name} ({file_name(path)})"
 
 
-def by_group(items: list, said) -> list[tuple[str, object]]:
+def by_group(items: list, said) -> list[tuple[str, Any]]:
     """items (each with a path, and a group or None) as (a label, the item), to list them: a group's items that
     say the same (said(item)) as one entry, e.g. ("HUD (25 other files)", the first of them), after the
     group's other items; each other item by its screen_label. A group is merged whole or not at all, so its

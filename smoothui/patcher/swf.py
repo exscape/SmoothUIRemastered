@@ -98,7 +98,7 @@ def swf_patch(data, pos, patch, body_hook=None):
 
     return stream_end, result, new_swf_bytes
 
-def swf_get_header_offsets(body: bytearray):
+def swf_get_header_offsets(body: bytes | bytearray) -> tuple[int, int] | tuple[None, None]:
     """
     Parses the uncompressed SWF MovieHeader to find the byte offsets for
     the frame rate (FPS) and the start of the tag stream.

@@ -115,6 +115,7 @@ class PackageFile:
     @property
     def entry(self):
         """The patched file, as a BundleEntry (for a file the package holds)"""
+        assert self.result is not None
         return self.result["entry"]
 
     @property
@@ -122,6 +123,7 @@ class PackageFile:
         """The frame rate its copy keeps, if it isn't rescaled (UNCHANGED, or only fixed); else None"""
         if self.status not in (FileStatus.UNCHANGED, FileStatus.PATCHED, FileStatus.FORCED):
             return None
+        assert self.result is not None
         report = self.result["report"]
         return report["old_fps"] if report["new_fps"] is None else None
 
@@ -131,6 +133,7 @@ class PackageFile:
         noticeably slower than made for (below SLOW_BELOW, and it has timeline animations); else None"""
         if self.fps is None:
             return None
+        assert self.result is not None
         report = self.result["report"]
         speed = report["target_fps"] / report["old_fps"]
         return speed if report.get("animated") and speed < SLOW_BELOW else None
@@ -138,11 +141,11 @@ class PackageFile:
     @property
     def known_broken(self) -> list[str]:
         """The reviews of the warnings that mean its copy is known not to work"""
-        return [issue.review for issue in self.issues if issue.kind == IssueKind.KNOWN_BROKEN]
+        return [issue.review for issue in self.issues if issue.kind == IssueKind.KNOWN_BROKEN and issue.review is not None]
 
     @property
     def fixes_not_applied(self) -> list[str]:
-        return [issue.fix for issue in self.issues if issue.kind == IssueKind.FIX]
+        return [issue.fix for issue in self.issues if issue.kind == IssueKind.FIX and issue.fix is not None]
 
     @property
     def severity(self) -> str:
@@ -186,12 +189,12 @@ class PackageFile:
         elif status == FileStatus.FORCED:
             summary = merged_anyway(copy, self.reason) + (". Without some fixes:" if self.fixes_not_applied else ".")
         elif status == FileStatus.GROUP_LEFT_OUT:
-            summary = f"{not_merged(status.value, copy, self.mod, group=self.group, kept_out_by=self.error)} {self._runs()}"
+            summary = f"{not_merged(status.value, copy, group=self.group, kept_out_by=self.error)} {self._runs()}"
         else:
             reason = self.reason if status == FileStatus.LEFT_OUT else None
-            summary = f"{not_merged(status.value, copy, self.mod, reason=reason)} {self._runs()}"
+            summary = f"{not_merged(status.value, copy, reason=reason)} {self._runs()}"
         lines = self._fix_lines() if status.included or status == FileStatus.UNCHANGED else []
-        if self.speed is not None:
+        if self.speed is not None and self.result is not None:
             lines.append(played_slowly(self.result["report"]["target_fps"], self.speed))
         if details := self._details():
             lines.append(f"Details: {details}")
@@ -214,7 +217,7 @@ class PackageFile:
 
     def _fix_lines(self):
         return [f"- {fix_kind(issue.fix).header} {fix_consequence(issue.fix)} ({issue.fix})"
-                for issue in self.issues if issue.kind == IssueKind.FIX]
+                for issue in self.issues if issue.kind == IssueKind.FIX and issue.fix is not None]
 
     def _copy(self):
         """The copy that was patched, for the user: the game's copy, or <mod>'s copy"""
@@ -229,6 +232,7 @@ class PackageFile:
 
     def _fallback(self):
         """The copy the game shows unless the package holds the file, when it isn't the file's own"""
+        assert self.fallback is not None    # see _runs
         if is_smoothui_folder(self.fallback):
             if self.mod == GAME_FILES:
                 return "Smooth UI's own copy"
@@ -255,6 +259,7 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
         status, result = results[path]
         file = scan.files[path]
         source = file.winner
+        assert source is not None   # patch holds the winners
         fallback = file.loaded_without_package.folder if file.loaded_without_package else None
         if status == FileStatus.FAILED:
             files.append(PackageFile(path, source, status, error=result["error"], fallback=fallback))

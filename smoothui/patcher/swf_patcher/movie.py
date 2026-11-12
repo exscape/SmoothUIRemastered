@@ -93,11 +93,12 @@ class AbcUnit:
 
 
 class SwfMovie:
-    def __init__(self, body: bytes):
+    def __init__(self, body: bytes | bytearray):
         self.body = bytes(body)
-        self.fps_offset, self.first_tag_offset = swf_get_header_offsets(self.body)
-        if self.fps_offset is None:
+        fps_offset, first_tag_offset = swf_get_header_offsets(self.body)
+        if fps_offset is None or first_tag_offset is None:
             raise MalformedSwfError("not a valid SWF body")
+        self.fps_offset, self.first_tag_offset = fps_offset, first_tag_offset
         self.fps = struct.unpack_from("<H", self.body, self.fps_offset)[0] / FPS_FIXED_POINT_SCALE
         self.tags = parse_tags(self.body, self.first_tag_offset)
 
@@ -189,9 +190,10 @@ class SwfMovie:
                 self._set_method_owner(base + cls.static_init, class_name, "<cinit>")
                 self.static_methods.add(base + cls.static_init)
                 for trait in instance.traits + cls.traits:
-                    if trait.kind in METHOD_TRAIT_KINDS:
+                    if trait.kind in METHOD_TRAIT_KINDS and trait.method is not None:
                         self._set_method_owner(base + trait.method, class_name, abc.name_of(trait.name))
-                self.static_methods.update(base + trait.method for trait in cls.traits if trait.kind in METHOD_TRAIT_KINDS)
+                self.static_methods.update(base + trait.method for trait in cls.traits
+                                           if trait.kind in METHOD_TRAIT_KINDS and trait.method is not None)
             self.code.update((base + m, disassemble(body.code)) for m, body in abc.bodies.items())
 
         self._load_string_typing()
@@ -222,7 +224,7 @@ class SwfMovie:
                         property_types[name].add(self.value_type(trait, abc))
                     if trait.kind in VALUE_TRAIT_KINDS:
                         variables.add(name)
-                    if trait.kind == TRAIT_METHOD:
+                    if trait.kind == TRAIT_METHOD and trait.method is not None:
                         return_type = abc.methods[trait.method].return_type
                         return_types[name].add(abc.full_name_of(return_type) if return_type else None)
         self.string_properties = {name for name, types in property_types.items()
@@ -239,7 +241,7 @@ class SwfMovie:
             if trait.kind == TRAIT_CONST and trait.value_kind == CONSTANT_UTF8:
                 return "String"     # an untyped constant with a string value
             return None
-        if trait.kind == TRAIT_GETTER:
+        if trait.kind == TRAIT_GETTER and trait.method is not None:
             return_type = abc.methods[trait.method].return_type
             return abc.full_name_of(return_type) if return_type else None
         if trait.kind == TRAIT_METHOD:

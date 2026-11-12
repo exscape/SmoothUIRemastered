@@ -163,8 +163,8 @@ def _join_job(name):
 def kill_workers(pool: ProcessPoolExecutor):
     """End a pool's workers at once, even in the middle of a task: for a process that exits without waiting
     for them (they'd go on otherwise, and a mod manager would see the program still running)"""
-    if hasattr(pool, "kill_workers"):   # Python 3.14
-        pool.kill_workers()
+    if kill := getattr(pool, "kill_workers", None):     # Python 3.14
+        kill()
         return
     for process in list((pool._processes or {}).values()):
         process.kill()
@@ -189,7 +189,8 @@ def _init_worker(levels, job=None, ignore_ctrl_c=False):
     root = logging.getLogger()
     for handler in root.handlers[:]:
         root.removeHandler(handler)
-    root.addHandler(logging.handlers.QueueHandler(_records))   # also makes records picklable
+    # (QueueHandler only calls put_nowait; its stub asks for a whole queue)
+    root.addHandler(logging.handlers.QueueHandler(_records))  # pyright: ignore[reportArgumentType]
     for name, level in levels.items():
         logging.getLogger(name or None).setLevel(level)
 

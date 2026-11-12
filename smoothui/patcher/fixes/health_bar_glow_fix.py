@@ -28,6 +28,7 @@ def apply(swf: SwfEdit) -> FixResult:
         return FixResult([], f"expected 1 sprite linked to {BAR_CLASS}, found {len(sprite_ids)}")
     sprite_id, = sprite_ids
     tags = swf.sprite_tags(sprite_id)
+    assert tags is not None     # an id from sprites_of_class()
     depths = {parse_place_object(tag).depth for tag in tags
               if tag.code in PLACE_OBJECT_CODES and parse_place_object(tag).name == GLOW_NAME}
     if not depths:

@@ -153,7 +153,7 @@ def check(game_path: Path, mods_settings: Path, *, data_dir: Path | None = DATA_
 def _has_package(result: Scan) -> bool:
     """Whether the game loads a package (an enabled package folder with a bundle)"""
     folder = next((mod.folder for mod in result.order if is_package_folder(mod.folder)), None)
-    if folder is None:
+    if folder is None or result.mods_dir is None:
         return False
     try:
         return bool(list_bundles(result.mods_dir / folder / "content"))
@@ -180,15 +180,16 @@ OPTIONAL_CHANGED = "an optional change was turned on or off"
 GAME_UPDATED = "the game was updated since this Smooth UI's release"
 
 
-def not_merged(status: str, copy: str, mod: str, *, reason: str | None = None, group: str | None = None,
+def not_merged(status: str, copy: str, *, reason: str | None = None, group: str | None = None,
                kept_out_by: str | None = None) -> str:
-    """Why a copy (e.g. "modA's copy") of mod isn't merged, for the user: by its status (as for WHY, or
+    """Why a copy (e.g. "modA's copy") isn't merged, for the user: by its status (as for WHY, or
     "group left out") and reason. A group's file left out with it: kept_out_by, why the group is (e.g.
     "hud_buffs can't be merged")."""
     if status == "group left out":
+        assert group is not None    # a group's file
         return (f"not merged, as the {group_name(group)} is merged whole or not at all"
                 + (f", and {kept_out_by}." if kept_out_by else "."))
-    return f"{copy} {WHY.get(reason) or WHY.get(status, status)}, {_NOT_MERGED}"
+    return f"{copy} {WHY.get(reason or '') or WHY.get(status, status)}, {_NOT_MERGED}"
 
 
 def left_out_by_rule(choice, group: str | None = None, held: bool = False) -> str:
@@ -225,7 +226,7 @@ def merged_anyway(copy: str, reason: str | None, since: str = "") -> str:
     if reason == "code":
         return (f"merged anyway, as you chose{since}: {copy} {WHY['code']}. If something runs too fast or looks wrong, "
                 "use the mod's own copy")
-    return f"merged anyway, as you chose{since}: {copy} {WHY.get(reason) or WHY['left out']}, so it may look or behave wrong in places"
+    return f"merged anyway, as you chose{since}: {copy} {WHY.get(reason or '') or WHY['left out']}, so it may look or behave wrong in places"
 
 
 def original_frame_rate(group: str | None = None) -> str:
@@ -239,6 +240,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     data_dir: the merger's data folder, with the records of packages that hold no files (None: none)."""
     if not result.files:
         return []
+    assert result.mods_dir is not None  # files: Smooth UI is usable
     folder = next((mod.folder for mod in result.order if is_package_folder(mod.folder)), PACKAGE_FOLDER)
     package_dir = result.mods_dir / folder
     manifest, manifest_problem = _read_manifest(package_dir / PACKAGE_MANIFEST)
@@ -246,6 +248,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     if manifest is None and manifest_problem is None and not toc and toc_problem is None and data_dir is not None:
         manifest, manifest_problem = _read_manifest(record_path(data_dir, result.mods_dir))
     installed = result.installed
+    assert installed.manifest is not None   # usable
     built_for = (manifest or {}).get("smoothui", {})
     built_by = (manifest or {}).get("tools_version")
     # Only the merger's version changed: nothing the game shows is wrong (severity LOW)
@@ -309,6 +312,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
 
         def overridden(file=file, copy=copy):
             """The package holds it (patched or as it is), but the game loads another mod's copy"""
+            assert copy is not None     # held
             loaded = file.loaded.folder if file.loaded else "another mod"
             if own_entry:
                 state(State.OVERRIDDEN, f"the game uses {loaded}'s copy: it has Priority 0 too, and its name sorts "
@@ -337,7 +341,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
             after = file.loaded_without_package
             state(State.NO_LONGER_NEEDED, f"{record_off['mod']} no longer changes it: merge again (the game then uses "
                   f"{_copy_name(after.folder) if after else 'no copy'})", Severity.HIGH, previous=record_off["mod"])
-        elif as_is and not same_copy(record_off, copy):
+        elif as_is and copy is not None and not same_copy(record_off, copy):
             cause, text = _changed(record_off, copy)
             state(State.CHANGED, f"{text}: merge again", Severity.HIGH, cause=cause, previous=record_off.get("mod"),
                   origin=copy.origin)
@@ -443,7 +447,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
                 # Short, for the user: the technical reasons are in the merge's log
                 status, group = record["status"], groups.get(key)
                 kept_out_by = "; ".join(record.get("reasons") or ()) if status == "group left out" else None
-                text = not_merged(status, _copy_of(origin), origin, reason=record.get("reason"), group=group,
+                text = not_merged(status, _copy_of(origin), reason=record.get("reason"), group=group,
                                   kept_out_by=kept_out_by)
                 # The same for each of a group's files left out with it, so that they are told as one
                 shows = _shows(file, origin, group if status == "group left out" else None, result.fps_of(key),
@@ -505,6 +509,7 @@ def changed_since_off(result: Scan) -> dict[str, list[str]]:
         if choice.path != key or copy is None or choice.size is None:
             continue
         changed = []
+        assert copy.toc_entry is not None   # a mod's copy, in its bundle
         if (copy.size, copy.toc_entry.crc) != (choice.size, choice.crc32):
             changed.append(choice.mod)
         if choice.reviews != result.reviews.sha256 or choice.tools != tools_version():
@@ -519,6 +524,7 @@ def carried_force(result: Scan) -> tuple[list[str], list[str]]:
     in the next build: those whose copy is still the one it forced. And a note for each other one, which
     isn't forced, so that the user decides again. Not one that is off now (see Scan.screens_off), which is decided."""
     folder = next((mod.folder for mod in result.order if is_package_folder(mod.folder)), PACKAGE_FOLDER)
+    assert result.mods_dir is not None  # a usable scan
     manifest, _ = _read_manifest(result.mods_dir / folder / PACKAGE_MANIFEST)
     force, notes = [], []
     for key, record in sorted((manifest or {}).get("files", {}).items()):

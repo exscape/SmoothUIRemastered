@@ -56,7 +56,7 @@ def encode_tag_header(tag_code: int, length: int, *, force_long: bool = False) -
 SHOW_FRAME_TAG = encode_tag_header(TagCode.SHOW_FRAME, 0)
 END_TAG = encode_tag_header(TagCode.END, 0)
 
-def read_tag(body: bytes, offset: int, limit: int) -> tuple[Tag, int]:
+def read_tag(body: bytes | bytearray, offset: int, limit: int) -> tuple[Tag, int]:
     """Parse the tag at body[offset]. The whole tag must fit before `limit`.
 
     Returns the tag and the offset just past it."""
@@ -80,7 +80,7 @@ def read_tag(body: bytes, offset: int, limit: int) -> tuple[Tag, int]:
 
     return Tag(code, bytes(body[payload_start:end]), header_size == LONG_HEADER_SIZE), end
 
-def iter_tags(body: bytes, start: int, end: int | None = None):
+def iter_tags(body: bytes | bytearray, start: int, end: int | None = None):
     """Yield the tags of the tag list stored in body[start:end], up to and including End.
 
     Raises MalformedSwfError unless the list is well-formed: it must be terminated by an End tag,
@@ -100,7 +100,7 @@ def iter_tags(body: bytes, start: int, end: int | None = None):
                 raise MalformedSwfError(f"{end - offset} unexpected bytes after the End tag at offset {tag_start}")
             return
 
-def parse_tags(body: bytes, start: int, end: int | None = None) -> list[Tag]:
+def parse_tags(body: bytes | bytearray, start: int, end: int | None = None) -> list[Tag]:
     """All tags of the tag list in body[start:end], including the final End tag"""
     return list(iter_tags(body, start, end))
 

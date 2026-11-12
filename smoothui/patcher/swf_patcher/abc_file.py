@@ -208,6 +208,7 @@ class AbcFile:
         if index == 0:
             return "*"
         mn = self.multinames[index]
+        assert mn is not None   # only entry 0 is None
         if mn.kind in (QNAME, QNAME_A, RTQNAME, RTQNAME_A, MULTINAME, MULTINAME_A):
             return self.strings[mn.name]
         if mn.kind in (RTQNAME_L, RTQNAME_LA):
@@ -223,6 +224,7 @@ class AbcFile:
         if index == 0:
             return "*"
         mn = self.multinames[index]
+        assert mn is not None   # only entry 0 is None
         if mn.kind in (QNAME, QNAME_A):
             ns_name_index = self.namespaces[mn.namespace][1]
             package = self.strings[ns_name_index] if ns_name_index else ""
@@ -233,12 +235,15 @@ class AbcFile:
         """Number of extra stack values an instruction using this multiname pops at runtime"""
         if index == 0:
             return 0
-        return RUNTIME_NAME_OPERANDS.get(self.multinames[index].kind, 0)
+        mn = self.multinames[index]
+        assert mn is not None   # only entry 0 is None
+        return RUNTIME_NAME_OPERANDS.get(mn.kind, 0)
 
 
 def parse_abc(data: bytes) -> AbcFile:
     r = AbcReader(data)
-    r.u16(), r.u16()    # minor, major version
+    r.u16()     # minor version
+    r.u16()     # major version
 
     def pool(read_entry):
         """Constant pools store count+1, and entry 0 is implicit"""

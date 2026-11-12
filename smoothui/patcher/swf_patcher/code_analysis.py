@@ -187,7 +187,7 @@ class MovieAnalysis:
 
     def find_static_motion_hosts(self) -> set[str] | None:
         hosts = [analysis.find_static_motion_hosts() for analysis in self.analyses]
-        return None if None in hosts else set().union(*hosts)
+        return None if None in hosts else set().union(*(found for found in hosts if found is not None))
 
     def code_hash(self, methods) -> str:
         """A short hash (8 hex digits) of the methods' code, that only changes when the code does:
@@ -257,7 +257,7 @@ class CodeAnalysis:
                 site.receiver = self._ternary_receiver(method, code, arms[0][0], targets)
                 choices = [self._literal_number(code, *arm) for arm in arms]
                 if None not in choices:
-                    site.arg = FrameArg(ArgKind.COMPUTED, choices=tuple(choices))
+                    site.arg = FrameArg(ArgKind.COMPUTED, choices=tuple(c for c in choices if c is not None))
                     return site
             # Something more complex: guess from the instructions just before the call
             window = _significant(code[max(0, i - 24):i])[-8:]
@@ -398,15 +398,18 @@ class CodeAnalysis:
 
     def _find_field_classes(self, class_name, field) -> frozenset[str] | None:
         movie = self.movie
-        owner, trait = class_name, None     # the class declaring the field
+        owner, trait, abc = class_name, None, None  # the class declaring the field, the field, its ABC
         while owner in movie.instance_of and trait is None:
             unit, instance = movie.instance_of[owner]
             abc = unit.abc
             trait = next((t for t in instance.traits if abc.name_of(t.name) == field), None)
             owner = owner if trait else movie.superclass[owner]
-        if trait is None or trait.kind not in VALUE_TRAIT_KINDS or abc.multinames[trait.name].kind != QNAME:
+        if trait is None or abc is None or trait.kind not in VALUE_TRAIT_KINDS:
             return None
-        access = abc.namespaces[abc.multinames[trait.name].namespace][0]
+        multiname = abc.multinames[trait.name]
+        if multiname is None or multiname.kind != QNAME:
+            return None
+        access = abc.namespaces[multiname.namespace][0]
         if access == PRIVATE_NAMESPACE and owner == class_name:
             writers = {owner}
         elif access == PROTECTED_NAMESPACE:
@@ -655,7 +658,7 @@ class CodeAnalysis:
         """Does the frame script `function` (a method of class_name) only call stop()?"""
         _, instance = self.movie.instance_of[class_name]     # a class of this tag
         methods = [self.unit.method_base + trait.method for trait in instance.traits
-                   if trait.kind == TRAIT_METHOD and self.abc.name_of(trait.name) == function]
+                   if trait.kind == TRAIT_METHOD and trait.method is not None and self.abc.name_of(trait.name) == function]
         code = _significant(self.code.get(methods[0], [])) if len(methods) == 1 else []
         return [(ins.name, self.name(ins) if ins.name in ("findpropstrict", "callpropvoid") else None)
                 for ins in code] == STOP_ONLY
@@ -814,7 +817,7 @@ class CodeAnalysis:
 
     def _is_global_trace(self, code, call_index) -> bool:
         """Is the object of the callpropvoid trace at code[call_index] `findpropstrict trace`?"""
-        start = call_index
+        start = end = call_index
         for _ in range(code[call_index].args[1] + 1):   # the arguments, then the object
             end, start = start, expression_start(self.abc, code, start)
             if start is None:

@@ -238,15 +238,16 @@ class Planner:
         for call in self.analysis.find_goto_calls():
             if call.arg.kind == ArgKind.LABEL:
                 continue
+            number = call.arg.value     # a literal frame number; None if computed
             targets = self._target_sprites(call.method, call.receiver)
             if targets is None:
-                if call.arg.kind == ArgKind.COMPUTED or call.arg.value > 1:
+                if number is None or number > 1:
                     unresolved_gotos.append(call)
                 continue
-            if call.arg.kind == ArgKind.COMPUTED:
+            if number is None:
                 for character_id in targets:
                     self.reasons[character_id].append(f"{_describe_goto(call, '')} in {short_owner(call.owner)}")
-            elif call.arg.value > 1:
+            elif number > 1:
                 literal_gotos.append((call, targets))
 
     def _check_still_clips(self, frame_scripts, literal_gotos, unresolved_gotos):
@@ -378,7 +379,7 @@ class Planner:
             """Clips without a rule of their own are collateral damage of the rules involved; report
             that against those rules (clips with a rule are reported by _check_explicit_rules)"""
             unstretch(ids, reason)
-            rules = {self.options.speed_rule_for(self.movie.class_name(c)) for c in ids} - {None}
+            rules = {rule for c in ids if (rule := self.options.speed_rule_for(self.movie.class_name(c))) is not None}
             for character_id in ids:
                 if self.options.speed_rule_for(self.movie.class_name(character_id)) is None:
                     for rule in rules:
@@ -484,6 +485,7 @@ class Planner:
                 retiming = plan.sprite_retiming[next(iter(targets))]
                 if retiming.ratio == 1:
                     continue
+                assert call.arg.value is not None   # a literal goto
                 plan.code_edits[call.method][call.push_index] = retiming.frame_number(call.arg.value)
                 plan.goto_edits += 1
 

@@ -34,7 +34,7 @@ class RescaleResult:
         return self.report["unmet_rules"]
 
 
-def rescale_body(body: bytes, target_fps: float, *, rules=(), include=(), exclude=(),
+def rescale_body(body: bytes | bytearray, target_fps: float, *, rules=(), include=(), exclude=(),
                  shares_classes=True, accept_plan=None, keep=False) -> RescaleResult | None:
     """Raise the frame rate of an SWF to target_fps, retiming its animations to keep their speed.
 

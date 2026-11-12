@@ -188,9 +188,10 @@ def write_entry(path: Path, name: str, *, backup: Path | None = None) -> bool:
     text = set_entry(old, name)
     if text == old:
         return False
-    backed_up = data is not None and backup is not None
-    if backed_up:
+    backed_up = False
+    if data is not None and backup is not None:
         write_file(backup, data)
+        backed_up = True
     try:
         write_file(path, text.encode("utf-8"))
         if parse_mods_settings(read_file(path) or b"").get(name.lower()) != ModSettings(True, 0):

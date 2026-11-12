@@ -24,7 +24,7 @@ import tomllib
 from pathlib import Path
 
 from smoothui.common import normalize_version
-from smoothui.manifests import is_dev_version, version_key
+from smoothui.manifests import is_dev_version, known_version_key, version_key
 
 ROOT = Path(__file__).resolve().parent
 REPO = "exscape/SmoothUIRemastered"
@@ -151,7 +151,7 @@ def is_manifest_to_upload(path, uploaded):
     version = path.stem
     return (path.suffix == ".json" and "dev" not in path.name and normalize_version(version) == version
             and version_key(version) is not None and not is_dev_version(version)
-            and (uploaded or version_key(version) > version_key(NEWEST_SHIPPED_MANIFEST)))
+            and (uploaded or known_version_key(version) > known_version_key(NEWEST_SHIPPED_MANIFEST)))
 
 
 def upload_manifests(args):

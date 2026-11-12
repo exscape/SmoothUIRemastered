@@ -15,7 +15,7 @@ from .bundle import BundleError, TocEntry, read_entry, read_toc, write_bundle
 from .metadata_store import MetadataStoreError, make_metadata_store
 
 
-def list_bundles(content_dir: Path) -> list[Path]:
+def list_bundles(content_dir: str | Path) -> list[Path]:
     """The .bundle files in content_dir, sorted. Listed with os.scandir, which works through MO2's virtual
     file system."""
     return sorted(Path(content_dir) / entry.name for entry in os.scandir(content_dir)

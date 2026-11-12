@@ -353,7 +353,7 @@ def hud_advice(game_fps: int, fg: int, cap: int | None = None) -> tuple[str, str
     tone = {"ok": NEUTRAL, "slowed": WARNING, "too-high": ERROR, "too-low": ERROR}[level]
     limited = level == "slowed" and cap and cap < game_fps
     shown = f"the game's {cap} fps limit" if limited else game_fps
-    rendered = round(min(game_fps, cap) / fg) if limited else round(game_fps / fg)
+    rendered = round(min(game_fps, cap) / fg) if limited and cap else round(game_fps / fg)
     generated = f" ({shown} ÷ {fg}x frame generation)" if fg > 1 else f" ({shown})" if limited else ""
     return tone, HUD_ADVICE[level].format(rate=rate, rendered=rendered, speed=hud_speed(game_fps, fg, cap),
                                           generated=generated,
@@ -435,9 +435,10 @@ def _card(found, stale, busy, scan_error, merged, merge_error, progress, merges_
         return Card(NEUTRAL, "Checking your mods...", buttons=buttons, default=False, busy=True)
     if scan_error is not None:
         return Card(ERROR, "Can't read your mods", (_sentence(scan_error),), (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
+    assert found is not None    # (the scan is done)
     # Smooth UI can't be used now (by the scan after the merge): merging again would fail, so it isn't offered.
     # (Downloaded manifests or reviews that may change that make the window scan again, without the merge's result.)
-    cant_merge = found is not None and not found.scan.installed.usable
+    cant_merge = not found.scan.installed.usable
     if merge_error is not None:     # (Before the changes, which a failed merge keeps: its Merge again applies them)
         sentences = (_sentence(merge_error),)
         if cant_merge:
@@ -583,7 +584,7 @@ def _checked(found: Check, stale, merges_now=()):
         return _unusable(installed, stale)
 
     if found.stale:
-        files = sorted((file for file in found.states if file.severity is not None), key=lambda file: -file.severity)
+        files = sorted((file for file in found.states if file.severity is not None), key=lambda file: -(file.severity or 0))
         causes = [(_cause(file), _who(_changed_mod(file, found), file)) for file in files]
         if not found.needs_build:
             # Only another mod at Priority 0 that sorts first: a merge changes nothing
@@ -591,6 +592,7 @@ def _checked(found: Check, stale, merges_now=()):
             return Card(WARNING, "Another mod loads before the merged patches", _sentences(causes, [fix]),
                         (PLAY_ANYWAY, DONT_START) if stale else (RESCAN,))
         severity = found.severity
+        assert severity is not None     # stale
         buttons = ((("Merge and play", "merge_and_play"), (_play_without_merging(found), "play"), DONT_START) if stale
                    else (("Merge", "merge"), RESCAN))
         if _only_optional(found):
@@ -668,7 +670,7 @@ def _unusable(installed, stale):
 
 def row_status(file: FileState) -> tuple[str, str]:
     """A screen's tone (its glyph and color) and short status in the list"""
-    state, cause = file.state, file.cause
+    state, cause = file.state, file.cause or ""
     if state == State.UP_TO_DATE:
         if cause == "fixes":
             return WARNING, "Merged, fixes missing"
@@ -737,7 +739,9 @@ def _group_message(members: list[FileState]) -> str:
     some keep it out, only theirs: the others are left out as the group is, which is what matters."""
     keep_out = [file for file in members if file.cause != "group left out"]
     if keep_out and len(keep_out) < len(members):
-        return "\n\n".join([*_file_lines(keep_out), f"•  {GROUP_LEFT_OUT.format(group=group_name(members[0].group))}"])
+        group = members[0].group
+        assert group is not None    # a group's files
+        return "\n\n".join([*_file_lines(keep_out), f"•  {GROUP_LEFT_OUT.format(group=group_name(group))}"])
     common = Counter(file.message for file in members).most_common(1)[0][0]
     others = [file for file in members if file.message != common]
     if not others:

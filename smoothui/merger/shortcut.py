@@ -50,7 +50,7 @@ def desktop_folder() -> Path:
     path = ctypes.c_void_p()
     try:
         ctypes.oledll.shell32.SHGetKnownFolderPath(ctypes.byref(_guid(FOLDERID_DESKTOP)), 0, None, ctypes.byref(path))
-        return Path(ctypes.wstring_at(path.value))
+        return Path(ctypes.wstring_at(path))
     except OSError as e:
         fail(f"the desktop folder isn't known: {e}")
     finally:

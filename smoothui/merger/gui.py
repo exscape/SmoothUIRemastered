@@ -112,7 +112,7 @@ def main() -> int:
 class LogFormatter(logging.Formatter):
     """Marks headings (log.HEADING, log.SUBHEADING) with ===== or ----- (the console draws banners instead)"""
     def formatMessage(self, record):
-        mark = {1: "=====", 2: "-----"}.get(getattr(record, "heading", None))
+        mark = {1: "=====", 2: "-----"}.get(getattr(record, "heading", 0))
         message = f"{mark} {record.message} {mark}" if mark else record.message
         return super().formatMessage(logging.makeLogRecord({**record.__dict__, "message": message}))
 

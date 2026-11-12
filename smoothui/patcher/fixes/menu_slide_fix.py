@@ -37,7 +37,7 @@ def apply(swf: SwfEdit) -> FixResult:
     hide = next((t.method for t in instance.traits if t.method is not None and abc.name_of(t.name) == HIDE), None)
     bodies = {}
     for method, find_push in ((abc.classes[index].static_init, _offset_push), (hide, _target_push)):
-        body = abc.bodies.get(method)
+        body = abc.bodies.get(method) if method is not None else None
         if body is None:
             continue
         instructions = disassemble(body.code)

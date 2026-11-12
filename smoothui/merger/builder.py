@@ -98,6 +98,7 @@ def install(result: Scan, files: list[PackageFile], mods_settings: Path, *, out_
     that holds no files is removed instead, with a record in data_dir (see package.py), and mods.settings
     is left alone: an entry it has stays, as a later build would write it again. data_dir None: no
     backup and no record. The package records the scan's reviews, which the files were patched with."""
+    assert result.mods_dir is not None  # a usable scan
     package_dir = Path(out_dir or result.mods_dir) / PACKAGE_FOLDER
     record = record_path(data_dir, result.mods_dir) if data_dir is not None and out_dir is None else None
     written = write_package(package_dir, result.installed, files, record, reviews_sha256=result.reviews.sha256,

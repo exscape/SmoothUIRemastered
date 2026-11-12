@@ -206,7 +206,7 @@ def nuitka(script, exe_name, description, icon, version, options):
 
 def report_modules(dist):
     """The names of the modules in a build, from Nuitka's report on it"""
-    return {module.get("name") for module in ElementTree.parse(dist.parent / "report.xml").getroot().iter("module")}
+    return {module.attrib["name"] for module in ElementTree.parse(dist.parent / "report.xml").getroot().iter("module")}
 
 
 def check_launcher(dist):
@@ -279,9 +279,8 @@ def is_lgpl(dist):
 
 def bundled_distributions(dists):
     """The installed distributions (packages) that have modules in the builds, from Nuitka's reports on them"""
-    names = {module.get("distribution") for dist in dists
-             for module in ElementTree.parse(dist.parent / "report.xml").getroot().iter("module")}
-    names.discard(None)
+    names = {name for dist in dists for module in ElementTree.parse(dist.parent / "report.xml").getroot().iter("module")
+             if (name := module.get("distribution")) is not None}
     return sorted((importlib.metadata.distribution(name) for name in names), key=lambda d: d.metadata["Name"].lower())
 
 
@@ -318,7 +317,7 @@ def write_licenses(out_dir, dists):
             raise SystemExit(f"ERROR: {name} {version} is in the build but has no license file in its .dist-info")
         (licenses_dir / name).mkdir()
         for f in files:
-            shutil.copyfile(dist.locate_file(f), licenses_dir / name / f.name)
+            shutil.copyfile(str(dist.locate_file(f)), licenses_dir / name / f.name)
         if name.lower() == "nuitka":
             readme.append(f"{name} {version} (its runtime library, in each exe; AGPLv3 with the Nuitka Runtime Library "
                           f"Exception, LICENSE-RUNTIME.txt): https://pypi.org/project/{name}/{version}/")

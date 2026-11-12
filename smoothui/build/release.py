@@ -6,6 +6,7 @@ build ONE compat patch, and a full compat package for all conflicts, respectivel
 """
 
 import logging
+import re
 from dataclasses import fields
 from functools import partial
 from typing import NamedTuple
@@ -49,14 +50,16 @@ def profile_from_manifest(manifest):
     for key, record in manifest["files"].items():
         report = record["report"]
         profile[key] = PatchSettings(record["fps"],
-                                     tuple(SpeedRule(rule["pattern"], parse_speed(rule["speed"])) for rule in report["rules"]),
+                                     tuple(SpeedRule(re.compile(rule["pattern"]), parse_speed(rule["speed"]))
+                                           for rule in report["rules"]),
                                      _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"),
                                      _recorded_fixes(key, report), report.get("source_fps"), report.get("retime", True))
     return profile
 
-def group_record(settings: PatchSettings) -> dict:
+def group_record(settings: PatchSettings | None) -> dict:
     """How a release's manifest records a group's file_settings (see profile.py's Group), in its "groups": as
     its reports record a file's settings"""
+    assert settings is not None     # load_profile sets every group's
     return {"rules": [{"pattern": rule.pattern.pattern, "speed": format_speed(rule.speed)} for rule in settings.rules],
             "include": [{"pattern": str(token)} for token in settings.include],
             "exclude": [{"pattern": str(token)} for token in settings.exclude],
@@ -148,10 +151,11 @@ def patch_as_release(inputs, profile, manifest, *, reviewed=(), mod_reviews: Mod
     Whether failures, rule issues or warnings are acceptable is up to the caller."""
     recorded = {key: record["report"] for key, record in manifest["files"].items()}
     per_file = {key: {review_of(warning) for warning in report["warnings"]} for key, report in recorded.items()}
-    for source in inputs if mod_reviews else ():
-        if found := mod_reviews.for_mod(source.origin):
-            key = profile_key(source.path)
-            per_file[key] = per_file.get(key, set()) | found
+    if mod_reviews:
+        for source in inputs:
+            if found := mod_reviews.for_mod(source.origin):
+                key = profile_key(source.path)
+                per_file[key] = per_file.get(key, set()) | found
     review = WarningReview(reviewed, per_file)
     try:
         patched, kept, failed = patcher_core.patch_files(
@@ -162,8 +166,9 @@ def patch_as_release(inputs, profile, manifest, *, reviewed=(), mod_reviews: Mod
     rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings, recorded)
     origins = {profile_key(source.path): source.origin for source in inputs}
     known_broken = {}
-    for review, occurrences in warnings.unreviewed.items() if mod_reviews else ():
-        for occurrence in occurrences:
-            if mod_reviews.leaves_out(origins[profile_key(occurrence.path)], review):
-                known_broken.setdefault(occurrence.path, set()).add(review)
+    if mod_reviews:
+        for review, occurrences in warnings.unreviewed.items():
+            for occurrence in occurrences:
+                if mod_reviews.leaves_out(origins[profile_key(occurrence.path)], review):
+                    known_broken.setdefault(occurrence.path, set()).add(review)
     return ReleasePatch(patched, kept, failed, warnings, rule_issues, known_broken)

@@ -69,6 +69,7 @@ def build_dev_file_bytes(header, body):
     return sig + version + struct.pack("<I", SWF_HEADER_SIZE + len(body)) + bytes(body)
 
 def dev_hook(header, body):
+    assert DEV_OUTPUT_FILE is not None      # set by resolve_dev_target for the file this is called for
     p = Path(DEV_OUTPUT_FILE)
 
     if DEV_MODE == "dump":

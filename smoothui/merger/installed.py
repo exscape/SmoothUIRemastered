@@ -20,6 +20,7 @@ from ..manifests import (
     BUILD_RECORD,
     MANIFEST_FORMAT,
     is_dev_version,
+    known_version_key,
     load_manifest,
     manifest_format,
     release_manifest_paths,
@@ -126,7 +127,7 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
         return Installed(Status.UNKNOWN, "the installed Smooth UI Remastered is modified, mixed, or newer than this "
                          "version of Smooth UI Tools: update them, or reinstall Smooth UI", folder=folder)
     # Only possible for a build whose record was deleted: the releases' files all differ
-    version = max(matches, key=version_key)
+    version = max(matches, key=known_version_key)
     return _known(folder, version, manifests[version], matches[version], manifests)
 
 
@@ -180,8 +181,8 @@ def _known(folder, version, manifest, sizes_only, manifests):
                          f"of Smooth UI Tools (it uses {', '.join(sorted(retired))}, which they no longer have): update "
                          "Smooth UI", folder=folder, version=version)
     releases = [v for v in manifests if version_key(v) is not None and not is_dev_version(v)]
-    newest = max(releases, key=version_key, default=None)
-    newer = newest.split("-")[0] if newest and version_key(newest) > version_key(version) else None
+    newest = max(releases, key=known_version_key, default=None)
+    newer = newest.split("-")[0] if newest and known_version_key(newest) > known_version_key(version) else None
     message = f"Smooth UI Remastered {version} is installed"
     if sizes_only:
         message += " (identified by file sizes only: its manifest has no CRC32s)"
@@ -200,6 +201,7 @@ def installed_build(mods_dir: Path | None, folders, mods: list[Mod], manifests: 
                              if is_smoothui_folder(other.folder) and other.enabled])
     if isinstance(mod, Installed):
         return mod
+    assert mods_dir is not None     # mod is in it
     folder = Path(mods_dir) / mod.folder
     try:
         files = {key: (entry.size, entry.crc)
@@ -225,5 +227,6 @@ def _two_folders(builds: list[Installed]) -> Installed:
     names = " and ".join(f"{build.folder} ({build.version or unknown})" for build in builds)
     keys = [version_key(build.version or "") for build in builds]
     known = None not in keys and len(set(keys)) == len(keys)
-    advice = f"delete {builds[keys.index(min(keys))].folder}, the older one" if known else "delete one of them"
+    oldest = min((key for key in keys if key is not None), default=None)
+    advice = f"delete {builds[keys.index(oldest)].folder}, the older one" if known else "delete one of them"
     return Installed(Status.TWO_FOLDERS, f"two Smooth UI folders are installed, and the game loads both: {names}: {advice}")

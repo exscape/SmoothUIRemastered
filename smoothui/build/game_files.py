@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from ..common import profile_key
 from .compat_status import newest_compat_patches
-from .shared import load_manifest, sha256_file
+from .shared import read_manifest, sha256_file
 
 
 def changed_game_files(uncooked_dir, manifest: dict) -> dict[str, str]:
@@ -33,7 +33,7 @@ def changed_game_files(uncooked_dir, manifest: dict) -> dict[str, str]:
 def game_file_report(uncooked_dir, builds) -> tuple[str, int]:
     """(text, how many changed) telling which files that builds (manifest paths) patched have changed in
     uncooked_dir since, and which compat patches ship them. Log the text as a warning if any changed."""
-    manifests = [load_manifest(path) for path in builds]
+    manifests = [read_manifest(path) for path in builds]
     versions = ", ".join(manifest["created_mod_version"] for manifest in manifests)
     checked = {path for manifest in manifests for path in manifest["files"]}
     changed: dict[str, str] = {}

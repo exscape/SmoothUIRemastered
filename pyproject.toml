@@ -4,3 +4,11 @@ requires-python = ">=3.11"
 
 [tool.ruff.lint]
 extend-safe-fixes = ["UP031"]
+
+# Type checking, for pyright and VS Code's Pylance alike. The tools are for Windows, so that is the platform
+# checked (ctypes.windll, winreg), whatever the checker runs on.
+[tool.pyright]
+include = ["smoothui", "dev-tools", "*.py"]
+typeCheckingMode = "standard"
+pythonVersion = "3.11"
+pythonPlatform = "Windows"

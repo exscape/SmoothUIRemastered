@@ -69,7 +69,7 @@ def _read(swf):
 
     def read(body):
         fps_offset, first_tag = swf_get_header_offsets(body)
-        if fps_offset is None:
+        if fps_offset is None or first_tag is None:
             raise ValueError("not a valid SWF")
         tags = parse_tags(body, first_tag)
         classes = dict(pair for tag in tags if tag.code == TagCode.SYMBOL_CLASS for pair in parse_symbol_class(tag))
