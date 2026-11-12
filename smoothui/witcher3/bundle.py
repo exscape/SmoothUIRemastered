@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import struct
 import zlib
 from collections.abc import Iterable
@@ -218,15 +219,14 @@ def _entries_ending(data: bytes, header: BundleHeader, extension: str) -> list[i
     """The offsets in data of the TOC entries whose paths may end with extension (see read_toc): those with
     extension and a NUL in their path field. The caller checks each path."""
     size = (ENTRY if header.version == VERSION else ENTRY_V3).size
-    toc = data[HEADER.size:header.data_start].lower()
-    needle = extension.lower().encode() + b"\0"
+    # A case-insensitive search (ASCII only, like bytes.lower) is twice as fast as lowering the TOC (often MBs)
+    needle = re.compile(re.escape(extension.encode()) + b"\0", re.IGNORECASE)
     offsets = []
-    found = toc.find(needle)
-    while found != -1:
+    for match in needle.finditer(data, HEADER.size, header.data_start):
+        found = match.start() - HEADER.size
         at = HEADER.size + found - found % size
-        if found % size + len(needle) <= PATH_SIZE and (not offsets or offsets[-1] != at):
+        if found % size + len(match[0]) <= PATH_SIZE and (not offsets or offsets[-1] != at):
             offsets.append(at)
-        found = toc.find(needle, found + 1)
     return offsets
 
 
