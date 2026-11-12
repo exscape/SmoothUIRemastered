@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from ..swf_patcher.abc_bytecode import (
     Instruction,
+    Op,
     assemble,
     branch_targets,
     disassemble,
@@ -26,7 +27,6 @@ from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit
 CLASS = "red.game.witcher3.menus.common_menu.TopBarNew"
 METHOD = "onTabItemMouseOut"
 
-OP_GETLOCAL0, OP_GETPROPERTY, OP_CALLPROPERTY = 0xD0, 0x66, 0x46
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -46,14 +46,14 @@ def apply(swf: SwfEdit) -> FixResult:
         raise CantApply(f"{CLASS}.{METHOD} doesn't compare the hovered tab's id with the selected id")
     first, last = compare    # instructions[first:last + 1]: _lastMouseOveredItem's data.id == cachedSelectedId
 
-    tab_list = _find_multiname(abc, instance, OP_GETPROPERTY, "mcTabList")
-    get_selected = _find_multiname(abc, instance, OP_CALLPROPERTY, "getSelectedRenderer")
+    tab_list = _find_multiname(abc, instance, Op.GETPROPERTY, "mcTabList")
+    get_selected = _find_multiname(abc, instance, Op.CALLPROPERTY, "getSelectedRenderer")
     if tab_list is None or get_selected is None:
         raise CantApply(f"{CLASS} doesn't use mcTabList.getSelectedRenderer() anywhere")
 
     # ... _lastMouseOveredItem == this.mcTabList.getSelectedRenderer()
-    replacement = (bytes([OP_GETLOCAL0]) + bytes([OP_GETPROPERTY]) + encode_u30(tab_list)
-                   + bytes([OP_CALLPROPERTY]) + encode_u30(get_selected) + encode_u30(0)
+    replacement = (bytes([Op.GETLOCAL0]) + bytes([Op.GETPROPERTY]) + encode_u30(tab_list)
+                   + bytes([Op.CALLPROPERTY]) + encode_u30(get_selected) + encode_u30(0)
                    + bytes([instructions[last].opcode]))
     inner = {ins.offset for ins in instructions[first + 1:last + 1]}
     if inner & branch_targets(instructions):
@@ -69,27 +69,27 @@ def apply(swf: SwfEdit) -> FixResult:
 def _find_id_comparison(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int] | None:
     """(first, last) instruction indices of `<tab>.data.id == this.cachedSelectedId`, from the
     getproperty data on to the equals; None if the method doesn't contain it"""
-    pattern = [("getproperty", "data"), ("getproperty", "id"), ("getlocal0", None),
-               ("getproperty", "cachedSelectedId"), ("equals", None)]
+    pattern = [(Op.GETPROPERTY, "data"), (Op.GETPROPERTY, "id"), (Op.GETLOCAL0, None),
+               (Op.GETPROPERTY, "cachedSelectedId"), (Op.EQUALS, None)]
     for start in range(len(instructions) - len(pattern) + 1):
         window = instructions[start:start + len(pattern)]
-        if all(ins.name == name and (prop is None or abc.name_of(ins.args[0]) == prop)
-               for ins, (name, prop) in zip(window, pattern)):
+        if all(ins.opcode is op and (prop is None or abc.name_of(ins.args[0]) == prop)
+               for ins, (op, prop) in zip(window, pattern)):
             return start, start + len(pattern) - 1
     return None
 
 
 def _selected_comparison_exists(abc: AbcFile, instructions: list[Instruction]) -> bool:
-    return any(ins.name == "callproperty" and abc.name_of(ins.args[0]) == "getSelectedRenderer"
+    return any(ins.opcode is Op.CALLPROPERTY and abc.name_of(ins.args[0]) == "getSelectedRenderer"
                for ins in instructions)
 
 
-def _find_multiname(abc: AbcFile, instance, opcode: int, name: str) -> int | None:
+def _find_multiname(abc: AbcFile, instance, opcode: Op, name: str) -> int | None:
     """The multiname index that the class's own methods use for this property access"""
     for trait in instance.traits:
         body = abc.bodies.get(trait.method) if trait.method is not None else None
         for ins in disassemble(body.code) if body else ():
-            if ins.opcode == opcode and abc.name_of(ins.args[0]) == name and ins.args[1:] in ([], [0]):
+            if ins.opcode is opcode and abc.name_of(ins.args[0]) == name and ins.args[1:] in ([], [0]):
                 return ins.args[0]
     return None
 

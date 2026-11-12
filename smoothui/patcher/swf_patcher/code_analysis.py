@@ -13,12 +13,16 @@ from enum import Enum
 
 from .abc_bytecode import (
     BINARY,
-    INTEGER_PUSH_NAMES,
-    NO_OP_NAMES,
-    OPCODES,
-    SKIPPABLE_NAMES,
+    GETLOCALS,
+    INTEGER_PUSHES,
+    NO_OPS,
+    OPERANDS,
+    PROPERTY_WRITES,
+    SETLOCALS,
+    SKIPPABLE_OPS,
     UNARY,
     Instruction,
+    Op,
     branch_targets,
     expression_start,
     integer_constant,
@@ -35,20 +39,24 @@ from .abc_file import (
     TRAIT_METHOD,
     VALUE_TRAIT_KINDS,
 )
-from .movie import AbcUnit, SwfMovie
+from .movie import CLASS_NAMING_OPS, AbcUnit, SwfMovie
 
 GOTO_METHODS = ("gotoAndStop", "gotoAndPlay")
 FRAME_PROPERTIES = ("totalFrames", "currentFrame", "nextFrame", "prevFrame", "framesLoaded")
 
 # Instructions that compute a new value from their operands, without other effects
-PURE_OPERATIONS = (UNARY | BINARY) - {"getslot", "newclass", "checkfilter"}
+PURE_OPERATIONS = (UNARY | BINARY) - {Op.GETSLOT, Op.NEWCLASS, Op.CHECKFILTER}
 
 # Instructions that change a local register other than by setlocal
-REGISTER_CHANGING = frozenset({"inclocal", "declocal", "inclocal_i", "declocal_i", "kill", "hasnext2"})
+REGISTER_CHANGING = frozenset({Op.INCLOCAL, Op.DECLOCAL, Op.INCLOCAL_I, Op.DECLOCAL_I, Op.KILL, Op.HASNEXT2})
 
 # The significant instructions of a frame script that only calls stop()
-STOP_ONLY = [("getlocal0", None), ("pushscope", None), ("findpropstrict", "stop"), ("callpropvoid", "stop"),
-             ("returnvoid", None)]
+STOP_ONLY = [(Op.GETLOCAL0, None), (Op.PUSHSCOPE, None), (Op.FINDPROPSTRICT, "stop"), (Op.CALLPROPVOID, "stop"),
+             (Op.RETURNVOID, None)]
+
+CALL_PROPERTY_OPS = frozenset({Op.CALLPROPERTY, Op.CALLPROPVOID})
+PROPERTY_READS = frozenset({Op.GETPROPERTY, Op.GETLEX})
+FRAME_PROPERTY_OPS = PROPERTY_READS | CALL_PROPERTY_OPS     # reads and calls of the FRAME_PROPERTIES
 
 # Flash's motion library. A 3D transform on a timeline becomes code in the clip's constructor that
 # builds a MotionBase, and an AnimatorFactory3D that plays it on the clip's child.
@@ -57,8 +65,8 @@ STATIC_MOTION_NAMES = frozenset({"MotionBase", "AnimatorFactory", "AnimatorFacto
 
 # Instructions that can appear in a receiver expression without changing which object it names
 NAME_PRESERVING = frozenset({
-    "coerce", "coerce_a", "convert_o", "getlocal0", "getlocal1", "getlocal2", "getlocal3", "getlocal",
-    "findpropstrict", "getscopeobject", "getslot", "pushscope",
+    Op.COERCE, Op.COERCE_A, Op.CONVERT_O, Op.GETLOCAL0, Op.GETLOCAL1, Op.GETLOCAL2, Op.GETLOCAL3, Op.GETLOCAL,
+    Op.FINDPROPSTRICT, Op.GETSCOPEOBJECT, Op.GETSLOT, Op.PUSHSCOPE,
 })
 
 
@@ -141,15 +149,15 @@ class FramePropertyUse:
 
 
 def _significant(instructions):
-    return [ins for ins in instructions if ins.name not in SKIPPABLE_NAMES]
+    return [ins for ins in instructions if ins.opcode not in SKIPPABLE_OPS]
 
 
 def _strip_casts(span):
     """span without the casts at its end (coerce T, `as T`), which don't change which object it is"""
     while True:
-        if span and span[-1].name in ("coerce", "coerce_a", "convert_o"):
+        if span and span[-1].opcode in (Op.COERCE, Op.COERCE_A, Op.CONVERT_O):
             span = span[:-1]
-        elif len(span) >= 2 and span[-1].name == "astypelate" and span[-2].name == "getlex":
+        elif len(span) >= 2 and span[-1].opcode is Op.ASTYPELATE and span[-2].opcode is Op.GETLEX:
             span = span[:-2]
         else:
             return span
@@ -229,7 +237,7 @@ class CodeAnalysis:
         for method, code in self.code.items():
             targets = None
             for i, ins in enumerate(code):
-                if ins.name not in ("callproperty", "callpropvoid") or self.name(ins) not in GOTO_METHODS:
+                if ins.opcode not in CALL_PROPERTY_OPS or self.name(ins) not in GOTO_METHODS:
                     continue
                 if targets is None:
                     targets = branch_targets(code)
@@ -261,8 +269,8 @@ class CodeAnalysis:
                     return site
             # Something more complex: guess from the instructions just before the call
             window = _significant(code[max(0, i - 24):i])[-8:]
-            has_number = any(w.name in (*INTEGER_PUSH_NAMES, "pushint", "pushuint") for w in window)
-            has_string = any(w.name == "pushstring" for w in window)
+            has_number = any(w.opcode in (*INTEGER_PUSHES, Op.PUSHINT, Op.PUSHUINT) for w in window)
+            has_string = any(w.opcode is Op.PUSHSTRING for w in window)
             if has_string and not has_number:
                 site.arg = FrameArg(ArgKind.LABEL)
             return site
@@ -280,18 +288,18 @@ class CodeAnalysis:
         if not span:
             return FrameArg(ArgKind.COMPUTED)
         last = span[-1]
-        if last.name == "pushstring" or span[0].name == "pushstring":
+        if last.opcode is Op.PUSHSTRING or span[0].opcode is Op.PUSHSTRING:
             return FrameArg(ArgKind.LABEL)
 
         if len(span) == 1:
             value = integer_constant(abc, last)
-            if value is None and last.name == "pushuint":
+            if value is None and last.opcode is Op.PUSHUINT:
                 value = abc.uints[last.args[0]]
             if value is not None:
                 return FrameArg(ArgKind.NUMBER, value)
 
         is_label = (self.static_type(method, code, start, end) == "String"
-                    or (last.name == "add" and any(ins.name == "pushstring" for ins in span)))
+                    or (last.opcode is Op.ADD and any(ins.opcode is Op.PUSHSTRING for ins in span)))
         return FrameArg(ArgKind.LABEL if is_label else ArgKind.COMPUTED)
 
     def _ternary_arms(self, code, end, targets) -> list[tuple[int, int]] | None:
@@ -301,7 +309,7 @@ class CodeAnalysis:
             return None
         b_last = skip_no_ops_backwards(code, end - 1)
         jump = skip_no_ops_backwards(code, b_start - 1)
-        if jump < 0 or code[jump].name != "jump" \
+        if jump < 0 or code[jump].opcode is not Op.JUMP \
                 or code[jump].jump_targets()[0] not in {ins.offset for ins in code[b_last + 1:end + 1]}:
             return None
         a_start = expression_start(self.abc, code, jump)
@@ -322,7 +330,7 @@ class CodeAnalysis:
         expression before the condition, which the branch to the second arm consumes"""
         branch = skip_no_ops_backwards(code, a_start - 1)
         start = branch
-        for _ in range(1 if code[branch].name in ("iftrue", "iffalse") else 2):
+        for _ in range(1 if code[branch].opcode in (Op.IFTRUE, Op.IFFALSE) else 2):
             start = expression_start(self.abc, code, start)     # the condition's operands
             if start is None:
                 return UNRESOLVED
@@ -335,7 +343,7 @@ class CodeAnalysis:
     def _literal_number(self, code, start, end) -> int | None:
         """The value of code[start:end] if it is an integer literal (with the coercion a ternary arm may add)"""
         span = _significant(code[start:end])
-        while span and span[-1].name in ("coerce", "coerce_a", "convert_i", "convert_u", "convert_d"):
+        while span and span[-1].opcode in (Op.COERCE, Op.COERCE_A, Op.CONVERT_I, Op.CONVERT_U, Op.CONVERT_D):
             span.pop()
         return integer_constant(self.abc, span[0]) if len(span) == 1 else None
 
@@ -344,11 +352,11 @@ class CodeAnalysis:
         span = _significant(code[start:end])
         if not span:
             return UNRESOLVED
-        if len(span) == 1 and span[0].name in ("getlocal0", "findpropstrict"):
+        if len(span) == 1 and span[0].opcode in (Op.GETLOCAL0, Op.FINDPROPSTRICT):
             return THIS
-        if len(span) == 1 and span[0].name.startswith("getlocal"):
+        if len(span) == 1 and span[0].opcode in GETLOCALS:
             return self._resolve_local(method, code, start, local_register(span[0]))
-        if any(ins.name in ("getscopeobject", "getslot") for ins in span):
+        if any(ins.opcode in (Op.GETSCOPEOBJECT, Op.GETSLOT) for ins in span):
             return UNRESOLVED
         return self._named_or_field(method, code, start, end)
 
@@ -356,7 +364,7 @@ class CodeAnalysis:
         """The object stored in a local register by the nearest preceding assignment"""
         for j in range(before - 1, -1, -1):
             ins = code[j]
-            if ins.name.startswith("setlocal") and local_register(ins) == register:
+            if ins.opcode in SETLOCALS and local_register(ins) == register:
                 start = expression_start(self.abc, code, j)
                 if start is None:
                     return UNRESOLVED
@@ -372,11 +380,11 @@ class CodeAnalysis:
         also what code stores in it (see field_classes)"""
         receiver = self._named(self.instance_name(code, start, end))
         span = _significant(code[start:end])
-        shape = [ins.name for ins in span]
+        shape = [ins.opcode for ins in span]
         body = self.abc.bodies.get(self.unit.local(method))
         # this.icon; or a bare `icon`, where no local variable can be named so
-        of_this = shape == ["getlocal0", "getproperty"] or not (body and body.traits) and (
-            shape == ["getlex"] or shape == ["findpropstrict", "getproperty"] and self.name(span[0]) == self.name(span[1]))
+        of_this = shape == [Op.GETLOCAL0, Op.GETPROPERTY] or not (body and body.traits) and (
+            shape == [Op.GETLEX] or shape == [Op.FINDPROPSTRICT, Op.GETPROPERTY] and self.name(span[0]) == self.name(span[1]))
         class_name = self.movie.class_of_method.get(method)
         if receiver.kind != ReceiverKind.NAMED or not of_this or not class_name or method in self.movie.static_methods:
             return receiver
@@ -433,10 +441,10 @@ class CodeAnalysis:
         for method, code in self.code.items():
             writer = self.movie.class_of_method.get(method) in writers
             for i, ins in enumerate(code):
-                if ins.name == "setslot" and writer and (slot_id in (0, ins.args[0])) \
+                if ins.opcode is Op.SETSLOT and writer and (slot_id in (0, ins.args[0])) \
                         and not self._sets_scope_slot(code, i):
                     return None     # maybe a write by slot number
-                if ins.name not in ("setproperty", "initproperty"):
+                if ins.opcode not in PROPERTY_WRITES:
                     continue
                 name = self.name(ins)
                 if name == field:
@@ -467,13 +475,13 @@ class CodeAnalysis:
         """Does the setslot code[i] set a slot of a scope object (an activation or the exception of a
         catch), rather than of some object's field?"""
         # A catch block storing its exception: newcatch; dup; setlocal N; dup; pushscope; swap; setslot
-        before = [ins.name for ins in _significant(code[max(0, i - 12):i])][-6:]
-        if len(before) == 6 and before[2].startswith("setlocal") \
-                and before[:2] + before[3:] == ["newcatch", "dup", "dup", "pushscope", "swap"]:
+        before = [ins.opcode for ins in _significant(code[max(0, i - 12):i])][-6:]
+        if len(before) == 6 and before[2] in SETLOCALS \
+                and before[:2] + before[3:] == [Op.NEWCATCH, Op.DUP, Op.DUP, Op.PUSHSCOPE, Op.SWAP]:
             return True
         value_start, object_start = self._operand_starts(code, i)
         return object_start is not None \
-            and [ins.name for ins in _significant(code[object_start:value_start])] == ["getscopeobject"]
+            and [ins.opcode for ins in _significant(code[object_start:value_start])] == [Op.GETSCOPEOBJECT]
 
     def _names_other_than(self, method, code, i, field) -> bool:
         """Is the runtime name of the property that code[i] sets (obj[name] = value) surely not field:
@@ -484,11 +492,11 @@ class CodeAnalysis:
         if name_start is None:
             return False
         span = _significant(code[name_start:value_start])
-        if len(span) == 1 and span[0].name == "pushstring":
+        if len(span) == 1 and span[0].opcode is Op.PUSHSTRING:
             return self.abc.strings[span[0].args[0]] != field
         if len(span) == 1 and integer_constant(self.abc, span[0]) is not None:
             return True
-        if span and span[-1].name == "getproperty" and self.name(span[-1]) == "length" \
+        if span and span[-1].opcode is Op.GETPROPERTY and self.name(span[-1]) == "length" \
                 and not self.abc.runtime_name_operands(span[-1].args[0]):
             return True     # array[array.length] = value
         if self.static_type(method, code, name_start, value_start) in ("int", "uint", "Number"):
@@ -507,7 +515,7 @@ class CodeAnalysis:
         if is_container(self.static_type(method, code, start, end)):
             return True
         span = _significant(code[start:end])
-        if not span or span[-1].name != "getproperty" or self.abc.runtime_name_operands(span[-1].args[0]):
+        if not span or span[-1].opcode is not Op.GETPROPERTY or self.abc.runtime_name_operands(span[-1].args[0]):
             return False
         prop = self.name(span[-1])
         types = {self.movie.value_type(trait, unit.abc)
@@ -519,16 +527,16 @@ class CodeAnalysis:
         """{C} if the expression code[start:end] makes a new instance of class C of this file, set()
         if it is null; None for anything else"""
         span = _strip_casts(_significant(code[start:end]))
-        shape = [ins.name for ins in span]
-        if shape in (["pushnull"], ["pushundefined"]):
+        shape = [ins.opcode for ins in span]
+        if shape in ([Op.PUSHNULL], [Op.PUSHUNDEFINED]):
             return set()
         if not span:
             return None
         last = span[-1]
-        if last.name == "constructprop" and span[0].name in ("findpropstrict", "findproperty") \
+        if last.opcode is Op.CONSTRUCTPROP and span[0].opcode in (Op.FINDPROPSTRICT, Op.FINDPROPERTY) \
                 and self.name(span[0]) == self.name(last):
             name = self.name(last)  # new C(...)
-        elif last.name == "construct" and last.args[0] == 0:
+        elif last.opcode is Op.CONSTRUCT and last.args[0] == 0:
             name = self._class_value(method, code, span[:-1])   # new cls()
         else:
             return None
@@ -540,18 +548,18 @@ class CodeAnalysis:
     def _class_value(self, method, code, span) -> str | None:
         """The name of the class that the expression span (instructions of code) evaluates to: C, or a
         local variable or activation slot that its method only sets once, to getDefinitionByName("C")"""
-        shape = [ins.name for ins in span]
-        if shape == ["getlex"]:
+        shape = [ins.opcode for ins in span]
+        if shape == [Op.GETLEX]:
             return self.name(span[0])
-        if len(span) == 1 and shape[0].startswith("getlocal") and shape[0] != "getlocal0":
+        if len(span) == 1 and shape[0] in GETLOCALS and shape[0] is not Op.GETLOCAL0:
             register = local_register(span[0])
-            if any(ins.name in REGISTER_CHANGING and register in ins.args for ins in code):
+            if any(ins.opcode in REGISTER_CHANGING and register in ins.args for ins in code):
                 return None
-            stores = [j for j, ins in enumerate(code) if ins.name.startswith("setlocal") and local_register(ins) == register]
-        elif shape == ["getscopeobject", "getslot"] and span[0].args[0] == 1 \
+            stores = [j for j, ins in enumerate(code) if ins.opcode in SETLOCALS and local_register(ins) == register]
+        elif shape == [Op.GETSCOPEOBJECT, Op.GETSLOT] and span[0].args[0] == 1 \
                 and self.activation_slot_type(method, code, span[1].args[0]) is not None:
             slot = span[1].args[0]
-            stores = [j for j, ins in enumerate(code) if ins.name == "setslot" and ins.args[0] == slot]
+            stores = [j for j, ins in enumerate(code) if ins.opcode is Op.SETSLOT and ins.args[0] == slot]
             if not all(self._sets_scope_slot(code, j) for j in stores):
                 return None
         else:
@@ -562,18 +570,18 @@ class CodeAnalysis:
             if start is None:
                 return None
             value = _strip_casts(_significant(code[start:j]))
-            if [ins.name for ins in value] not in (["pushnull"], ["pushundefined"]):
+            if [ins.opcode for ins in value] not in ([Op.PUSHNULL], [Op.PUSHUNDEFINED]):
                 values.append(value)
         if len(values) != 1:
             return None
         call = values[0]
-        if [ins.name for ins in call[:1] + call[2:]] != ["findpropstrict", "callproperty"] \
+        if [ins.opcode for ins in call[:1] + call[2:]] != [Op.FINDPROPSTRICT, Op.CALLPROPERTY] \
                 or self.name(call[0]) != "getDefinitionByName" or self.name(call[2]) != "getDefinitionByName":
             return None
         name = call[1]
-        if name.name == "pushstring":
+        if name.opcode is Op.PUSHSTRING:
             return self.abc.strings[name.args[0]]
-        if name.name == "getlex":
+        if name.opcode is Op.GETLEX:
             return self._static_string(self.movie.class_of_method.get(method), self.name(name))
         return None
 
@@ -604,20 +612,20 @@ class CodeAnalysis:
         name = None
         tail_ok = True
         for ins in code[start:end]:
-            if ins.name in SKIPPABLE_NAMES:
+            if ins.opcode in SKIPPABLE_OPS:
                 continue
-            if ins.name in ("getproperty", "getlex", "getsuper"):
+            if ins.opcode in (Op.GETPROPERTY, Op.GETLEX, Op.GETSUPER):
                 prop = self.name(ins)
                 if prop.startswith("<"):
                     continue    # a runtime name: the string pushed before it is the name
                 name, tail_ok = prop, True
-            elif ins.name == "pushstring":
+            elif ins.opcode is Op.PUSHSTRING:
                 name, tail_ok = self.abc.strings[ins.args[0]], True
-            elif ins.name in ("callproperty", "callproplex"):
+            elif ins.opcode in (Op.CALLPROPERTY, Op.CALLPROPLEX):
                 called = self.name(ins)
                 # getChildByName("x"), or a cast like MovieClip(x)
                 tail_ok = called in ("getChildByName", "getChildAt") or called[:1].isupper()
-            elif ins.name not in NAME_PRESERVING:
+            elif ins.opcode not in NAME_PRESERVING:
                 tail_ok = False
         return name if tail_ok else None
 
@@ -626,7 +634,7 @@ class CodeAnalysis:
         found = []
         for method, code in self.code.items():
             for i, ins in enumerate(code):
-                if ins.name in ("callproperty", "callpropvoid") and self.name(ins) == "play" and ins.args[1] == 0:
+                if ins.opcode in CALL_PROPERTY_OPS and self.name(ins) == "play" and ins.args[1] == 0:
                     start = expression_start(self.abc, code, i)
                     found.append((method, UNRESOLVED if start is None else self._resolve_receiver(method, code, start, i)))
         return found
@@ -644,7 +652,7 @@ class CodeAnalysis:
             class_name = self.abc.full_name_of(instance.name)
             calls, recognised, stop_frames = [], True, set()
             for i, ins in enumerate(code):
-                if ins.name == "callpropvoid" and self.name(ins) == "addFrameScript":
+                if ins.opcode is Op.CALLPROPVOID and self.name(ins) == "addFrameScript":
                     pairs, functions, call_recognised = self._frame_script_args(code, i)
                     recognised = recognised and call_recognised
                     calls.append(pairs)
@@ -660,7 +668,7 @@ class CodeAnalysis:
         methods = [self.unit.method_base + trait.method for trait in instance.traits
                    if trait.kind == TRAIT_METHOD and trait.method is not None and self.abc.name_of(trait.name) == function]
         code = _significant(self.code.get(methods[0], [])) if len(methods) == 1 else []
-        return [(ins.name, self.name(ins) if ins.name in ("findpropstrict", "callpropvoid") else None)
+        return [(ins.opcode, self.name(ins) if ins.opcode in (Op.FINDPROPSTRICT, Op.CALLPROPVOID) else None)
                 for ins in code] == STOP_ONLY
 
     def _frame_script_args(self, code, call_index) -> tuple[list[tuple[int, int]], list[str], bool]:
@@ -676,7 +684,7 @@ class CodeAnalysis:
         for _ in range(arg_count // 2):
             # The function: getlocal0; getproperty/getlex <name>
             j = skip_no_ops_backwards(code, j)
-            if not (j >= 1 and code[j].name in ("getproperty", "getlex") and code[j - 1].name == "getlocal0"):
+            if not (j >= 1 and code[j].opcode in PROPERTY_READS and code[j - 1].opcode is Op.GETLOCAL0):
                 complete = False
                 break
             function = self.name(code[j])
@@ -716,10 +724,10 @@ class CodeAnalysis:
         handlers, seen = [], set()
         for method, code in self.code.items():
             for i, ins in enumerate(code):
-                if ins.name != "callpropvoid" or self.name(ins) != "addEventListener":
+                if ins.opcode is not Op.CALLPROPVOID or self.name(ins) != "addEventListener":
                     continue
                 window = _significant(code[max(0, i - 10):i])
-                names = [self.name(w) for w in window if w.name in ("getproperty", "getlex")]
+                names = [self.name(w) for w in window if w.opcode in PROPERTY_READS]
                 if "ENTER_FRAME" not in names:
                     continue
                 # The handler is the property read right after Event.ENTER_FRAME
@@ -735,25 +743,25 @@ class CodeAnalysis:
 
     def _frame_handler(self, method) -> FrameHandler:
         code = self.code.get(method, [])
-        calls = lambda name: any(ins.name == "callpropvoid" and self.name(ins) == name for ins in code)
-        reads = lambda name, ops: any(ins.name in ops and self.name(ins) == name for ins in code)
-        one_shot = calls("removeEventListener") and reads("ENTER_FRAME", ("getproperty", "getlex"))
-        time_based = reads("getTimer", ("getlex", "findpropstrict"))
+        calls = lambda name: any(ins.opcode is Op.CALLPROPVOID and self.name(ins) == name for ins in code)
+        reads = lambda name, ops: any(ins.opcode in ops and self.name(ins) == name for ins in code)
+        one_shot = calls("removeEventListener") and reads("ENTER_FRAME", PROPERTY_READS)
+        time_based = reads("getTimer", (Op.GETLEX, Op.FINDPROPSTRICT))
         return FrameHandler(method, self.movie.owner_name(method), one_shot, time_based,
                             self._property_increments(code))
 
     def _property_increments(self, code) -> list[tuple[int, float, str]]:
         """Find `obj.prop += K`: getproperty prop; push K; add/subtract; setproperty prop"""
         abc = self.abc
-        significant = [(j, ins) for j, ins in enumerate(code) if ins.name not in SKIPPABLE_NAMES]
+        significant = [(j, ins) for j, ins in enumerate(code) if ins.opcode not in SKIPPABLE_OPS]
         found = []
         for p in range(len(significant) - 3):
             (_, get), (push_index, push), (_, op), (_, put) = significant[p:p + 4]
-            if not (get.name == "getproperty" and put.name == "setproperty" and op.name in ("add", "subtract")
+            if not (get.opcode is Op.GETPROPERTY and put.opcode is Op.SETPROPERTY and op.opcode in (Op.ADD, Op.SUBTRACT)
                     and self.name(get) == self.name(put)):
                 continue
             value = integer_constant(abc, push)
-            if value is None and push.name == "pushdouble":
+            if value is None and push.opcode is Op.PUSHDOUBLE:
                 value = abc.doubles[push.args[0]]
             if value is not None:
                 found.append((push_index, value, self.name(get)))
@@ -765,7 +773,7 @@ class CodeAnalysis:
         """Methods that set a frameRate property (stage.frameRate = ...). The receiver's type isn't known,
         but nothing else in the game's movies has a frameRate to set."""
         return [method for method, code in self.code.items()
-                if any(ins.name in ("setproperty", "initproperty") and self.name(ins) == "frameRate" for ins in code)]
+                if any(ins.opcode in PROPERTY_WRITES and self.name(ins) == "frameRate" for ins in code)]
 
     # --- totalFrames, currentFrame, ... ---
 
@@ -776,14 +784,14 @@ class CodeAnalysis:
         uses = []
         for method, code in self.code.items():
             for i, ins in enumerate(code):
-                if ins.name not in ("getproperty", "getlex", "callproperty", "callpropvoid"):
+                if ins.opcode not in FRAME_PROPERTY_OPS:
                     continue
                 prop = self.name(ins)
                 if prop not in FRAME_PROPERTIES:
                     continue
-                if ins.name.startswith("call") and ins.args[1] != 0:
+                if ins.opcode in CALL_PROPERTY_OPS and ins.args[1] != 0:
                     continue
-                if ins.name in ("getproperty", "getlex") and self._only_traced(code, i):
+                if ins.opcode in PROPERTY_READS and self._only_traced(code, i):
                     continue
                 uses.append(FramePropertyUse(method, prop, self.movie.owner_name(method),
                                              self.movie.class_of_method.get(method),
@@ -798,7 +806,7 @@ class CodeAnalysis:
         depth = 1   # the value's position on the stack, counted from the top
         for j in range(i + 1, len(code)):
             ins = code[j]
-            if ins.name in NO_OP_NAMES:
+            if ins.opcode in NO_OPS:
                 continue
             effect = stack_effect(self.abc, ins)
             if effect is None:
@@ -807,11 +815,11 @@ class CodeAnalysis:
             if depth > popped:
                 depth += pushed - popped
                 continue
-            if ins.name in PURE_OPERATIONS:
+            if ins.opcode in PURE_OPERATIONS:
                 depth = 1   # follow the result instead
                 continue
             # An argument (not the object) of a call to the global trace()
-            return (ins.name == "callpropvoid" and self.name(ins) == "trace" and depth < popped
+            return (ins.opcode is Op.CALLPROPVOID and self.name(ins) == "trace" and depth < popped
                     and self._is_global_trace(code, j))
         return False
 
@@ -823,17 +831,17 @@ class CodeAnalysis:
             if start is None:
                 return False
         span = _significant(code[start:end])
-        return len(span) == 1 and span[0].name == "findpropstrict" and self.name(span[0]) == "trace"
+        return len(span) == 1 and span[0].opcode is Op.FINDPROPSTRICT and self.name(span[0]) == "trace"
 
     def _frame_property_receiver(self, method, code, i) -> Receiver:
-        if code[i].name == "getlex":    # a bare `currentFrame` in a class method
+        if code[i].opcode is Op.GETLEX:     # a bare `currentFrame` in a class method
             return THIS
         start = expression_start(self.abc, code, i)
         if start is None:
             return UNRESOLVED
         if self.instance_name(code, start, i) is not None:
             return self._named_or_field(method, code, start, i)
-        if [ins.name for ins in _significant(code[start:i])] in (["getlocal0"], ["findpropstrict"]):
+        if [ins.opcode for ins in _significant(code[start:i])] in ([Op.GETLOCAL0], [Op.FINDPROPSTRICT]):
             return THIS     # this.nextFrame(), or a bare nextFrame()
         return UNRESOLVED
 
@@ -844,30 +852,30 @@ class CodeAnalysis:
         code[start:end], if it can be told; None otherwise. Only simple expressions are understood:
         typed registers and activation slots, coercions, and properties and methods with a known type."""
         abc, movie = self.abc, self.movie
-        indices = [j for j in range(start, end) if code[j].name not in SKIPPABLE_NAMES]
+        indices = [j for j in range(start, end) if code[j].opcode not in SKIPPABLE_OPS]
         if not indices:
             return None
         last = code[indices[-1]]
-        if last.name in ("coerce_s", "convert_s", "pushstring"):
+        if last.opcode in (Op.COERCE_S, Op.CONVERT_S, Op.PUSHSTRING):
             return "String"
-        if last.name in ("coerce_a", "convert_o") or (last.name == "coerce" and abc.full_name_of(last.args[0]) == "Object"):
+        if last.opcode in (Op.COERCE_A, Op.CONVERT_O) or (last.opcode is Op.COERCE and abc.full_name_of(last.args[0]) == "Object"):
             # These leave the value as it is; the arms of a ternary are coerced to their common type like this
             return self.static_type(method, code, start, indices[-1])
-        if last.name == "coerce":
+        if last.opcode is Op.COERCE:
             return abc.full_name_of(last.args[0])
-        if len(indices) == 1 and last.name.startswith("getlocal"):
+        if len(indices) == 1 and last.opcode in GETLOCALS:
             return self.register_type(method, code, local_register(last))
-        if (len(indices) == 2 and code[indices[0]].name == "getscopeobject" and code[indices[0]].args[0] == 1
-                and last.name == "getslot"):
+        if (len(indices) == 2 and code[indices[0]].opcode is Op.GETSCOPEOBJECT and code[indices[0]].args[0] == 1
+                and last.opcode is Op.GETSLOT):
             return self.activation_slot_type(method, code, last.args[0])
-        if last.name in ("getproperty", "getlex") and not abc.runtime_name_operands(last.args[0]):
+        if last.opcode in PROPERTY_READS and not abc.runtime_name_operands(last.args[0]):
             prop = self.name(last)
-            if last.name == "getproperty":
+            if last.opcode is Op.GETPROPERTY:
                 receiver = self.static_type(method, code, start, indices[-1])
                 if receiver and (found := movie.property_type(receiver, prop)):
                     return found
             return "String" if prop in movie.string_properties else None
-        if last.name in ("callproperty", "callproplex") and self.name(last) in movie.string_methods:
+        if last.opcode in (Op.CALLPROPERTY, Op.CALLPROPLEX) and self.name(last) in movie.string_methods:
             return "String"
         return None
 
@@ -885,22 +893,22 @@ class CodeAnalysis:
             param_type = param_types[register - 1]
             types.add(abc.full_name_of(param_type) if param_type else None)
         for j, ins in enumerate(code):
-            if ins.name in REGISTER_CHANGING and register in ins.args:
+            if ins.opcode in REGISTER_CHANGING and register in ins.args:
                 return None
-            if ins.name.startswith("setlocal") and local_register(ins) == register:
+            if ins.opcode in SETLOCALS and local_register(ins) == register:
                 types.add(self._assigned_type(code, j))
         return types.pop() if len(types) == 1 else None
 
     def _assigned_type(self, code, index) -> str | None:
         """The type the value stored by code[index] is coerced to (`coerce T; [dup;] setlocal`)"""
         j = skip_no_ops_backwards(code, index - 1)
-        if j >= 0 and code[j].name == "dup":
+        if j >= 0 and code[j].opcode is Op.DUP:
             j = skip_no_ops_backwards(code, j - 1)
         if j < 0:
             return None
-        if code[j].name in ("coerce_s", "convert_s"):
+        if code[j].opcode in (Op.COERCE_S, Op.CONVERT_S):
             return "String"
-        if code[j].name == "coerce":
+        if code[j].opcode is Op.COERCE:
             return self.abc.full_name_of(code[j].args[0])
         return None
 
@@ -925,17 +933,18 @@ class CodeAnalysis:
         """What each pushscope in the method pushes: "this", "activation", "catch" or None (other)"""
         code = _significant(code)
         registers = {local_register(c) for a, b, c in zip(code, code[1:], code[2:])     # newactivation; dup; setlocal N
-                     if (a.name, b.name) == ("newactivation", "dup") and c.name.startswith("setlocal")}
+                     if a.opcode is Op.NEWACTIVATION and b.opcode is Op.DUP and c.opcode in SETLOCALS}
         pushes = []
         for i, ins in enumerate(code):
-            if ins.name in ("pushscope", "pushwith"):
+            if ins.opcode in (Op.PUSHSCOPE, Op.PUSHWITH):
                 j = i - 1   # what is pushed, past the copies kept on the way (dup, dup; setlocal N)
-                while j >= 1 and (code[j].name == "dup" or code[j].name.startswith("setlocal") and code[j - 1].name == "dup"):
-                    j -= 1 if code[j].name == "dup" else 2
-                name = code[j].name if j >= 0 and ins.name == "pushscope" else ""
-                if name.startswith("getlocal") and name != "getlocal0" and local_register(code[j]) in registers:
-                    name = "newactivation"
-                pushes.append({"getlocal0": "this", "newactivation": "activation", "newcatch": "catch"}.get(name))
+                while j >= 1 and (code[j].opcode is Op.DUP or code[j].opcode in SETLOCALS and code[j - 1].opcode is Op.DUP):
+                    j -= 1 if code[j].opcode is Op.DUP else 2
+                pushed = code[j].opcode if j >= 0 and ins.opcode is Op.PUSHSCOPE else None
+                if pushed in GETLOCALS and pushed is not Op.GETLOCAL0 and local_register(code[j]) in registers:
+                    pushed = Op.NEWACTIVATION
+                pushes.append(None if pushed is None else
+                              {Op.GETLOCAL0: "this", Op.NEWACTIVATION: "activation", Op.NEWCATCH: "catch"}.get(pushed))
         return pushes
 
     # --- fl.motion ---
@@ -951,20 +960,20 @@ class CodeAnalysis:
 
         hosts = set()
         for method, code in self.code.items():
-            if movie.owner_name(method, "").startswith(MOTION_PACKAGE) or any(ins.name == "newclass" for ins in code):
+            if movie.owner_name(method, "").startswith(MOTION_PACKAGE) or any(ins.opcode is Op.NEWCLASS for ins in code):
                 continue    # the library itself, and script initializers (which define the classes)
-            if any(ins.name == "pushstring" and ("<Motion" in abc.strings[ins.args[0]] or "fl.motion" in abc.strings[ins.args[0]])
+            if any(ins.opcode is Op.PUSHSTRING and ("<Motion" in abc.strings[ins.args[0]] or "fl.motion" in abc.strings[ins.args[0]])
                    for ins in code):
                 return None
-            used = {self.name(ins) for ins in code if ins.name in ("getlex", "findpropstrict", "findproperty", "constructprop")
+            used = {self.name(ins) for ins in code if ins.opcode in CLASS_NAMING_OPS
                     and self.name(ins) in motion_names}
             if not used:
                 continue
             if used - STATIC_MOTION_NAMES:
                 return None
-            motions = [ins for ins in code if ins.name == "constructprop" and self.name(ins) == "MotionBase"]
+            motions = [ins for ins in code if ins.opcode is Op.CONSTRUCTPROP and self.name(ins) == "MotionBase"]
             durations = [integer_constant(abc, code[skip_no_ops_backwards(code, j - 1)]) for j, ins in enumerate(code)
-                         if ins.name == "setproperty" and self.name(ins) == "duration"]
+                         if ins.opcode is Op.SETPROPERTY and self.name(ins) == "duration"]
             if any(ins.args[1] for ins in motions) or len(durations) != len(motions) or set(durations) - {1}:
                 return None
             if method in movie.static_methods or method not in movie.class_of_method:
@@ -976,11 +985,11 @@ class CodeAnalysis:
 
     def _normalized_code(self, method) -> str:
         code = self.code.get(method, [])
-        kept = [ins for ins in code if ins.name not in SKIPPABLE_NAMES]
+        kept = [ins for ins in code if ins.opcode not in SKIPPABLE_OPS]
         position = {code[-1].end if code else 0: len(kept)}  # code offset -> index in kept
         index = len(kept)
         for ins in reversed(code):
-            if ins.name not in SKIPPABLE_NAMES:
+            if ins.opcode not in SKIPPABLE_OPS:
                 index -= 1
             position[ins.offset] = index    # a skipped instruction stands for the next one kept
 
@@ -996,13 +1005,13 @@ class CodeAnalysis:
     def _operand(self, ins: Instruction, k: int, value: int):
         """An instruction operand, with constant pool and multiname indices resolved"""
         abc = self.abc
-        if k == 0 and OPCODES[ins.opcode][1] in ("m", "mu"):
+        if k == 0 and OPERANDS[ins.opcode] in ("m", "mu"):
             # Without the namespace: compilers refer to the same property in different ways
             return abc.name_of(value)
-        pools = {"pushstring": abc.strings, "pushint": abc.ints, "pushuint": abc.uints, "pushdouble": abc.doubles,
-                 "pushnamespace": [abc.strings[name] for _, name in abc.namespaces]}
-        if ins.name in pools:
-            return repr(pools[ins.name][value])
-        if k == 0 and ins.name in ("newfunction", "newclass", "callmethod", "callstatic"):
+        pools = {Op.PUSHSTRING: abc.strings, Op.PUSHINT: abc.ints, Op.PUSHUINT: abc.uints, Op.PUSHDOUBLE: abc.doubles,
+                 Op.PUSHNAMESPACE: [abc.strings[name] for _, name in abc.namespaces]}
+        if ins.opcode in pools:
+            return repr(pools[ins.opcode][value])
+        if k == 0 and ins.opcode in (Op.NEWFUNCTION, Op.NEWCLASS, Op.CALLMETHOD, Op.CALLSTATIC):
             return "#"  # an index into the method or class list, which shifts when other code changes
         return value

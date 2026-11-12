@@ -13,8 +13,9 @@ The fix drops the fade: every book shows at once, as a popup's first one did (as
 from __future__ import annotations
 
 from ..swf_patcher.abc_bytecode import (
-    NO_OP_NAMES,
+    NO_OPS,
     Instruction,
+    Op,
     assemble,
     branch_targets,
     disassemble,
@@ -39,7 +40,7 @@ def apply(swf: SwfEdit) -> FixResult:
 
     fade = _find_fade(abc, instructions)
     if fade is None:
-        if not any(ins.name == "getproperty" and abc.name_of(ins.args[0]) == FADE_END for ins in instructions):
+        if not any(ins.opcode is Op.GETPROPERTY and abc.name_of(ins.args[0]) == FADE_END for ins in instructions):
             return FixResult([], f"{CLASS}.{METHOD} doesn't fade")
         raise CantApply(f"{CLASS}.{METHOD} doesn't fade in an `if (!_isFirstInit)` branch")
     first, last = fade
@@ -56,23 +57,23 @@ def _find_fade(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int]
     """(first, last instruction index) of the fade in `if (!_isFirstInit) {fade} else {...}`: from the getlocal0
     of the condition on to the jump over the else branch; None if there is no such branch with a tween that calls
     onTitleHidden. Debug instructions are allowed."""
-    real = [i for i, ins in enumerate(instructions) if ins.name not in NO_OP_NAMES]
+    real = [i for i, ins in enumerate(instructions) if ins.opcode not in NO_OPS]
     index_at = {ins.offset: i for i, ins in enumerate(instructions)}
-    pattern = [("getlocal0", None), ("getproperty", "_isFirstInit"), ("iftrue", None)]
+    pattern = [(Op.GETLOCAL0, None), (Op.GETPROPERTY, "_isFirstInit"), (Op.IFTRUE, None)]
     for k in range(len(real) - len(pattern) + 1):
         window = [instructions[i] for i in real[k:k + len(pattern)]]
-        if not all(ins.name == name and (prop is None or abc.name_of(ins.args[0]) == prop)
-                   for ins, (name, prop) in zip(window, pattern)):
+        if not all(ins.opcode is op and (prop is None or abc.name_of(ins.args[0]) == prop)
+                   for ins, (op, prop) in zip(window, pattern)):
             continue
         branch = window[-1]
         else_start = index_at.get(branch.end + branch.args[0])
         if else_start is None or else_start <= real[k + 2]:
             return None
         jump = max((i for i in real if real[k + 2] < i < else_start), default=None)
-        if jump is None or instructions[jump].name != "jump":
+        if jump is None or instructions[jump].opcode is not Op.JUMP:
             return None
         fade = instructions[real[k + 2] + 1:jump]
-        if not any(ins.name == "getproperty" and abc.name_of(ins.args[0]) == FADE_END for ins in fade):
+        if not any(ins.opcode is Op.GETPROPERTY and abc.name_of(ins.args[0]) == FADE_END for ins in fade):
             return None
         return real[k], jump
     return None

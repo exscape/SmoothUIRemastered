@@ -34,8 +34,9 @@ import struct
 from pathlib import Path
 
 from ..swf_patcher.abc_bytecode import (
-    NO_OP_NAMES,
+    NO_OPS,
     Instruction,
+    Op,
     assemble,
     disassemble,
     encode_getlocal,
@@ -74,7 +75,6 @@ FX_ONGOING_SUFFIX = "_Ongoing"          # weather on the rows, which CardFXManag
 # DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
 DO_ABC_LAZY = 1
 
-OP_GETLEX, OP_GETLOCAL0, OP_GETPROPERTY, OP_CALLPROPVOID = 0x60, 0xD0, 0x66, 0x4F
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -111,36 +111,36 @@ def apply(swf: SwfEdit) -> FixResult:
     ai_sending = _method(abc, AI_CLASS, "state_begin_SendingCard")
     bodies = {
         # GwentSpeed.install(this)
-        config_ui: _insert_before_config_call(abc, config_ui, bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                              + bytes([OP_GETLOCAL0, OP_CALLPROPVOID]) + encode_u30(install)
+        config_ui: _insert_before_config_call(abc, config_ui, bytes([Op.GETLEX]) + encode_u30(speed_class)
+                                              + bytes([Op.GETLOCAL0, Op.CALLPROPVOID]) + encode_u30(install)
                                               + encode_u30(1)),
         # ... / GwentSpeed.cardSpeed
-        tween_duration: _replace_speed(abc, tween_duration, bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                       + bytes([OP_GETPROPERTY]) + encode_u30(card_speed)),
+        tween_duration: _replace_speed(abc, tween_duration, bytes([Op.GETLEX]) + encode_u30(speed_class)
+                                       + bytes([Op.GETPROPERTY]) + encode_u30(card_speed)),
         # ...; GwentSpeed.onCardTween(curTween); return curTween
         # and if the card is there already: GwentSpeed.onCardAtTarget(card, finishCallback); return null
         tween_to: _hook_tween_to(abc, tween_to,
-                                 lambda local: bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                 + encode_getlocal(local) + bytes([OP_CALLPROPVOID])
+                                 lambda local: bytes([Op.GETLEX]) + encode_u30(speed_class)
+                                 + encode_getlocal(local) + bytes([Op.CALLPROPVOID])
                                  + encode_u30(on_card_tween) + encode_u30(1),
-                                 bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                 + encode_getlocal(TWEEN_TO_CARD) + encode_getlocal(TWEEN_TO_CALLBACK) + bytes([OP_CALLPROPVOID])
+                                 bytes([Op.GETLEX]) + encode_u30(speed_class)
+                                 + encode_getlocal(TWEEN_TO_CARD) + encode_getlocal(TWEEN_TO_CALLBACK) + bytes([Op.CALLPROPVOID])
                                  + encode_u30(on_card_at_target) + encode_u30(2)),
         # new Timer(GwentSpeed.opponentCardDelay, 1)
-        ai_delay: _replace_ai_delay(abc, ai_delay, bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                    + bytes([OP_GETPROPERTY]) + encode_u30(opponent_card_delay)),
+        ai_delay: _replace_ai_delay(abc, ai_delay, bytes([Op.GETLEX]) + encode_u30(speed_class)
+                                    + bytes([Op.GETPROPERTY]) + encode_u30(opponent_card_delay)),
         # ...; GwentSpeed.onOpponentCardSent(this)
         ai_sending: _insert_before_return(abc, ai_sending, f"{AI_CLASS}.state_begin_SendingCard", _this,
-                                          lambda this: bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                          + encode_getlocal(this) + bytes([OP_CALLPROPVOID])
+                                          lambda this: bytes([Op.GETLEX]) + encode_u30(speed_class)
+                                          + encode_getlocal(this) + bytes([Op.CALLPROPVOID])
                                           + encode_u30(on_card_sent) + encode_u30(1)),
     }
     for spawner in FX_SPAWNERS:
         method = _method(abc, FX_CLASS, spawner)
         # ...; GwentSpeed.onCardFX(newCardFX); return ...
         bodies[method] = _insert_before_return(abc, method, f"{FX_CLASS}.{spawner}", _card_fx_local,
-                                               lambda local: bytes([OP_GETLEX]) + encode_u30(speed_class)
-                                               + encode_getlocal(local) + bytes([OP_CALLPROPVOID])
+                                               lambda local: bytes([Op.GETLEX]) + encode_u30(speed_class)
+                                               + encode_getlocal(local) + bytes([Op.CALLPROPVOID])
                                                + encode_u30(on_card_fx) + encode_u30(1))
     unit.replace_methods(bodies, additions)
     swf.insert_abc(Tag(TagCode.DO_ABC, struct.pack("<I", DO_ABC_LAZY) + PACKAGE.encode() + b"\0" + our_abc,
@@ -239,10 +239,10 @@ def _insert_before_config_call(abc: AbcFile, method: int, code: bytes) -> tuple[
     "OnConfigUI"))"""
     body = abc.bodies[method]
     instructions = disassemble(body.code)
-    pattern = [("findpropstrict", "dispatchEvent"), ("findpropstrict", "GameEvent"), ("getlex", "GameEvent"),
-               ("getproperty", "CALL"), ("pushstring", "OnConfigUI")]
+    pattern = [(Op.FINDPROPSTRICT, "dispatchEvent"), (Op.FINDPROPSTRICT, "GameEvent"), (Op.GETLEX, "GameEvent"),
+               (Op.GETPROPERTY, "CALL"), (Op.PUSHSTRING, "OnConfigUI")]
     starts = [start for start in range(len(instructions) - len(pattern) + 1)
-              if all(_matches(abc, ins, name, value) for ins, (name, value)
+              if all(_matches(abc, ins, op, value) for ins, (op, value)
                      in zip(instructions[start:start + len(pattern)], pattern))]
     if len(starts) != 1:
         raise CantApply(f"{MENU_CLASS}.configUI: expected 1 OnConfigUI call, found {len(starts)}")
@@ -254,7 +254,7 @@ def _replace_speed(abc: AbcFile, method: int, code: bytes) -> tuple[bytes, list]
     body = abc.bodies[method]
     instructions = disassemble(body.code)
     found = [i for i, ins in enumerate(instructions[:-1])
-             if _matches(abc, ins, "getlex", "MOVE_TWEEN_SPEED") and instructions[i + 1].name == "divide"]
+             if _matches(abc, ins, Op.GETLEX, "MOVE_TWEEN_SPEED") and instructions[i + 1].opcode is Op.DIVIDE]
     if len(found) != 1:
         raise CantApply(f"{TWEEN_CLASS}.calcTweenDuration: expected 1 division by MOVE_TWEEN_SPEED, found {len(found)}")
     return assemble(body.code, instructions, {found[0]: code}, body.exceptions)
@@ -282,12 +282,12 @@ def _hook_tween_to(abc: AbcFile, method: int, on_tween, on_at_target: bytes) -> 
     body = abc.bodies[method]
     instructions = disassemble(body.code)
     final = _final_return(instructions, description, only_return=False)
-    stops = [i for i, ins in enumerate(instructions) if _matches(abc, ins, "callpropvoid", "tryStopCardTween")]
+    stops = [i for i, ins in enumerate(instructions) if _matches(abc, ins, Op.CALLPROPVOID, "tryStopCardTween")]
     if len(stops) != 1:
         raise CantApply(f"{description}: expected 1 tryStopCardTween call, found {len(stops)}")
-    real = [i for i, ins in enumerate(instructions) if ins.name not in NO_OP_NAMES]
+    real = [i for i, ins in enumerate(instructions) if ins.opcode not in NO_OPS]
     null_returns = [real[k] for k in range(len(real) - 1) if stops[0] < real[k] < final
-                    and instructions[real[k]].name == "pushnull" and instructions[real[k + 1]].name == "returnvalue"]
+                    and instructions[real[k]].opcode is Op.PUSHNULL and instructions[real[k + 1]].opcode is Op.RETURNVALUE]
     if len(null_returns) != 1:
         raise CantApply(f"{description}: expected 1 return null after tryStopCardTween, found {len(null_returns)}")
     return _insert(body, instructions, {null_returns[0]: on_at_target,
@@ -297,11 +297,11 @@ def _hook_tween_to(abc: AbcFile, method: int, on_tween, on_at_target: bytes) -> 
 def _final_return(instructions: list[Instruction], description: str, only_return: bool) -> int:
     """Where a method's final statement starts: a return at its end (its only one, unless only_return is
     false), either a plain return or `return <local variable>`"""
-    returns = [i for i, ins in enumerate(instructions) if ins.name in ("returnvoid", "returnvalue")]
+    returns = [i for i, ins in enumerate(instructions) if ins.opcode in (Op.RETURNVOID, Op.RETURNVALUE)]
     if not returns or returns[-1] != len(instructions) - 1 or (only_return and len(returns) > 1):
         raise CantApply(f"{description}: expected {'1 return' if only_return else 'a return'}, at its end")
     at = len(instructions) - 1
-    if instructions[at].name == "returnvalue":
+    if instructions[at].opcode is Op.RETURNVALUE:
         # Before the statement, not between the value it pushes and the return
         if len(instructions) < 2 or read_local(instructions[at - 1]) is None:
             raise CantApply(f"{description}: expected it to end with return <local variable>")
@@ -322,7 +322,7 @@ def _this(abc: AbcFile, instructions: list[Instruction], description: str) -> in
 
 def _returned_local(abc: AbcFile, instructions: list[Instruction], description: str) -> int:
     """The local variable a method's final `return <local variable>` returns"""
-    local = read_local(instructions[-2]) if len(instructions) >= 2 and instructions[-1].name == "returnvalue" else None
+    local = read_local(instructions[-2]) if len(instructions) >= 2 and instructions[-1].opcode is Op.RETURNVALUE else None
     if local is None:
         raise CantApply(f"{description}: expected it to end with return <local variable>")
     return local
@@ -331,8 +331,8 @@ def _returned_local(abc: AbcFile, instructions: list[Instruction], description: 
 def _card_fx_local(abc: AbcFile, instructions: list[Instruction], description: str) -> int:
     """The local variable a method stores the card effect it makes in (its only `new ...` coerced to CardFX)"""
     made = [instructions[i + 2] for i in range(len(instructions) - 2)
-            if instructions[i].name == "construct" and _matches(abc, instructions[i + 1], "coerce", "CardFX")
-            and instructions[i + 2].name == "setlocal"]
+            if instructions[i].opcode is Op.CONSTRUCT and _matches(abc, instructions[i + 1], Op.COERCE, "CardFX")
+            and instructions[i + 2].opcode is Op.SETLOCAL]
     if len(made) != 1:
         raise CantApply(f"{description}: expected 1 new card effect stored in a variable, found {len(made)}")
     return made[0].args[0]
@@ -343,19 +343,19 @@ def _replace_ai_delay(abc: AbcFile, method: int, code: bytes) -> tuple[bytes, li
     body = abc.bodies[method]
     instructions = disassemble(body.code)
     found = [i for i in range(1, len(instructions) - 2)
-             if _matches(abc, instructions[i - 1], "findpropstrict", "Timer")
-             and instructions[i].name == "pushshort" and instructions[i].args == [AI_DELAY]
-             and instructions[i + 1].name == "pushbyte" and instructions[i + 1].args == [1]
-             and _matches(abc, instructions[i + 2], "constructprop", "Timer") and instructions[i + 2].args[1] == 2]
+             if _matches(abc, instructions[i - 1], Op.FINDPROPSTRICT, "Timer")
+             and instructions[i].opcode is Op.PUSHSHORT and instructions[i].args == [AI_DELAY]
+             and instructions[i + 1].opcode is Op.PUSHBYTE and instructions[i + 1].args == [1]
+             and _matches(abc, instructions[i + 2], Op.CONSTRUCTPROP, "Timer") and instructions[i + 2].args[1] == 2]
     if len(found) != 1:
         raise CantApply(f"{AI_CLASS}.state_begin_DelayAction: expected 1 new Timer({AI_DELAY}, 1), found {len(found)}")
     return assemble(body.code, instructions, {found[0]: code}, body.exceptions)
 
 
-def _matches(abc: AbcFile, ins: Instruction, name: str, value: str) -> bool:
-    if ins.name != name:
+def _matches(abc: AbcFile, ins: Instruction, op: Op, value: str) -> bool:
+    if ins.opcode is not op:
         return False
-    if name == "pushstring":
+    if op is Op.PUSHSTRING:
         return abc.strings[ins.args[0]] == value
     return abc.name_of(ins.args[0]) == value
 

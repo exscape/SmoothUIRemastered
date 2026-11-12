@@ -13,14 +13,21 @@ be reported as lacking a fix the user only chose as a look.
 
 from __future__ import annotations
 
-from ..swf_patcher.abc_bytecode import Instruction, assemble, disassemble
+from ..swf_patcher.abc_bytecode import (
+    INTEGER_PUSHES,
+    PROPERTY_WRITES,
+    Instruction,
+    Op,
+    assemble,
+    disassemble,
+)
 from ..swf_patcher.abc_file import AbcFile
 from .swf_edit import Fix, FixKind, FixResult, SwfEdit
 
 CLASS = "red.core.CoreMenu"
 OFFSET = "SHOW_ANIM_OFFSET"
 HIDE = "hideAnimation"
-NUMBER_PUSHES = ("pushbyte", "pushshort", "pushint", "pushdouble")
+NUMBER_PUSHES = INTEGER_PUSHES | {Op.PUSHINT, Op.PUSHDOUBLE}
 MAIN_TIMELINE = 0   # What the fix changes: the file's main timeline is linked to the menu's class, as character 0
 
 
@@ -50,21 +57,21 @@ def apply(swf: SwfEdit) -> FixResult:
 def _offset_push(abc: AbcFile, instructions: list[Instruction]) -> int | None:
     """The index of the instruction that pushes the value of SHOW_ANIM_OFFSET; None if there is none"""
     for i, ins in enumerate(instructions):
-        if ins.name in ("setproperty", "initproperty") and abc.name_of(ins.args[0]) == OFFSET:
-            return i - 1 if instructions[i - 1].name in NUMBER_PUSHES else None
+        if ins.opcode in PROPERTY_WRITES and abc.name_of(ins.args[0]) == OFFSET:
+            return i - 1 if instructions[i - 1].opcode in NUMBER_PUSHES else None
     return None
 
 
 def _target_push(abc: AbcFile, instructions: list[Instruction]) -> int | None:
     """The index of the instruction that pushes the y that hideAnimation tweens to; None if there is none"""
     for i, ins in enumerate(instructions[:-1]):
-        if ins.name == "pushstring" and abc.strings[ins.args[0]] == "y" and instructions[i + 1].name in NUMBER_PUSHES:
+        if ins.opcode is Op.PUSHSTRING and abc.strings[ins.args[0]] == "y" and instructions[i + 1].opcode in NUMBER_PUSHES:
             return i + 1
     return None
 
 
 def _is_zero(push: Instruction) -> bool:
-    return push.name in ("pushbyte", "pushshort") and push.args == [0]
+    return push.opcode in INTEGER_PUSHES and push.args == [0]
 
 
 FIX = Fix(name="menu-slide-fix",

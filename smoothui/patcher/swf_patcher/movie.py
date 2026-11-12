@@ -8,7 +8,14 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from ..swf import FPS_FIXED_POINT_SCALE, MalformedSwfError, swf_get_header_offsets
-from .abc_bytecode import NO_OP_NAMES, Instruction, disassemble, stack_effect
+from .abc_bytecode import (
+    NO_OPS,
+    PROPERTY_WRITES,
+    Instruction,
+    Op,
+    disassemble,
+    stack_effect,
+)
 from .abc_file import (
     CONSTANT_UTF8,
     METHOD_TRAIT_KINDS,
@@ -40,10 +47,12 @@ ROOT_TIMELINE = 0   # stands in for the main timeline's id where a sprite id is 
 
 # Instructions that use a class as their object: C.CONSTANT, C.staticMethod(), ...
 CLASS_MEMBER_OPS = frozenset({
-    "getproperty", "setproperty", "initproperty", "callproperty", "callpropvoid", "callproplex", "constructprop",
+    Op.GETPROPERTY, Op.SETPROPERTY, Op.INITPROPERTY, Op.CALLPROPERTY, Op.CALLPROPVOID, Op.CALLPROPLEX, Op.CONSTRUCTPROP,
 })
 # Instructions that use a class as a type: `x is C`, `x as C`, Vector.<C>
-CLASS_TYPE_OPS = frozenset({"istypelate", "astypelate", "applytype"})
+CLASS_TYPE_OPS = frozenset({Op.ISTYPELATE, Op.ASTYPELATE, Op.APPLYTYPE})
+# Instructions that can name a class by its multiname
+CLASS_NAMING_OPS = frozenset({Op.GETLEX, Op.FINDPROPSTRICT, Op.FINDPROPERTY, Op.CONSTRUCTPROP})
 
 
 class RescaleError(ValueError):
@@ -274,24 +283,25 @@ class SwfMovie:
         # the code outside any class (closures)
         uses = defaultdict(set)
         for method, code in self.code.items():
-            if any(ins.name == "newclass" for ins in code):
+            if any(ins.opcode is Op.NEWCLASS for ins in code):
                 continue    # a script initializer, which names each class's superclass to define it
             class_name, static = self.class_of_method.get(method), method in self.static_methods
             abc = self.unit_of(method).abc
             used = uses[(class_name, static)]
             for k, ins in enumerate(code):
-                if ins.name == "construct" and static:
+                op = ins.opcode
+                if op is Op.CONSTRUCT and static:
                     used.add((class_name, True))    # maybe `new this()`, as in a singleton's getInstance()
                     continue
-                if ins.name == "pushstring":
+                if op is Op.PUSHSTRING:
                     name = abc.strings[ins.args[0]].replace("::", ".")
-                elif ins.name in ("getlex", "findpropstrict", "findproperty", "constructprop"):
+                elif op in CLASS_NAMING_OPS:
                     name = abc.name_of(ins.args[0])
                 else:
                     continue
                 if name in classes_named:
-                    used.add((name, ins.name in ("pushstring", "constructprop")
-                              or (ins.name == "getlex" and self._class_passed_on(abc, code, k))))
+                    used.add((name, op is Op.PUSHSTRING or op is Op.CONSTRUCTPROP
+                              or (op is Op.GETLEX and self._class_passed_on(abc, code, k))))
 
         self.created, self.statics_used = set(), set()
         pending = [(None, True)] + [(class_name, True) for class_name in self.sprites_of_class]
@@ -312,11 +322,11 @@ class SwfMovie:
         member or as a type? True if unsure."""
         depth = 1   # the value's position on the stack, counted from the top
         for ins in code[index + 1:]:
-            if ins.name in NO_OP_NAMES:
+            if ins.opcode in NO_OPS:
                 continue
-            if ins.name in ("setproperty", "initproperty"):
+            if ins.opcode in PROPERTY_WRITES:
                 effect = (2 + abc.runtime_name_operands(ins.args[0]), 0)
-            elif ins.name == "pop":
+            elif ins.opcode is Op.POP:
                 effect = (1, 0)
             else:
                 effect = stack_effect(abc, ins)
@@ -325,7 +335,7 @@ class SwfMovie:
             popped, pushed = effect
             if depth <= popped:
                 # The object of a property access or call is the instruction's first (deepest) operand
-                return not ((depth == popped and ins.name in CLASS_MEMBER_OPS) or ins.name in CLASS_TYPE_OPS)
+                return not ((depth == popped and ins.opcode in CLASS_MEMBER_OPS) or ins.opcode in CLASS_TYPE_OPS)
             depth += pushed - popped
         return True
 

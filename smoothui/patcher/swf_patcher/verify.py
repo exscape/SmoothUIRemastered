@@ -9,7 +9,7 @@ from __future__ import annotations
 import struct
 
 from ..swf import MalformedSwfError, swf_get_header_offsets
-from .abc_bytecode import INTEGER_PUSH_NAMES, PushDouble, disassemble
+from .abc_bytecode import INTEGER_PUSHES, Op, PushDouble, disassemble
 from .abc_file import parse_abc
 from .builder import raw_fps
 from .interpolation import change_magnitude, interpolate, simulate_timeline
@@ -192,9 +192,9 @@ def _verify_method(movie, plan, unit, method, new_abc, new_body) -> list[str]:
             edit = edits[k]
             if isinstance(edit, PushDouble):
                 expected = plan.new_doubles[unit.tag_index][edit.pool_index - len(unit.abc.doubles)]
-                if new.name != "pushdouble" or new_abc.doubles[new.args[0]] != expected:
+                if new.opcode is not Op.PUSHDOUBLE or new_abc.doubles[new.args[0]] != expected:
                     problems.append(f"method {method} ins {k}: patched double wrong")
-            elif new.name not in INTEGER_PUSH_NAMES or new.args[0] != edit:
+            elif new.opcode not in INTEGER_PUSHES or new.args[0] != edit:
                 problems.append(f"method {method} ins {k}: patched value wrong")
         elif old.opcode != new.opcode:
             problems.append(f"method {method} ins {k}: opcode changed")

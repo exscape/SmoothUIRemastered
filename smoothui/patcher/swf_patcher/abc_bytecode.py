@@ -3,8 +3,174 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import IntEnum
 
 from .abc_file import AbcFile, encode_s24, encode_u30, read_s24, read_u30
+
+
+class Op(IntEnum):
+    """The AVM2 opcodes. A member's name in lower case is the instruction's name. The ALCHEMY ones are Alchemy's
+    memory instructions."""
+    BKPT = 0x01
+    NOP = 0x02
+    THROW = 0x03
+    GETSUPER = 0x04
+    SETSUPER = 0x05
+    DXNS = 0x06
+    DXNSLATE = 0x07
+    KILL = 0x08
+    LABEL = 0x09
+    IFNLT = 0x0C
+    IFNLE = 0x0D
+    IFNGT = 0x0E
+    IFNGE = 0x0F
+    JUMP = 0x10
+    IFTRUE = 0x11
+    IFFALSE = 0x12
+    IFEQ = 0x13
+    IFNE = 0x14
+    IFLT = 0x15
+    IFLE = 0x16
+    IFGT = 0x17
+    IFGE = 0x18
+    IFSTRICTEQ = 0x19
+    IFSTRICTNE = 0x1A
+    LOOKUPSWITCH = 0x1B
+    PUSHWITH = 0x1C
+    POPSCOPE = 0x1D
+    NEXTNAME = 0x1E
+    HASNEXT = 0x1F
+    PUSHNULL = 0x20
+    PUSHUNDEFINED = 0x21
+    NEXTVALUE = 0x23
+    PUSHBYTE = 0x24
+    PUSHSHORT = 0x25
+    PUSHTRUE = 0x26
+    PUSHFALSE = 0x27
+    PUSHNAN = 0x28
+    POP = 0x29
+    DUP = 0x2A
+    SWAP = 0x2B
+    PUSHSTRING = 0x2C
+    PUSHINT = 0x2D
+    PUSHUINT = 0x2E
+    PUSHDOUBLE = 0x2F
+    PUSHSCOPE = 0x30
+    PUSHNAMESPACE = 0x31
+    HASNEXT2 = 0x32
+    ALCHEMY35 = 0x35
+    ALCHEMY36 = 0x36
+    ALCHEMY37 = 0x37
+    ALCHEMY38 = 0x38
+    ALCHEMY39 = 0x39
+    ALCHEMY3A = 0x3A
+    ALCHEMY3B = 0x3B
+    ALCHEMY3C = 0x3C
+    ALCHEMY3D = 0x3D
+    ALCHEMY3E = 0x3E
+    ALCHEMY3F = 0x3F
+    NEWFUNCTION = 0x40
+    CALL = 0x41
+    CONSTRUCT = 0x42
+    CALLMETHOD = 0x43
+    CALLSTATIC = 0x44
+    CALLSUPER = 0x45
+    CALLPROPERTY = 0x46
+    RETURNVOID = 0x47
+    RETURNVALUE = 0x48
+    CONSTRUCTSUPER = 0x49
+    CONSTRUCTPROP = 0x4A
+    CALLPROPLEX = 0x4C
+    CALLSUPERVOID = 0x4E
+    CALLPROPVOID = 0x4F
+    APPLYTYPE = 0x53
+    NEWOBJECT = 0x55
+    NEWARRAY = 0x56
+    NEWACTIVATION = 0x57
+    NEWCLASS = 0x58
+    GETDESCENDANTS = 0x59
+    NEWCATCH = 0x5A
+    FINDPROPSTRICT = 0x5D
+    FINDPROPERTY = 0x5E
+    FINDDEF = 0x5F
+    GETLEX = 0x60
+    SETPROPERTY = 0x61
+    GETLOCAL = 0x62
+    SETLOCAL = 0x63
+    GETGLOBALSCOPE = 0x64
+    GETSCOPEOBJECT = 0x65
+    GETPROPERTY = 0x66
+    INITPROPERTY = 0x68
+    DELETEPROPERTY = 0x6A
+    GETSLOT = 0x6C
+    SETSLOT = 0x6D
+    GETGLOBALSLOT = 0x6E
+    SETGLOBALSLOT = 0x6F
+    CONVERT_S = 0x70
+    ESC_XELEM = 0x71
+    ESC_XATTR = 0x72
+    CONVERT_I = 0x73
+    CONVERT_U = 0x74
+    CONVERT_D = 0x75
+    CONVERT_B = 0x76
+    CONVERT_O = 0x77
+    CHECKFILTER = 0x78
+    COERCE = 0x80
+    COERCE_A = 0x82
+    COERCE_S = 0x85
+    ASTYPE = 0x86
+    ASTYPELATE = 0x87
+    NEGATE = 0x90
+    INCREMENT = 0x91
+    INCLOCAL = 0x92
+    DECREMENT = 0x93
+    DECLOCAL = 0x94
+    TYPEOF = 0x95
+    NOT = 0x96
+    BITNOT = 0x97
+    ADD = 0xA0
+    SUBTRACT = 0xA1
+    MULTIPLY = 0xA2
+    DIVIDE = 0xA3
+    MODULO = 0xA4
+    LSHIFT = 0xA5
+    RSHIFT = 0xA6
+    URSHIFT = 0xA7
+    BITAND = 0xA8
+    BITOR = 0xA9
+    BITXOR = 0xAA
+    EQUALS = 0xAB
+    STRICTEQUALS = 0xAC
+    LESSTHAN = 0xAD
+    LESSEQUALS = 0xAE
+    GREATERTHAN = 0xAF
+    GREATEREQUALS = 0xB0
+    INSTANCEOF = 0xB1
+    ISTYPE = 0xB2
+    ISTYPELATE = 0xB3
+    IN = 0xB4
+    INCREMENT_I = 0xC0
+    DECREMENT_I = 0xC1
+    INCLOCAL_I = 0xC2
+    DECLOCAL_I = 0xC3
+    NEGATE_I = 0xC4
+    ADD_I = 0xC5
+    SUBTRACT_I = 0xC6
+    MULTIPLY_I = 0xC7
+    GETLOCAL0 = 0xD0
+    GETLOCAL1 = 0xD1
+    GETLOCAL2 = 0xD2
+    GETLOCAL3 = 0xD3
+    SETLOCAL0 = 0xD4
+    SETLOCAL1 = 0xD5
+    SETLOCAL2 = 0xD6
+    SETLOCAL3 = 0xD7
+    DEBUG = 0xEF
+    DEBUGLINE = 0xF0
+    DEBUGFILE = 0xF1
+    BKPTLINE = 0xF2
+    TIMESTAMP = 0xF3
+
 
 # Operand formats:
 #   ""   none
@@ -13,75 +179,56 @@ from .abc_file import AbcFile, encode_s24, encode_u30, read_s24, read_u30
 #   "b"  signed byte                        "B"  unsigned byte
 #   "s"  s24 branch offset                  "S"  lookupswitch: s24 default, u30 case count, s24 offsets
 #   "dbg" the debug instruction's operands
-OPCODES = {
-    0x01: ("bkpt", ""), 0x02: ("nop", ""), 0x03: ("throw", ""), 0x04: ("getsuper", "m"),
-    0x05: ("setsuper", "m"), 0x06: ("dxns", "u"), 0x07: ("dxnslate", ""), 0x08: ("kill", "u"),
-    0x09: ("label", ""), 0x0C: ("ifnlt", "s"), 0x0D: ("ifnle", "s"), 0x0E: ("ifngt", "s"),
-    0x0F: ("ifnge", "s"), 0x10: ("jump", "s"), 0x11: ("iftrue", "s"), 0x12: ("iffalse", "s"),
-    0x13: ("ifeq", "s"), 0x14: ("ifne", "s"), 0x15: ("iflt", "s"), 0x16: ("ifle", "s"),
-    0x17: ("ifgt", "s"), 0x18: ("ifge", "s"), 0x19: ("ifstricteq", "s"), 0x1A: ("ifstrictne", "s"),
-    0x1B: ("lookupswitch", "S"), 0x1C: ("pushwith", ""), 0x1D: ("popscope", ""), 0x1E: ("nextname", ""),
-    0x1F: ("hasnext", ""), 0x20: ("pushnull", ""), 0x21: ("pushundefined", ""), 0x23: ("nextvalue", ""),
-    0x24: ("pushbyte", "b"), 0x25: ("pushshort", "u"), 0x26: ("pushtrue", ""), 0x27: ("pushfalse", ""),
-    0x28: ("pushnan", ""), 0x29: ("pop", ""), 0x2A: ("dup", ""), 0x2B: ("swap", ""),
-    0x2C: ("pushstring", "u"), 0x2D: ("pushint", "u"), 0x2E: ("pushuint", "u"), 0x2F: ("pushdouble", "u"),
-    0x30: ("pushscope", ""), 0x31: ("pushnamespace", "u"), 0x32: ("hasnext2", "uu"),
-    0x40: ("newfunction", "u"), 0x41: ("call", "u"), 0x42: ("construct", "u"), 0x43: ("callmethod", "uu"),
-    0x44: ("callstatic", "uu"), 0x45: ("callsuper", "mu"), 0x46: ("callproperty", "mu"),
-    0x47: ("returnvoid", ""), 0x48: ("returnvalue", ""), 0x49: ("constructsuper", "u"),
-    0x4A: ("constructprop", "mu"), 0x4C: ("callproplex", "mu"), 0x4E: ("callsupervoid", "mu"),
-    0x4F: ("callpropvoid", "mu"), 0x53: ("applytype", "u"), 0x55: ("newobject", "u"),
-    0x56: ("newarray", "u"), 0x57: ("newactivation", ""), 0x58: ("newclass", "u"),
-    0x59: ("getdescendants", "m"), 0x5A: ("newcatch", "u"), 0x5D: ("findpropstrict", "m"),
-    0x5E: ("findproperty", "m"), 0x5F: ("finddef", "m"), 0x60: ("getlex", "m"), 0x61: ("setproperty", "m"),
-    0x62: ("getlocal", "u"), 0x63: ("setlocal", "u"), 0x64: ("getglobalscope", ""),
-    0x65: ("getscopeobject", "B"), 0x66: ("getproperty", "m"), 0x68: ("initproperty", "m"),
-    0x6A: ("deleteproperty", "m"), 0x6C: ("getslot", "u"), 0x6D: ("setslot", "u"),
-    0x6E: ("getglobalslot", "u"), 0x6F: ("setglobalslot", "u"), 0x70: ("convert_s", ""),
-    0x71: ("esc_xelem", ""), 0x72: ("esc_xattr", ""), 0x73: ("convert_i", ""), 0x74: ("convert_u", ""),
-    0x75: ("convert_d", ""), 0x76: ("convert_b", ""), 0x77: ("convert_o", ""), 0x78: ("checkfilter", ""),
-    0x80: ("coerce", "m"), 0x82: ("coerce_a", ""), 0x85: ("coerce_s", ""), 0x86: ("astype", "m"),
-    0x87: ("astypelate", ""), 0x90: ("negate", ""), 0x91: ("increment", ""), 0x92: ("inclocal", "u"),
-    0x93: ("decrement", ""), 0x94: ("declocal", "u"), 0x95: ("typeof", ""), 0x96: ("not", ""),
-    0x97: ("bitnot", ""), 0xA0: ("add", ""), 0xA1: ("subtract", ""), 0xA2: ("multiply", ""),
-    0xA3: ("divide", ""), 0xA4: ("modulo", ""), 0xA5: ("lshift", ""), 0xA6: ("rshift", ""),
-    0xA7: ("urshift", ""), 0xA8: ("bitand", ""), 0xA9: ("bitor", ""), 0xAA: ("bitxor", ""),
-    0xAB: ("equals", ""), 0xAC: ("strictequals", ""), 0xAD: ("lessthan", ""), 0xAE: ("lessequals", ""),
-    0xAF: ("greaterthan", ""), 0xB0: ("greaterequals", ""), 0xB1: ("instanceof", ""), 0xB2: ("istype", "m"),
-    0xB3: ("istypelate", ""), 0xB4: ("in", ""), 0xC0: ("increment_i", ""), 0xC1: ("decrement_i", ""),
-    0xC2: ("inclocal_i", "u"), 0xC3: ("declocal_i", "u"), 0xC4: ("negate_i", ""), 0xC5: ("add_i", ""),
-    0xC6: ("subtract_i", ""), 0xC7: ("multiply_i", ""), 0xD0: ("getlocal0", ""), 0xD1: ("getlocal1", ""),
-    0xD2: ("getlocal2", ""), 0xD3: ("getlocal3", ""), 0xD4: ("setlocal0", ""), 0xD5: ("setlocal1", ""),
-    0xD6: ("setlocal2", ""), 0xD7: ("setlocal3", ""), 0xEF: ("debug", "dbg"), 0xF0: ("debugline", "u"),
-    0xF1: ("debugfile", "u"), 0xF2: ("bkptline", "u"), 0xF3: ("timestamp", ""),
+_WITH_OPERANDS = {
+    "m": (Op.GETSUPER, Op.SETSUPER, Op.GETDESCENDANTS, Op.FINDPROPSTRICT, Op.FINDPROPERTY, Op.FINDDEF, Op.GETLEX,
+        Op.SETPROPERTY, Op.GETPROPERTY, Op.INITPROPERTY, Op.DELETEPROPERTY, Op.COERCE, Op.ASTYPE, Op.ISTYPE),
+    "u": (Op.DXNS, Op.KILL, Op.PUSHSHORT, Op.PUSHSTRING, Op.PUSHINT, Op.PUSHUINT, Op.PUSHDOUBLE, Op.PUSHNAMESPACE,
+        Op.NEWFUNCTION, Op.CALL, Op.CONSTRUCT, Op.CONSTRUCTSUPER, Op.APPLYTYPE, Op.NEWOBJECT, Op.NEWARRAY,
+        Op.NEWCLASS, Op.NEWCATCH, Op.GETLOCAL, Op.SETLOCAL, Op.GETSLOT, Op.SETSLOT, Op.GETGLOBALSLOT,
+        Op.SETGLOBALSLOT, Op.INCLOCAL, Op.DECLOCAL, Op.INCLOCAL_I, Op.DECLOCAL_I, Op.DEBUGLINE, Op.DEBUGFILE,
+        Op.BKPTLINE),
+    "s": (Op.IFNLT, Op.IFNLE, Op.IFNGT, Op.IFNGE, Op.JUMP, Op.IFTRUE, Op.IFFALSE, Op.IFEQ, Op.IFNE, Op.IFLT, Op.IFLE,
+        Op.IFGT, Op.IFGE, Op.IFSTRICTEQ, Op.IFSTRICTNE),
+    "S": (Op.LOOKUPSWITCH,),
+    "b": (Op.PUSHBYTE,),
+    "uu": (Op.HASNEXT2, Op.CALLMETHOD, Op.CALLSTATIC),
+    "mu": (Op.CALLSUPER, Op.CALLPROPERTY, Op.CONSTRUCTPROP, Op.CALLPROPLEX, Op.CALLSUPERVOID, Op.CALLPROPVOID),
+    "B": (Op.GETSCOPEOBJECT,),
+    "dbg": (Op.DEBUG,),
 }
-# Alchemy memory opcodes (no operands)
-for _opcode in range(0x35, 0x40):
-    OPCODES.setdefault(_opcode, (f"alchemy{_opcode:02x}", ""))
+OPERANDS = {op: "" for op in Op} | {op: operands for operands, ops in _WITH_OPERANDS.items() for op in ops}
+# By opcode byte: (the member, its operand format), so disassemble needs no Op(byte)
+_DECODE = {int(op): (op, operands) for op, operands in OPERANDS.items()}
 
-OP_PUSHBYTE = 0x24
-OP_PUSHSHORT = 0x25
-OP_PUSHDOUBLE = 0x2F
-OP_LOOKUPSWITCH = 0x1B
-OP_GETLOCAL, OP_GETLOCAL0 = 0x62, 0xD0
-
-BRANCH_OPCODES = frozenset(op for op, (_, operands) in OPCODES.items() if operands == "s")
+BRANCH_OPCODES = frozenset(op for op, operands in OPERANDS.items() if operands == "s")
 
 # Instructions without any effect on the program's behaviour
-NO_OP_NAMES = frozenset({"debugline", "debugfile", "debug", "nop"})
-# ... plus "label", which marks a backwards branch target
-SKIPPABLE_NAMES = NO_OP_NAMES | {"label"}
+NO_OPS = frozenset({Op.DEBUGLINE, Op.DEBUGFILE, Op.DEBUG, Op.NOP})
+# ... plus label, which marks a backwards branch target
+SKIPPABLE_OPS = NO_OPS | {Op.LABEL}
 
-INTEGER_PUSH_NAMES = ("pushbyte", "pushshort")
+INTEGER_PUSHES = frozenset({Op.PUSHBYTE, Op.PUSHSHORT})
+PROPERTY_WRITES = frozenset({Op.SETPROPERTY, Op.INITPROPERTY})
+GETLOCALS = frozenset({Op.GETLOCAL, Op.GETLOCAL0, Op.GETLOCAL1, Op.GETLOCAL2, Op.GETLOCAL3})
+SETLOCALS = frozenset({Op.SETLOCAL, Op.SETLOCAL0, Op.SETLOCAL1, Op.SETLOCAL2, Op.SETLOCAL3})
+# The register of each getlocalN/setlocalN
+_FIXED_REGISTER = {op: n for ops in ((Op.GETLOCAL0, Op.GETLOCAL1, Op.GETLOCAL2, Op.GETLOCAL3),
+                                     (Op.SETLOCAL0, Op.SETLOCAL1, Op.SETLOCAL2, Op.SETLOCAL3))
+                   for n, op in enumerate(ops)}
+_NAMES = {op: op.name.lower() for op in Op}
 
 
 @dataclass(slots=True)
 class Instruction:
     offset: int     # within the method's code
-    opcode: int
-    name: str
+    opcode: Op
     args: list[int]
     end: int        # offset of the next instruction
+
+    @property
+    def name(self) -> str:
+        """The instruction's name, as in Op"""
+        return _NAMES[self.opcode]
 
     @property
     def is_branch(self) -> bool:
@@ -89,7 +236,7 @@ class Instruction:
 
     @property
     def is_lookupswitch(self) -> bool:
-        return self.opcode == OP_LOOKUPSWITCH
+        return self.opcode is Op.LOOKUPSWITCH
 
     def jump_targets(self) -> list[int]:
         """Code offsets this instruction can jump to (empty unless it is a branch or lookupswitch)"""
@@ -117,9 +264,9 @@ def disassemble(code: bytes) -> list[Instruction]:
         start = offset
         opcode = code[offset]
         offset += 1
-        if opcode not in OPCODES:
+        if opcode not in _DECODE:
             raise ValueError(f"unknown opcode 0x{opcode:02x} at {start}")
-        name, operands = OPCODES[opcode]
+        op, operands = _DECODE[opcode]
         if not operands:
             args = []
         elif operands in ("m", "u"):
@@ -150,7 +297,7 @@ def disassemble(code: bytes) -> list[Instruction]:
             register = code[offset]
             extra, offset = read_u30(code, offset + 1)
             args = [debug_type, index, register, extra]
-        instructions.append(Instruction(start, opcode, name, args, offset))
+        instructions.append(Instruction(start, op, args, offset))
     return instructions
 
 
@@ -192,7 +339,7 @@ def assemble(code: bytes, instructions: list[Instruction], edits: dict, exceptio
         elif ins.is_lookupswitch:
             base = new_offset[ins.offset]
             default, *cases = [new_offset[target] - base for target in ins.jump_targets()]
-            pieces[i] = (bytes([OP_LOOKUPSWITCH]) + encode_s24(default) + encode_u30(ins.args[1])
+            pieces[i] = (bytes([Op.LOOKUPSWITCH]) + encode_s24(default) + encode_u30(ins.args[1])
                          + b"".join(encode_s24(case) for case in cases))
 
     new_exceptions = [[new_offset[start], new_offset[end], new_offset[target], exc_type, var_name]
@@ -204,10 +351,10 @@ def _encode_push(value) -> bytes:
     if isinstance(value, bytes):
         return value
     if isinstance(value, PushDouble):
-        return bytes([OP_PUSHDOUBLE]) + encode_u30(value.pool_index)
+        return bytes([Op.PUSHDOUBLE]) + encode_u30(value.pool_index)
     if -128 <= value <= 127:
-        return bytes([OP_PUSHBYTE, value & 0xFF])
-    return bytes([OP_PUSHSHORT]) + encode_u30(value)
+        return bytes([Op.PUSHBYTE, value & 0xFF])
+    return bytes([Op.PUSHSHORT]) + encode_u30(value)
 
 
 def branch_targets(instructions: list[Instruction]) -> set[int]:
@@ -217,84 +364,82 @@ def branch_targets(instructions: list[Instruction]) -> set[int]:
 
 def integer_constant(abc: AbcFile, ins: Instruction) -> int | None:
     """The value of a pushbyte/pushshort/pushint instruction, otherwise None"""
-    if ins.name in INTEGER_PUSH_NAMES:
+    if ins.opcode in INTEGER_PUSHES:
         return ins.args[0]
-    if ins.name == "pushint":
+    if ins.opcode is Op.PUSHINT:
         return abc.ints[ins.args[0]]
     return None
 
 
 def local_register(ins: Instruction) -> int:
     """The register number of a getlocal/getlocalN/setlocal/setlocalN instruction"""
-    return ins.args[0] if ins.name in ("getlocal", "setlocal") else int(ins.name[-1])
+    return ins.args[0] if ins.opcode is Op.GETLOCAL or ins.opcode is Op.SETLOCAL else _FIXED_REGISTER[ins.opcode]
 
 
 def read_local(ins: Instruction) -> int | None:
     """The register a getlocal/getlocalN instruction reads, otherwise None"""
-    return local_register(ins) if ins.name in ("getlocal", "getlocal0", "getlocal1", "getlocal2", "getlocal3") else None
+    return local_register(ins) if ins.opcode in GETLOCALS else None
 
 
 def encode_getlocal(local: int) -> bytes:
     """A getlocal instruction for this register (getlocalN where there is one)"""
-    return bytes([OP_GETLOCAL0 + local]) if local <= 3 else bytes([OP_GETLOCAL]) + encode_u30(local)
+    return bytes([Op.GETLOCAL0 + local]) if local <= 3 else bytes([Op.GETLOCAL]) + encode_u30(local)
 
 
 # --- Minimal stack model, used to find the operand expressions of a call ---
 
 PUSHES_ONE = frozenset({
-    "pushnull", "pushundefined", "pushtrue", "pushfalse", "pushnan", "pushbyte", "pushshort",
-    "pushstring", "pushint", "pushuint", "pushdouble", "pushnamespace", "getlocal", "getlocal0",
-    "getlocal1", "getlocal2", "getlocal3", "getglobalscope", "getscopeobject", "getglobalslot",
-    "newfunction", "newactivation", "newcatch", "hasnext2",
+    Op.PUSHNULL, Op.PUSHUNDEFINED, Op.PUSHTRUE, Op.PUSHFALSE, Op.PUSHNAN, Op.PUSHBYTE, Op.PUSHSHORT,
+    Op.PUSHSTRING, Op.PUSHINT, Op.PUSHUINT, Op.PUSHDOUBLE, Op.PUSHNAMESPACE, Op.GETLOCAL, Op.GETLOCAL0,
+    Op.GETLOCAL1, Op.GETLOCAL2, Op.GETLOCAL3, Op.GETGLOBALSCOPE, Op.GETSCOPEOBJECT, Op.GETGLOBALSLOT,
+    Op.NEWFUNCTION, Op.NEWACTIVATION, Op.NEWCATCH, Op.HASNEXT2,
 })
 UNARY = frozenset({
-    "convert_s", "convert_i", "convert_u", "convert_d", "convert_b", "convert_o", "coerce", "coerce_a",
-    "coerce_s", "astype", "istype", "typeof", "not", "negate", "increment", "decrement", "bitnot",
-    "getslot", "checkfilter", "esc_xelem", "esc_xattr", "negate_i", "increment_i", "decrement_i",
-    "newclass",
+    Op.CONVERT_S, Op.CONVERT_I, Op.CONVERT_U, Op.CONVERT_D, Op.CONVERT_B, Op.CONVERT_O, Op.COERCE, Op.COERCE_A,
+    Op.COERCE_S, Op.ASTYPE, Op.ISTYPE, Op.TYPEOF, Op.NOT, Op.NEGATE, Op.INCREMENT, Op.DECREMENT, Op.BITNOT,
+    Op.GETSLOT, Op.CHECKFILTER, Op.ESC_XELEM, Op.ESC_XATTR, Op.NEGATE_I, Op.INCREMENT_I, Op.DECREMENT_I,
+    Op.NEWCLASS,
 })
 BINARY = frozenset({
-    "add", "subtract", "multiply", "divide", "modulo", "lshift", "rshift", "urshift", "bitand", "bitor",
-    "bitxor", "equals", "strictequals", "lessthan", "lessequals", "greaterthan", "greaterequals", "add_i",
-    "subtract_i", "multiply_i", "instanceof", "in", "astypelate", "istypelate", "nextname", "nextvalue",
-    "hasnext",
+    Op.ADD, Op.SUBTRACT, Op.MULTIPLY, Op.DIVIDE, Op.MODULO, Op.LSHIFT, Op.RSHIFT, Op.URSHIFT, Op.BITAND, Op.BITOR,
+    Op.BITXOR, Op.EQUALS, Op.STRICTEQUALS, Op.LESSTHAN, Op.LESSEQUALS, Op.GREATERTHAN, Op.GREATEREQUALS, Op.ADD_I,
+    Op.SUBTRACT_I, Op.MULTIPLY_I, Op.INSTANCEOF, Op.IN, Op.ASTYPELATE, Op.ISTYPELATE, Op.NEXTNAME, Op.NEXTVALUE,
+    Op.HASNEXT,
 })
-
-
 def stack_effect(abc: AbcFile, ins: Instruction) -> tuple[int, int] | None:
     """(values popped, values pushed), or None for control flow and unmodelled instructions"""
-    name, args = ins.name, ins.args
-    if name in PUSHES_ONE:
+    op, args = ins.opcode, ins.args
+    if op in PUSHES_ONE:
         return 0, 1
-    if name in UNARY:
+    if op in UNARY:
         return 1, 1
-    if name in BINARY:
+    if op in BINARY:
         return 2, 1
-    if name == "dup":
+    if op is Op.DUP:
         return 1, 2
-    if name == "swap":
+    if op is Op.SWAP:
         return 2, 2
-    if name in ("getproperty", "getsuper", "getdescendants"):
+    if op in (Op.GETPROPERTY, Op.GETSUPER, Op.GETDESCENDANTS):
         return 1 + abc.runtime_name_operands(args[0]), 1
-    if name in ("getlex", "findpropstrict", "findproperty", "finddef"):
+    if op in (Op.GETLEX, Op.FINDPROPSTRICT, Op.FINDPROPERTY, Op.FINDDEF):
         return abc.runtime_name_operands(args[0]), 1
-    if name in ("callproperty", "callproplex", "callsuper", "constructprop"):
+    if op in (Op.CALLPROPERTY, Op.CALLPROPLEX, Op.CALLSUPER, Op.CONSTRUCTPROP):
         return args[1] + 1 + abc.runtime_name_operands(args[0]), 1
-    if name in ("callpropvoid", "callsupervoid"):
+    if op in (Op.CALLPROPVOID, Op.CALLSUPERVOID):
         return args[1] + 1 + abc.runtime_name_operands(args[0]), 0
-    if name == "construct":
+    if op is Op.CONSTRUCT:
         return args[0] + 1, 1
-    if name == "call":
+    if op is Op.CALL:
         return args[0] + 2, 1
-    if name == "applytype":
+    if op is Op.APPLYTYPE:
         return args[0] + 1, 1
-    if name == "newarray":
+    if op is Op.NEWARRAY:
         return args[0], 1
-    if name == "newobject":
+    if op is Op.NEWOBJECT:
         return args[0] * 2, 1
-    if name in ("callmethod", "callstatic"):
+    if op in (Op.CALLMETHOD, Op.CALLSTATIC):
         return args[1] + 1, 1
-    if name in ("inclocal", "declocal", "inclocal_i", "declocal_i", "kill"):
+    if op in (Op.INCLOCAL, Op.DECLOCAL, Op.INCLOCAL_I, Op.DECLOCAL_I, Op.KILL):
         return 0, 0
     return None
 
@@ -307,9 +452,9 @@ def expression_start(abc: AbcFile, instructions: list[Instruction], end: int) ->
     needed = 1
     for j in range(end - 1, -1, -1):
         ins = instructions[j]
-        if ins.name in NO_OP_NAMES:
+        if ins.opcode in NO_OPS:
             continue
-        if ins.name == "label" or ins.is_branch or ins.is_lookupswitch:
+        if ins.opcode is Op.LABEL or ins.is_branch or ins.is_lookupswitch:
             return None
         effect = stack_effect(abc, ins)
         if effect is None:
@@ -323,6 +468,6 @@ def expression_start(abc: AbcFile, instructions: list[Instruction], end: int) ->
 
 def skip_no_ops_backwards(instructions: list[Instruction], index: int) -> int:
     """The nearest index <= `index` that is not a debug/nop instruction (-1 if there is none)"""
-    while index >= 0 and instructions[index].name in NO_OP_NAMES:
+    while index >= 0 and instructions[index].opcode in NO_OPS:
         index -= 1
     return index

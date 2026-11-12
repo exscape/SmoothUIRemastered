@@ -18,8 +18,9 @@ import struct
 from pathlib import Path
 
 from ..swf_patcher.abc_bytecode import (
-    NO_OP_NAMES,
+    NO_OPS,
     Instruction,
+    Op,
     assemble,
     branch_targets,
     disassemble,
@@ -43,7 +44,6 @@ HANDLER = "handleCustomInput"
 # DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
 DO_ABC_LAZY = 1
 
-OP_GETLEX, OP_GETLOCAL0, OP_CALLPROPVOID = 0x60, 0xD0, 0x4F
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -59,7 +59,7 @@ def apply(swf: SwfEdit) -> FixResult:
 
     found = _find_scroll(abc, instructions)
     if found is None:
-        if any(ins.name == "callpropvoid" and abc.name_of(ins.args[0]) == METHOD for ins in instructions):
+        if any(ins.opcode is Op.CALLPROPVOID and abc.name_of(ins.args[0]) == METHOD for ins in instructions):
             return FixResult([], f"{TEXT_CLASS}.{HANDLER} already calls {CLASS}.{METHOD}")
         raise CantApply(f"{TEXT_CLASS}.{HANDLER} doesn't do mcScrollbar.position -= <tilt>")
     first, last, tilt = found
@@ -76,8 +76,8 @@ def apply(swf: SwfEdit) -> FixResult:
     scroll_class = additions.qname(additions.namespace(PACKAGE_NAMESPACE, PACKAGE), CLASS)
     scroll = additions.qname(additions.namespace(PACKAGE_NAMESPACE, ""), METHOD)
     # StickScroll.scroll(this, tilt): at most 3 values on the stack, as the code it replaces
-    call = (bytes([OP_GETLEX]) + encode_u30(scroll_class) + bytes([OP_GETLOCAL0]) + encode_getlocal(tilt)
-            + bytes([OP_CALLPROPVOID]) + encode_u30(scroll) + encode_u30(2))
+    call = (bytes([Op.GETLEX]) + encode_u30(scroll_class) + bytes([Op.GETLOCAL0]) + encode_getlocal(tilt)
+            + bytes([Op.CALLPROPVOID]) + encode_u30(scroll) + encode_u30(2))
     edits = {first: call, **{i: b"" for i in range(first + 1, last + 1)}}
     unit.replace_methods({method: assemble(body.code, instructions, edits, body.exceptions)}, additions)
     insert_class(swf, ours)
@@ -105,21 +105,21 @@ def insert_class(swf: SwfEdit, ours: bytes):
 def _find_scroll(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int, int] | None:
     """(first, last instruction index, the tilt's local variable) of `mcScrollbar.position -= <local>`, the
     only such statement; None if there is none. Debug instructions in between are allowed."""
-    real = [i for i, ins in enumerate(instructions) if ins.name not in NO_OP_NAMES]
-    pattern = [("getlex", "mcScrollbar"), ("getlex", "mcScrollbar"), ("getproperty", "position"),
-               ("getlocal", None), ("subtract", None), ("setproperty", "position")]
+    real = [i for i, ins in enumerate(instructions) if ins.opcode not in NO_OPS]
+    pattern = [(Op.GETLEX, "mcScrollbar"), (Op.GETLEX, "mcScrollbar"), (Op.GETPROPERTY, "position"),
+               (Op.GETLOCAL, None), (Op.SUBTRACT, None), (Op.SETPROPERTY, "position")]
     matches = []
     for k in range(len(real) - len(pattern) + 1):
         window = [instructions[i] for i in real[k:k + len(pattern)]]
-        if all(_matches(abc, ins, name, prop) for ins, (name, prop) in zip(window, pattern)):
+        if all(_matches(abc, ins, op, prop) for ins, (op, prop) in zip(window, pattern)):
             matches.append((real[k], real[k + len(pattern) - 1], read_local(window[3])))
     return matches[0] if len(matches) == 1 else None
 
 
-def _matches(abc: AbcFile, ins: Instruction, name: str, prop: str | None) -> bool:
-    if name == "getlocal":
+def _matches(abc: AbcFile, ins: Instruction, op: Op, prop: str | None) -> bool:
+    if op is Op.GETLOCAL:   # any getlocal
         return read_local(ins) is not None
-    return ins.name == name and (prop is None or abc.name_of(ins.args[0]) == prop)
+    return ins.opcode is op and (prop is None or abc.name_of(ins.args[0]) == prop)
 
 
 FIX = Fix(name="text-stick-scroll-fix",

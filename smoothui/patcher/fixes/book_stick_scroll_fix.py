@@ -16,8 +16,9 @@ step a line. The keyboard, the mouse wheel and the scroll bar work as before.
 from __future__ import annotations
 
 from ..swf_patcher.abc_bytecode import (
-    NO_OP_NAMES,
+    NO_OPS,
     Instruction,
+    Op,
     assemble,
     branch_targets,
     disassemble,
@@ -30,7 +31,6 @@ METHOD = "textAreaNavigation"
 TEXT_CLASS = "scaleform.clik.controls.TextArea"
 HANDLER = "handleInput"
 
-OP_GETLEX, OP_GETLOCAL0, OP_GETLOCAL1, OP_CALLPROPERTY = 0x60, 0xD0, 0xD1, 0x46
 
 
 def apply(swf: SwfEdit) -> FixResult:
@@ -46,7 +46,7 @@ def apply(swf: SwfEdit) -> FixResult:
 
     found = _find_navigation(abc, instructions)
     if found is None:
-        if any(ins.name == "callproperty" and abc.name_of(ins.args[0]) == METHOD for ins in instructions):
+        if any(ins.opcode is Op.CALLPROPERTY and abc.name_of(ins.args[0]) == METHOD for ins in instructions):
             return FixResult([], f"{TEXT_CLASS}.{HANDLER} already calls {CLASS}.{METHOD}")
         raise CantApply(f"{TEXT_CLASS}.{HANDLER} doesn't read event.details.navEquivalent once")
     first, last = found
@@ -64,7 +64,7 @@ def apply(swf: SwfEdit) -> FixResult:
     navigation = additions.qname(additions.namespace(PACKAGE_NAMESPACE, ""), METHOD)
     # StickScroll.textAreaNavigation(this, event) in place of event.details.navEquivalent: 3 values on the stack
     # at most, as in the method's `elapsed > AXIS_INPUT_DELAY * 2` after it
-    call = (bytes([OP_GETLEX]) + encode_u30(scroll_class) + bytes([OP_GETLOCAL0, OP_GETLOCAL1, OP_CALLPROPERTY])
+    call = (bytes([Op.GETLEX]) + encode_u30(scroll_class) + bytes([Op.GETLOCAL0, Op.GETLOCAL1, Op.CALLPROPERTY])
             + encode_u30(navigation) + encode_u30(2))
     edits = {first: call, **{i: b"" for i in range(first + 1, last + 1)}}
     unit.replace_methods({method: assemble(body.code, instructions, edits, body.exceptions)}, additions)
@@ -76,13 +76,13 @@ def apply(swf: SwfEdit) -> FixResult:
 def _find_navigation(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int] | None:
     """(first, last instruction index) of `event.details.navEquivalent` (event: the method's argument), the only
     one; None if there is none. Debug instructions in between are allowed."""
-    real = [i for i, ins in enumerate(instructions) if ins.name not in NO_OP_NAMES]
-    pattern = [("getlocal1", None), ("getproperty", "details"), ("getproperty", "navEquivalent")]
+    real = [i for i, ins in enumerate(instructions) if ins.opcode not in NO_OPS]
+    pattern = [(Op.GETLOCAL1, None), (Op.GETPROPERTY, "details"), (Op.GETPROPERTY, "navEquivalent")]
     matches = []
     for k in range(len(real) - len(pattern) + 1):
         window = [instructions[i] for i in real[k:k + len(pattern)]]
-        if all(ins.name == name and (prop is None or abc.name_of(ins.args[0]) == prop)
-               for ins, (name, prop) in zip(window, pattern)):
+        if all(ins.opcode is op and (prop is None or abc.name_of(ins.args[0]) == prop)
+               for ins, (op, prop) in zip(window, pattern)):
             matches.append((real[k], real[k + 2]))
     return matches[0] if len(matches) == 1 else None
 
