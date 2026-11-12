@@ -292,11 +292,12 @@ def launch_game(game_path):
     exe_path = game_path / "bin/x64_dx12/witcher3.exe"
     run_command([exe_path], cwd=exe_path.parent, detach=True)
 
-def install_and_launch(mod_dir, game_path: Path, install, launch, bin_dir=None):
+def install_and_launch(mod_dir, game_path: Path | None, install, launch, bin_dir=None):
     """Copy the built mod (and the files in bin_dir, if given) into the game folder, then launch the
     game if asked. A missing game_path (None) means nothing can be installed or launched"""
-    if not game_path and (install or launch):
-        log.warning("game_path not set in config.toml; will ignore --install/--launch")
+    if not game_path:
+        if install or launch:
+            log.warning("game_path not set in config.toml; will ignore --install/--launch")
         return
     if not game_path.exists():
         log.warning("game_path set in config.toml does not exist! Will ignore --install/--launch")

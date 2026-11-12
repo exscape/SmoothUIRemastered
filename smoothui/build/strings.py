@@ -78,7 +78,7 @@ def check_menu_defaults(xml_path: Path, scripts: str):
     defaults = dict(re.findall(r"\bcase '(\w+)':\s*return (.+?);", body[0])) if body else {}
     problems, ids, sliders = [], set(), set()
     for group in ET.parse(xml_path).getroot().iter("Group"):
-        group_id = group.get("id")
+        group_id = group.get("id") or "(no id)"
         if not group_id.startswith("SmoothUIRemastered"):
             problems.append(f"group {group_id}: its id doesn't start with SmoothUIRemastered")
         if not any(var.get("id") == "DefaultsSet" and var.get("visibilityCondition") == "hideAlways"

@@ -160,7 +160,7 @@ def qt_dropped():
     # Only on env_gui's Python, not WSL's (run_on_windows)
     import PySide6  # pyright: ignore[reportMissingImports]
 
-    plugins = Path(PySide6.__file__).parent / "plugins"
+    plugins = Path(PySide6.__path__[0]) / "plugins"
     dropped = [f"{QT_PLUGIN_DEST}/{p.relative_to(plugins).as_posix()}" for p in sorted(plugins.rglob("*.dll"))
                if not any(fnmatch(p.relative_to(plugins).as_posix(), kept) for kept in QT_PLUGINS_KEPT)]
     return [f"--noinclude-dlls={name}" for name in dropped + QT_DROPPED_FILES]
