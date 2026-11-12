@@ -262,7 +262,7 @@ def build(args, config, paths, version, fps):
         return print_issues
     # Files whose game copy isn't shipped are patched and recorded in the manifest (so their settings are
     # checked, and compat checks see when their patching changes), but only the merger builds them
-    shipped = [entry for entry in patched if game_copy_of[profile_key(entry["path"])] == SHIPPED]
+    shipped = [entry for entry in patched if game_copy_of[profile_key(entry.path)] == SHIPPED]
     if not shipped:
         fail("no patched files to ship were produced, aborting.")
 
@@ -271,7 +271,7 @@ def build(args, config, paths, version, fps):
         outputs = lambda records: {profile_key(path): (record["output_size"], record["output_crc32"])
                                    for path, record in records.items()}
         released = shipped_files(load_manifest(manifest_path(version)) or fail(f"no manifest of {version} to reissue"))
-        if outputs(released) != outputs({entry["path"]: entry["hashes"] for entry in shipped}):
+        if outputs(released) != outputs({entry.path: entry.hashes.to_json() for entry in shipped}):
             fail(f"{version} can't be reissued: the files it ships would change")
     else:
         log.info(f"Removing the old output folder ({version})", extra=HEADING)
@@ -290,8 +290,8 @@ def build(args, config, paths, version, fps):
     if args.make_release or "dev" in version:
         log.info(f"Writing mod manifest ({version})", extra=HEADING)
         # Hashes and sizes of the source and output files (for v0.2, source_size == output_size for all files)
-        records = {entry["path"]: {**entry["hashes"], "fps": entry["fps"], "report": entry["report"]}
-                   for entry in sorted(patched, key=lambda e: e["path"])}
+        records = {entry.path: {**entry.hashes.to_json(), "fps": entry.fps, "report": entry.report}
+                   for entry in sorted(patched, key=lambda e: e.path)}
         for path, record in records.items():
             if group := group_of.get(profile_key(path)):
                 record["group"] = group.name

@@ -342,8 +342,8 @@ def make_patch(version, manifest, their_files, origin, patched_dir, args):
 
     log.info(f"Running FPS patcher ({version})", extra=HEADING)
     # (No mod_reviews: a compat patch is built for one known mod, so nothing is known broken here)
-    patched, kept, failed, warnings, rule_issues, _ = patch_as_release(
-        inputs, shared_profile, manifest, reviewed=reviewed, shared_settings=shared_settings)
+    patch = patch_as_release(inputs, shared_profile, manifest, reviewed=reviewed, shared_settings=shared_settings)
+    patched, kept, failed, warnings, rule_issues = patch.patched, patch.kept, patch.failed, patch.warnings, patch.rule_issues
     log.info(f"\nDone ({version}): {len(patched)} patched, {len(kept)} left alone, {len(failed)} failed.")
     write_patched_files(patched, patched_dir)
 
@@ -379,11 +379,11 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, their_fi
     log.info(f"Writing compat patch manifest ({version})", extra=HEADING)
     release_files = {profile_key(key): record for key, record in manifest["files"].items()}
     files = {}
-    for entry in sorted(patched, key=lambda e: e["path"]):
-        files[entry["path"]] = {
-            "source_swf_sha256": entry["hashes"]["source_swf_sha256"],
-            "output_swf_sha256": entry["hashes"]["output_swf_sha256"],
-            "release_output_swf_sha256": release_files[entry["path"]]["output_swf_sha256"],
+    for entry in sorted(patched, key=lambda e: e.path):
+        files[entry.path] = {
+            "source_swf_sha256": entry.hashes.source_swf_sha256,
+            "output_swf_sha256": entry.hashes.output_swf_sha256,
+            "release_output_swf_sha256": release_files[entry.path]["output_swf_sha256"],
         }
     commit, uncommitted = patcher_commit()
     path = compat_manifest_path(version, args.mod_name, mod_version)

@@ -20,6 +20,9 @@ requirement to RETIRED there, so the merger tells users to update Smooth UI.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import StrEnum
+
 from ...requires import FIX_NAMES
 from . import (
     book_fade_fix,
@@ -53,8 +56,24 @@ FIXES = {fix.NAME: fix for fix in (book_fade_fix, book_stick_scroll_fix, gwent_3
 if set(FIXES) != FIX_NAMES:
     raise RuntimeError(f"requires.py's FIX_NAMES must list exactly the fixes: {', '.join(sorted(FIXES))}")
 
-# A fix's "result" in its report record
-APPLIED, NOT_NEEDED, CANT_APPLY = "applied", "not needed", "can't apply"
+
+class FixOutcome(StrEnum):
+    """A fix's "result" in its report record"""
+    APPLIED = "applied"
+    NOT_NEEDED = "not needed"       # the file has no bug to fix (fixed in this version of it)
+    CANT_APPLY = "can't apply"      # the file isn't as the fix expects
+
+
+@dataclass(frozen=True, slots=True)
+class FixRecord:
+    """What one fix did to a file; to_json gives its record in the file's rescale report"""
+    name: str
+    outcome: FixOutcome
+    matched: list[int]      # ids of the sprites it changed
+    detail: str             # what it did, or why not
+
+    def to_json(self) -> dict:
+        return {"name": self.name, "result": self.outcome, "matched": self.matched, "detail": self.detail}
 
 
 def check_fix_name(name: str):
@@ -75,13 +94,11 @@ def fix_kind(name: str) -> FixKind:
     return FIXES[name].KIND
 
 
-def apply_fixes(body: bytes, names, phase: str) -> tuple[bytes | None, list[dict]]:
+def apply_fixes(body: bytes, names, phase: str) -> tuple[bytes | None, list[FixRecord]]:
     """Apply those of the named fixes that run in phase (BEFORE_RESCALE or AFTER_RESCALE), in order,
     to a decompressed SWF body.
 
-    Returns (the new body, or None if nothing changed, a record per fix applied). A record is
-    {"name", "result": APPLIED / NOT_NEEDED / CANT_APPLY, "matched": [ids of the sprites it changed],
-    "detail": what it did, or why not}."""
+    Returns (the new body, or None if nothing changed, a record per fix applied)."""
     for name in names:
         check_fix_name(name)
     names = [name for name in names if getattr(FIXES[name], "PHASE", BEFORE_RESCALE) == phase]
@@ -93,12 +110,12 @@ def apply_fixes(body: bytes, names, phase: str) -> tuple[bytes | None, list[dict
         try:
             result = FIXES[name].apply(swf)
         except CantApply as e:
-            records.append({"name": name, "result": CANT_APPLY, "matched": [], "detail": str(e)})
+            records.append(FixRecord(name, FixOutcome.CANT_APPLY, [], str(e)))
             continue
-        records.append({"name": name, "result": APPLIED if result.sprites else NOT_NEEDED,
-                        "matched": sorted(result.sprites), "detail": result.detail})
+        records.append(FixRecord(name, FixOutcome.APPLIED if result.sprites else FixOutcome.NOT_NEEDED,
+                                 sorted(result.sprites), result.detail))
     return (swf.body() if swf.changed else None), records
 
 
-__all__ = ["AFTER_RESCALE", "APPLIED", "BEFORE_RESCALE", "CANT_APPLY", "FIXES", "NOT_NEEDED", "CantApply", "FixKind", "FixResult",
+__all__ = ["AFTER_RESCALE", "BEFORE_RESCALE", "FIXES", "CantApply", "FixKind", "FixOutcome", "FixRecord", "FixResult",
            "SwfEdit", "apply_fixes", "check_fix_name", "fix_consequence", "fix_kind"]

@@ -817,13 +817,13 @@ def row_mods(file: FileState) -> str:
     return f"{len(text.split(', '))} {group_name(file.group)} mods" if file.group else f"{text[:MAX_ROW_MODS - 1]}…"
 
 
-def merging_status(patched: str | None) -> tuple[Tone, str]:
-    """A screen's tone and short status in the list while merging: patched is None until its file is
-    patched, then how ("patched", "kept" or "failed"). What goes in is only decided once every file is
-    patched (a patched screen may still be left out), so until then it is only "Done"."""
-    if patched is None:
+def merging_status(failed: bool | None) -> tuple[Tone, str]:
+    """A screen's tone and short status in the list while merging: failed is None until its file is
+    patched, then whether patching it failed. What goes in is only decided once every file is patched (a
+    patched screen may still be left out), so until then it is only "Done"."""
+    if failed is None:
         return Tone.NEUTRAL, "Waiting"
-    return (Tone.ERROR, "Can't merge") if patched == "failed" else (Tone.NEUTRAL, "Done")
+    return (Tone.ERROR, "Can't merge") if failed else (Tone.NEUTRAL, "Done")
 
 
 def also_changed(file: FileResult, winner: str | None) -> str | None:

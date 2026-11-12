@@ -32,7 +32,8 @@ from typing import NamedTuple
 
 from ..build.release import ReleasePatch
 from ..common import fail
-from ..patcher.fixes import CANT_APPLY, fix_consequence, fix_kind
+from ..patcher.fixes import FixOutcome, fix_consequence, fix_kind
+from ..patcher.patcher_core import FailedFile, KeptFile, PatchedFile
 from ..witcher3.source_file import GAME_FILES, SourceFile
 from .installed import is_smoothui_folder
 from .scan import COMPAT_PATCH, Scan
@@ -82,7 +83,7 @@ class PackageFile:
     source: SourceFile              # the copy that was patched
     status: FileStatus
     issues: list[Issue] = field(default_factory=list)
-    result: dict | None = None      # patch_files' result for it, unless it failed
+    result: PatchedFile | KeptFile | None = None    # patch_files' result for it, unless it failed
     error: str | None = None        # FAILED: why; GROUP_LEFT_OUT: why the group can't be merged whole
     fallback: str | None = None     # the mod whose copy the game loads unless the package holds this file
                                     # (its own mod's, once the package holds its copy as it is: see build_package)
@@ -99,8 +100,8 @@ class PackageFile:
     @property
     def entry(self):
         """The patched file, as a BundleEntry (for a file the package holds)"""
-        assert self.result is not None
-        return self.result["entry"]
+        assert isinstance(self.result, PatchedFile)
+        return self.result.entry
 
     @property
     def fps(self) -> float | None:
@@ -108,7 +109,7 @@ class PackageFile:
         if self.status not in (FileStatus.UNCHANGED, FileStatus.PATCHED, FileStatus.FORCED):
             return None
         assert self.result is not None
-        report = self.result["report"]
+        report = self.result.report
         return report["old_fps"] if report["new_fps"] is None else None
 
     @property
@@ -118,7 +119,7 @@ class PackageFile:
         if self.fps is None:
             return None
         assert self.result is not None
-        report = self.result["report"]
+        report = self.result.report
         speed = report["target_fps"] / report["old_fps"]
         return speed if report.get("animated") and speed < SLOW_BELOW else None
 
@@ -178,7 +179,7 @@ class PackageFile:
             summary = f"{not_merged(status, copy, reason=reason)} {self._runs()}"
         lines = self._fix_lines() if status.included or status is FileStatus.UNCHANGED else []
         if self.speed is not None and self.result is not None:
-            lines.append(played_slowly(self.result["report"]["target_fps"], self.speed))
+            lines.append(played_slowly(self.result.report["target_fps"], self.speed))
         if details := self._details():
             lines.append(f"Details: {details}")
         return "\n  ".join([f"{screen_label(self.path) if label is None else label}: {summary}", *lines])
@@ -230,23 +231,22 @@ def decide(scan: Scan, patch: ReleasePatch, *, force=()) -> list[PackageFile]:
     path. force: the files (profile keys) to put in the package despite problems with their rescale.
     Fails (SmoothUIError) for a file patch doesn't hold."""
     force = set(force)
-    results = {result["path"]: (status, result) for status, results in
-               ((FileStatus.PATCHED, patch.patched), (FileStatus.UNCHANGED, patch.kept), (FileStatus.FAILED, patch.failed))
-               for result in results}
+    results = {result.path: result for result in [*patch.patched, *patch.kept, *patch.failed]}
     if unknown := sorted(force - set(results)):
         fail(f"not a file the merged patches could hold: {', '.join(unknown)}")
 
     issues = _issues(patch)
     files = []
     for path in sorted(results):
-        status, result = results[path]
+        result = results[path]
         file = scan.files[path]
         source = file.winner
         assert source is not None   # patch holds the winners
         fallback = file.loaded_without_package.folder if file.loaded_without_package else None
-        if status is FileStatus.FAILED:
-            files.append(PackageFile(path, source, status, error=result["error"], fallback=fallback))
+        if isinstance(result, FailedFile):
+            files.append(PackageFile(path, source, FileStatus.FAILED, error=result.error, fallback=fallback))
             continue
+        status = FileStatus.PATCHED if isinstance(result, PatchedFile) else FileStatus.UNCHANGED
         file_issues = issues[path]
         if status is FileStatus.UNCHANGED:
             # Not rescaled, so its rescale settings (which then match nothing) and warnings don't apply
@@ -302,9 +302,9 @@ def _issues(patch: ReleasePatch) -> dict[str, list[Issue]]:
             issues[occurrence.path].append(Issue(IssueKind.KNOWN_BROKEN if known_broken else IssueKind.WARNING,
                                                  f"{occurrence.message} [{review}]", review=review))
     for result in [*patch.patched, *patch.kept]:
-        for fix in result["report"].get("fixes", []):
-            if fix["result"] == CANT_APPLY:
-                issues[result["path"]].append(Issue(IssueKind.FIX, fix["detail"], fix["name"]))
+        for fix in result.report.get("fixes", []):
+            if FixOutcome(fix["result"]) is FixOutcome.CANT_APPLY:
+                issues[result.path].append(Issue(IssueKind.FIX, fix["detail"], fix["name"]))
     return issues
 
 

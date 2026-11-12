@@ -34,7 +34,8 @@ from ..manifests import (  # noqa: F401 (re-exported for the build tools)
     split_build_version,
     version_key,
 )
-from ..patcher.fixes import APPLIED
+from ..patcher.fixes import FixOutcome
+from ..patcher.patcher_core import FailedFile, KeptFile, PatchedFile, PatchResult
 from ..patcher.swf_patcher import format_fix
 from ..paths import MANIFEST_DIR, REPO_ROOT
 from ..witcher3.mod_bundles import pack_entries
@@ -77,20 +78,20 @@ def run_command(cmd, cwd=None, filter_predicate=None, detach=False):
     if proc.returncode != 0:
         fail(f"command failed with exit code {proc.returncode}: {cmd[0]}")
 
-def write_patched_files(patched, out_dir):
+def write_patched_files(patched: list[PatchedFile], out_dir):
     """Write the patched files (patcher_core.patch_files' patched list) under out_dir at their paths, for
     a look at them while the work folder is kept"""
     for entry in patched:
-        out = out_dir / entry["path"]
+        out = out_dir / entry.path
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(entry["entry"].content())
+        out.write_bytes(entry.entry.content())
 
-def pack_content(patched, content_dir):
+def pack_content(patched: list[PatchedFile], content_dir):
     """Pack the patched files (patcher_core.patch_files' patched list) into blob0.bundle and create
     metadata.store"""
     log.info("Packing blob0.bundle", extra=HEADING)
     bundle = content_dir / "blob0.bundle"
-    bundle_data, store = pack_entries((entry["entry"] for entry in patched), bundle.name)
+    bundle_data, store = pack_entries((entry.entry for entry in patched), bundle.name)
     bundle.write_bytes(bundle_data)
     log.info(f"Packed {len(patched)} files into {bundle} ({len(bundle_data) / 2**20:.1f} MiB)")
 
@@ -129,16 +130,17 @@ def config_paths(config):
     """The config's paths, converted to Path objects usable by this Python"""
     return {k: to_native(v) for k, v in config["paths"].items()}
 
-def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None):
+def print_file_result(result: PatchResult, *, is_reviewed=None):
     """on_file callback for patcher_core.patch_files: the result, and anything to check by hand.
     Bind is_reviewed(rel, warning) (see reviewed_warnings.py) to hide warnings already checked."""
-    if status == "failed":
-        log.error(f"{rel}: {error}")
+    rel = result.path
+    if isinstance(result, FailedFile):
+        log.error(f"{rel}: {result.error}")
         return
-    assert report is not None   # patched and kept files have one
+    report = result.report
     why_kept = ("not retimed (retime: false)" if report.get("retime") is False
                 else f"already at or above the target {report['target_fps']:g} fps")
-    if status == "kept":
+    if isinstance(result, KeptFile):
         log.info(f"KEEP {rel}: {report['old_fps']:g} fps, {why_kept}")
         _print_fixes(report)
         return
@@ -159,7 +161,7 @@ def print_file_result(rel, status, report=None, error=None, *, is_reviewed=None)
 def _print_fixes(report):
     """The fixes' results; those that changed nothing are listed again at the end, as rule issues"""
     for fix in report.get("fixes", []):
-        if fix["result"] == APPLIED:
+        if FixOutcome(fix["result"]) is FixOutcome.APPLIED:
             log.info(f"  {format_fix(fix)}", extra=DETAIL)
         else:
             log.error(f"  {format_fix(fix)}")

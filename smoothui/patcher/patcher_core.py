@@ -9,13 +9,13 @@ import traceback
 import zlib
 from concurrent.futures import as_completed
 from concurrent.futures.process import BrokenProcessPool
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import NamedTuple
 
 from ..common import SmoothUIError, fail, profile_key
 from ..log import DETAIL, SUBHEADING
 from ..parallel import make_pool, replay_records, run_logged, worker_count
-from ..witcher3.bundle import BundleError, make_entry
+from ..witcher3.bundle import BundleEntry, BundleError, make_entry
 from ..witcher3.redswf import CR2W_VERSION, RedSwf, RedSwfError, replace_swf, swf_sha256
 from . import dev_mode
 from .dev_mode import dev_make_body_hook, resolve_dev_target
@@ -64,7 +64,52 @@ class PatchSettings:
                                         # ("source fps"; e.g. HUD modules play at the root HUD movie's rate)
     retime: bool = True     # False ("retime: false"): only its fixes are applied, its frame rate stays
 
-def patch_files(inputs, profile, *, on_file=None, pool=None):
+@dataclass(frozen=True, slots=True)
+class FileHashes:
+    """A patched file's source and output, as manifests record them (the field names are their keys)"""
+    source_sha256: str
+    output_sha256: str
+    source_swf_sha256: str      # of the SWF inside (see redswf.swf_sha256)
+    output_swf_sha256: str
+    source_size: int
+    output_size: int
+    # As the game's bundle records it, so the launch check can tell a changed game file from its TOC
+    source_crc32: int
+    # As the bundle's table of contents records it, so an installed build can be identified without reading it
+    output_crc32: int
+
+    def to_json(self) -> dict:
+        return asdict(self)
+
+@dataclass(frozen=True, slots=True)
+class PatchedFile:
+    """A file patch_files changed (rescaled, or only fixed)"""
+    path: str               # as in its SourceFile
+    origin: str
+    entry: BundleEntry      # the patched file, compressed, for write_bundle
+    hashes: FileHashes
+    fps: float              # its frame rate now
+    report: dict            # the rescale report (see swf_patcher/report.py), with the fixes' records
+
+@dataclass(frozen=True, slots=True)
+class KeptFile:
+    """A file patch_files left as it is: already at or above its target frame rate (or not to be retimed), with
+    no fix that changed it"""
+    path: str
+    origin: str
+    report: dict
+
+@dataclass(frozen=True, slots=True)
+class FailedFile:
+    """A file patch_files couldn't patch"""
+    path: str
+    origin: str
+    error: str              # the message
+
+PatchResult = PatchedFile | KeptFile | FailedFile
+
+def patch_files(inputs, profile, *, on_file=None,
+                pool=None) -> tuple[list[PatchedFile], list[KeptFile], list[FailedFile]]:
     """Patch the given files (SourceFiles) in memory, each with its settings in profile ({profile key:
     PatchSettings}).
 
@@ -73,16 +118,10 @@ def patch_files(inputs, profile, *, on_file=None, pool=None):
     parallel.worker_count), or a dev hook is active (see dev_mode.py). Either way, each file's log output
     comes in one piece, as soon as the file is done (so the order of the files can differ between runs).
 
-    on_file(path, status, report=None, error=None) is called as soon as each file's result is
-    known, right after its log output: status is "patched" or "kept" (with the file's rescale report),
-    or "failed" (with the error message).
+    on_file(result), with the file's PatchResult, is called as soon as each file's result is known, right
+    after its log output.
 
-    Returns (patched, kept, failed), in input order, lists of dicts with the file's "path" and "origin" (as in its
-    SourceFile). patched ones also hold "entry" (the patched file, compressed, as a BundleEntry for
-    write_bundle), "hashes" (sha256, swf_sha256 and size of the source and output files, and the output's
-    CRC32s, as manifests record them: source_sha256, output_swf_sha256, source_crc32, output_crc32, ...), "fps" (its frame rate now) and "report"; kept
-    ones (already at or above their target frame rate, with no fixes to apply) hold "report"; failed ones
-    hold "error" (the message).
+    Returns (patched, kept, failed), in input order: lists of PatchedFile, KeptFile and FailedFile.
 
     A file fails on any exception: input the patcher can't read, doesn't support or misunderstands
     (e.g. a failed verification), or a bug. The other files are still patched, so that all problems
@@ -91,15 +130,14 @@ def patch_files(inputs, profile, *, on_file=None, pool=None):
     resolve_dev_target(profile)
     jobs = [(source, profile[source.path]) for source in inputs]
 
-    results: list = [None] * len(jobs)
+    results: list[PatchResult | None] = [None] * len(jobs)
     for i, result in _patch_jobs(jobs, pool):
         results[i] = result
         if on_file:
-            on_file(result["path"], result["status"], result.get("report"), result.get("error"))
-    patched, kept, failed = [], [], []
-    for result in results:
-        status = result.pop("status")
-        {"patched": patched, "kept": kept, "failed": failed}[status].append(result)
+            on_file(result)
+    patched = [result for result in results if isinstance(result, PatchedFile)]
+    kept = [result for result in results if isinstance(result, KeptFile)]
+    failed = [result for result in results if isinstance(result, FailedFile)]
     return patched, kept, failed
 
 def _patch_jobs(jobs, pool):
@@ -128,14 +166,13 @@ def _patch_in_pool(pool, jobs):
         for future in futures:
             future.cancel()
 
-def _patch_file(source, settings, body_hook=None):
-    """Patch one file; returns its result for patch_files, with its "status" """
-    result = {"path": source.path, "origin": source.origin}
+def _patch_file(source, settings, body_hook=None) -> PatchResult:
+    """Patch one file; returns its result for patch_files"""
     log.info(source.path, extra={**SUBHEADING, **DETAIL})
     try:
         data = source.read()
     except (OSError, BundleError) as e:
-        return {**result, "status": "failed", "error": f"can't read it from {source.file}: {e}"}
+        return FailedFile(source.path, source.origin, f"can't read it from {source.file}: {e}")
 
     # Most of a .redswf's data is textures, which pass through unchanged: only the SWF is patched, and
     # the container's data is copied as few times as possible (big files are 10-20 MiB)
@@ -154,24 +191,23 @@ def _patch_file(source, settings, body_hook=None):
                                                 game_rate=game_fps(source.path))
         del redswf
         if new_swf_bytes is None:
-            return {**result, "status": "kept", "report": rescale_report}
+            return KeptFile(source.path, source.origin, rescale_report)
         out = replace_swf(data, new_swf_bytes)
-        hashes = {"source_sha256": hashlib.sha256(data).hexdigest(), "output_sha256": hashlib.sha256(out).hexdigest(),
-                  "source_swf_sha256": swf_sha256(data), "output_swf_sha256": swf_sha256(out),
-                  "source_size": len(data), "output_size": len(out),
-                  # As the game's bundle records it, so the launch check can tell a changed game file from its TOC
-                  "source_crc32": zlib.crc32(data)}
+        source_sha256, source_swf_sha256, source_size, source_crc32 = (
+            hashlib.sha256(data).hexdigest(), swf_sha256(data), len(data), zlib.crc32(data))
         del data
         entry = make_entry(source.path, out)
-        # As the bundle's table of contents records it, so an installed build can be identified without reading it
-        hashes["output_crc32"] = entry.crc
+        hashes = FileHashes(source_sha256=source_sha256, output_sha256=hashlib.sha256(out).hexdigest(),
+                            source_swf_sha256=source_swf_sha256, output_swf_sha256=swf_sha256(out),
+                            source_size=source_size, output_size=len(out), source_crc32=source_crc32,
+                            output_crc32=entry.crc)
     except Exception as e:  # noqa: BLE001 (see patch_files)
-        return {**result, "status": "failed", "error": _failure_message(e)}
+        return FailedFile(source.path, source.origin, _failure_message(e))
     finally:
         clear_parse_cache()
 
     fps = rescale_report["new_fps"] or rescale_report["old_fps"]    # not rescaled: only fixed
-    return {**result, "status": "patched", "entry": entry, "hashes": hashes, "fps": fps, "report": rescale_report}
+    return PatchedFile(source.path, source.origin, entry, hashes, fps, rescale_report)
 
 def _failure_message(e: Exception) -> str:
     if isinstance(e, EXPECTED_ERRORS):
@@ -194,7 +230,7 @@ class RuleIssues(NamedTuple):
     warnings: list[RuleIssue]   # inherited settings that matched in the release but no longer match
                                 # anything: the output is as configured, but may need a look
 
-def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
+def find_rule_issues(patched: list[PatchedFile], kept: list[KeptFile], shared=(), recorded=None) -> RuleIssues:
     """Check explicit settings against the reports in patch_files' patched and kept lists.
 
     Errors: a setting that couldn't be followed (an unmet rule), or that matches no sprite in its
@@ -209,7 +245,7 @@ def find_rule_issues(patched, kept, shared=(), recorded=None) -> RuleIssues:
     errors, warnings = [], []
     matched_anywhere = set()
     for entry in [*patched, *kept]:
-        path, report = entry["path"], entry["report"]
+        path, report = entry.path, entry.report
         errors += [RuleIssue(path, format_unmet_rule(unmet)) for unmet in report["unmet_rules"]]
         unmet = {unmet["rule"] for unmet in report["unmet_rules"]}   # already reported
         not_rescaled = "new_fps" in report and report["new_fps"] is None
@@ -327,9 +363,9 @@ def patch_fps(data, pos, settings, body_hook=None, shares_classes=True, game_rat
         fixed_after, records_after = apply_fixes(body, settings.fixes, AFTER_RESCALE)
         if fixed_after is not None:
             body[:] = fixed_after
-        fix_records = sorted(fix_records + records_after, key=lambda record: settings.fixes.index(record["name"]))
+        fix_records = sorted(fix_records + records_after, key=lambda record: settings.fixes.index(record.name))
         changed = result.new_fps is not None or fixed is not None or fixed_after is not None
-        report = {**result.report, "fixes": fix_records}
+        report = {**result.report, "fixes": [record.to_json() for record in fix_records]}
         if settings.source_fps is not None:
             report["source_fps"] = settings.source_fps     # old_fps is then this, not the header's
         if not settings.retime:

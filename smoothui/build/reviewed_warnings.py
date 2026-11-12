@@ -19,12 +19,14 @@ be "any" (any version of that code).
 import logging
 import re
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
 from ..common import fail, profile_key
 from ..log import SUBHEADING
 from ..mod_reviews import ANY
+from ..patcher.patcher_core import KeptFile, PatchedFile
 from .shared import REVIEWED_WARNINGS
 
 log = logging.getLogger(__name__)
@@ -72,17 +74,17 @@ class WarningReview:
         return any(review in self.reviewed or review in recorded
                    for review in (review_of(warning), f"{warning['key']} @{ANY}"))
 
-    def summarize(self, entries, unchecked=0) -> WarningSummary:
+    def summarize(self, entries: Iterable[PatchedFile | KeptFile], unchecked=0) -> WarningSummary:
         """Check the warnings in the reports of patch_files' patched (and kept) lists. unchecked: the
         number of files that have no report (failed), whose warnings are unknown"""
         unreviewed, hidden, seen = defaultdict(list), 0, set()
         for entry in entries:
-            for warning in entry["report"]["warnings"]:
+            for warning in entry.report["warnings"]:
                 seen.add(review_of(warning))
-                if self.is_reviewed(entry["path"], warning):
+                if self.is_reviewed(entry.path, warning):
                     hidden += 1
                 else:
-                    unreviewed[review_of(warning)].append(Occurrence(entry["path"], warning["message"]))
+                    unreviewed[review_of(warning)].append(Occurrence(entry.path, warning["message"]))
         return WarningSummary(dict(unreviewed), hidden, sorted(self.reviewed - seen), unchecked)
 
 

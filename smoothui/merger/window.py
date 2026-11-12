@@ -1847,12 +1847,13 @@ class MergerWindow:
         known; one found just after this keeps the old workers, which still work)."""
         # Imported here: the patcher takes a while to import, and only a build needs it
         from ..build.shared import print_file_result
+        from ..patcher.patcher_core import FailedFile
         from .builder import build_package, merge_report
         from .cli import show_build
 
-        def on_file(path, status, *args, **kwargs):
-            print_file_result(path, status, *args, **kwargs)    # the log, as without on_file
-            self.calls.put(("merged_file", (path, status)))
+        def on_file(result, **kwargs):
+            print_file_result(result, **kwargs)    # the log, as without on_file
+            self.calls.put(("merged_file", (result.path, isinstance(result, FailedFile))))
 
         start = time.perf_counter()
         started = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -1891,17 +1892,17 @@ class MergerWindow:
             self.progress = (done, total)
             self.show_card()
 
-    def merged_file(self, path, status):
-        """A file is patched (build_package's on_file): its row says so until the scan after the merge (a
-        group's row once all its files are, or at once if one fails)"""
+    def merged_file(self, path, failed):
+        """A file is patched (build_package's on_file; failed: whether that failed): its row says so until the
+        scan after the merge (a group's row once all its files are, or at once if one fails)"""
         row = self.row_of.get(path)
         if self.busy != "build" or self.merging.get(row) is None:
             return
         self.merging[row].discard(path)
-        if status == "failed":
+        if failed:
             self.merging[row] = None
-        if status == "failed" or not self.merging[row]:
-            self.show_row_status(row, *merging_status(status))
+        if failed or not self.merging[row]:
+            self.show_row_status(row, *merging_status(failed))
 
     def restart_pool(self):
         """Replace the pool, in the build's thread (starting workers takes a moment): its workers keep the

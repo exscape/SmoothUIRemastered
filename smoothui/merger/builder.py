@@ -46,7 +46,7 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
         fail(installed.message)
     sources = [file.winner for file in result.files.values() if file.winner]
     if not sources:
-        return ReleasePatch([], [], [], WarningSummary({}, 0, [], 0), RuleIssues([], []), {})
+        return ReleasePatch([], [], [], WarningSummary({}, 0, [], 0), RuleIssues([], []))
     # The files that mods add to a group are patched as the release would have patched them
     manifest = with_unlisted_files(installed.manifest, {source.path: result.group_of[source.path] for source in sources
                                                         if source.path in result.group_of})
@@ -77,7 +77,7 @@ def merges_now(result: Scan, keys, *, pool=None) -> list[str]:
     trial = replace(result, files={key: replace(result.files[key], winner=result.off_copies[key]) for key in keys},
                     group_of={key: result.group_of[key] for key in keys if key in result.group_of},
                     screens_off={}, off_copies={})
-    patch = patch_winners(trial, pool=pool, on_file=lambda *args, **kwargs: None)
+    patch = patch_winners(trial, pool=pool, on_file=lambda result, **kwargs: None)
     return [file.path for file in decide(trial, patch) if file.status in (FileStatus.PATCHED, FileStatus.UNCHANGED)]
 
 
@@ -215,10 +215,10 @@ def build_package(game_path: Path, mods_settings: Path, *, force=(), out_dir: Pa
     log.info(f"Merging {total} screen(s)...")
     done = 0
 
-    def file_done(*args, **kwargs):
+    def file_done(result, **kwargs):
         nonlocal done
         done += 1
-        on_file(*args, **kwargs)
+        on_file(result, **kwargs)
         if progress:
             progress(done, total)
 
@@ -245,6 +245,6 @@ def merge_report(result: BuildResult, started: str) -> dict:
         "smoothui": result.scan.installed.version,
         "files": {file.path: {"mod": file.mod, "status": file.status,
                               "issues": [issue.message for issue in file.issues], "error": file.error,
-                              "report": file.result["report"] if file.result else None}
+                              "report": file.result.report if file.result else None}
                   for file in result.files},
     }

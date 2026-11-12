@@ -7,15 +7,20 @@ build ONE compat patch, and a full compat package for all conflicts, respectivel
 
 import logging
 import re
-from dataclasses import fields
+from dataclasses import dataclass, field, fields
 from functools import partial
-from typing import NamedTuple
 
 from ..common import fail, profile_key
 from ..mod_reviews import ModReviews
 from ..patcher import patcher_core
 from ..patcher.fixes import check_fix_name
-from ..patcher.patcher_core import PatchSettings, RuleIssues
+from ..patcher.patcher_core import (
+    FailedFile,
+    KeptFile,
+    PatchedFile,
+    PatchSettings,
+    RuleIssues,
+)
 from ..patcher.swf_patcher import (
     SpeedRule,
     SpriteRef,
@@ -123,16 +128,17 @@ def _recorded_tokens(report, kind):
                  else token for token in parsed)
 
 
-class ReleasePatch(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class ReleasePatch:
     """What patch_as_release returns"""
-    patched: list           # as patcher_core.patch_files returns them
-    kept: list
-    failed: list
-    warnings: WarningSummary    # the warnings, less those the release had too (see patch_as_release)
+    patched: list[PatchedFile]      # as patcher_core.patch_files returns them
+    kept: list[KeptFile]
+    failed: list[FailedFile]
+    warnings: WarningSummary        # the warnings, less those the release had too (see patch_as_release)
     rule_issues: RuleIssues
     # {path, as patch_files names it: the reviews of its unreviewed warnings that mean its mod's copy is known
     # not to work (see mod_reviews.py's leave-out lines)}
-    known_broken: dict[str, set[str]]
+    known_broken: dict[str, set[str]] = field(default_factory=dict)
 
 
 def patch_as_release(inputs, profile, manifest, *, reviewed=(), mod_reviews: ModReviews | None = None, shared_settings=(),

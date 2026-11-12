@@ -51,7 +51,7 @@ def main():
         new, phase_records = apply_fixes(fixed, names, phase)
         fixed = fixed if new is None else new
         records += phase_records
-    print("\n".join(format_fix(record) for record in records))
+    print("\n".join(format_fix(record.to_json()) for record in records))
     if fixed is body:
         sys.exit("Nothing changed; not writing a file")
     Path(args.output).write_bytes(sig + version + struct.pack("<I", SWF_HEADER_SIZE + len(fixed)) + fixed)
