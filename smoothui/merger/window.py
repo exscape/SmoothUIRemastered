@@ -55,8 +55,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import NamedTuple
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import (
+from PySide6.QtCore import Qt, QTimer  # pyright: ignore[reportMissingImports]
+from PySide6.QtGui import (  # pyright: ignore[reportMissingImports]
     QColor,
     QFont,
     QFontDatabase,
@@ -69,7 +69,7 @@ from PySide6.QtGui import (
     QTextCharFormat,
     QTextCursor,
 )
-from PySide6.QtWidgets import (
+from PySide6.QtWidgets import (  # pyright: ignore[reportMissingImports]
     QApplication,
     QCheckBox,
     QComboBox,

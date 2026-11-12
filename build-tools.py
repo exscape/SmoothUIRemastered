@@ -158,7 +158,8 @@ def read_tools_version(version):
 def qt_dropped():
     """--noinclude-dlls options for the Qt files the merger doesn't need"""
     # Only on env_gui's Python, not WSL's (run_on_windows)
-    import PySide6
+    import PySide6  # pyright: ignore[reportMissingImports]
+
     plugins = Path(PySide6.__file__).parent / "plugins"
     dropped = [f"{QT_PLUGIN_DEST}/{p.relative_to(plugins).as_posix()}" for p in sorted(plugins.rglob("*.dll"))
                if not any(fnmatch(p.relative_to(plugins).as_posix(), kept) for kept in QT_PLUGINS_KEPT)]
@@ -384,7 +385,7 @@ def fingerprint(args, version):
     build ships, the scripts that are built or build), the manifests it ships, the options that change the result,
     and the tool versions. More than is needed (a comment changes it), never less. The tests, dev/ and config.toml
     (but for the version) are not part."""
-    import PySide6  # (only on env_gui's Python, like qt_dropped)
+    import PySide6  # pyright: ignore[reportMissingImports]
     digest = hashlib.sha256()
     digest.update(repr((version, args.dev_manifests, sys.version, platform.machine(),
                         [importlib.metadata.version("nuitka"), PySide6.__version__])).encode())
