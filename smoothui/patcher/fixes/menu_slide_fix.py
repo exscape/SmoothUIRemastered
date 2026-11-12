@@ -36,8 +36,7 @@ def apply(swf: SwfEdit) -> FixResult:
         return FixResult([], f"the file has no {CLASS}")
     unit = swf.unit_of_class(CLASS)
     abc = unit.abc
-    index, instance = next((i, instance) for i, instance in enumerate(abc.instances)
-                           if abc.full_name_of(instance.name) == CLASS)
+    index, instance = unit.instance(CLASS)
     hide = next((t.method for t in instance.traits if t.method is not None and abc.name_of(t.name) == HIDE), None)
     bodies = {}
     for method, find_push in ((abc.classes[index].static_init, _offset_push), (hide, _target_push)):

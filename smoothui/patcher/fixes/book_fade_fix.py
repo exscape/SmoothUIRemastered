@@ -17,11 +17,11 @@ from ..swf_patcher.abc_bytecode import (
     Instruction,
     Op,
     assemble,
-    branch_targets,
     disassemble,
+    find_pattern,
 )
 from ..swf_patcher.abc_file import AbcFile
-from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
+from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit, replace_run
 
 CLASS = "red.game.witcher3.menus.overlay.BookPopup"
 METHOD = "populateSingleBookData"
@@ -31,10 +31,8 @@ FADE_END = "onTitleHidden"
 def apply(swf: SwfEdit) -> FixResult:
     unit = swf.unit_of_class(CLASS)
     abc = unit.abc
-    instance = next(i for i in abc.instances if abc.full_name_of(i.name) == CLASS)
-    method = next((t.method for t in instance.traits if t.method is not None and abc.name_of(t.name) == METHOD), None)
-    if method is None or method not in abc.bodies:
-        raise CantApply(f"{CLASS} has no method {METHOD}")
+    _, instance = unit.instance(CLASS)
+    method = unit.method(CLASS, METHOD)
     body = abc.bodies[method]
     instructions = disassemble(body.code)
 
@@ -43,11 +41,7 @@ def apply(swf: SwfEdit) -> FixResult:
         if not any(ins.opcode is Op.GETPROPERTY and abc.name_of(ins.args[0]) == FADE_END for ins in instructions):
             return FixResult([], f"{CLASS}.{METHOD} doesn't fade")
         raise CantApply(f"{CLASS}.{METHOD} doesn't fade in an `if (!_isFirstInit)` branch")
-    first, last = fade
-    inner = {ins.offset for ins in instructions[first + 1:last + 1]}
-    if inner & branch_targets(instructions):
-        raise CantApply(f"{METHOD} has a branch into its fade")
-    edits = {i: b"" for i in range(first, last + 1)}
+    edits = replace_run(instructions, *fade, b"", METHOD, "its fade")
     unit.replace_method_code(method, *assemble(body.code, instructions, edits, body.exceptions))
     return FixResult(swf.sprites_of_class_or_subclasses(abc, instance.name),
                      f"{METHOD} shows every book at once, without fading the title and text out and back in")
@@ -57,26 +51,23 @@ def _find_fade(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int]
     """(first, last instruction index) of the fade in `if (!_isFirstInit) {fade} else {...}`: from the getlocal0
     of the condition on to the jump over the else branch; None if there is no such branch with a tween that calls
     onTitleHidden. Debug instructions are allowed."""
-    real = [i for i, ins in enumerate(instructions) if ins.opcode not in NO_OPS]
-    index_at = {ins.offset: i for i, ins in enumerate(instructions)}
-    pattern = [(Op.GETLOCAL0, None), (Op.GETPROPERTY, "_isFirstInit"), (Op.IFTRUE, None)]
-    for k in range(len(real) - len(pattern) + 1):
-        window = [instructions[i] for i in real[k:k + len(pattern)]]
-        if not all(ins.opcode is op and (prop is None or abc.name_of(ins.args[0]) == prop)
-                   for ins, (op, prop) in zip(window, pattern)):
-            continue
-        branch = window[-1]
-        else_start = index_at.get(branch.end + branch.args[0])
-        if else_start is None or else_start <= real[k + 2]:
-            return None
-        jump = max((i for i in real if real[k + 2] < i < else_start), default=None)
-        if jump is None or instructions[jump].opcode is not Op.JUMP:
-            return None
-        fade = instructions[real[k + 2] + 1:jump]
-        if not any(ins.opcode is Op.GETPROPERTY and abc.name_of(ins.args[0]) == FADE_END for ins in fade):
-            return None
-        return real[k], jump
-    return None
+    found = find_pattern(abc, instructions, [(Op.GETLOCAL0, None), (Op.GETPROPERTY, "_isFirstInit"), (Op.IFTRUE, None)],
+                         skip_no_ops=True)
+    if not found:
+        return None
+    start, _, at_branch = found[0]
+    branch = instructions[at_branch]
+    else_start = {ins.offset: i for i, ins in enumerate(instructions)}.get(branch.end + branch.args[0])
+    if else_start is None or else_start <= at_branch:
+        return None
+    jump = max((i for i, ins in enumerate(instructions) if at_branch < i < else_start and ins.opcode not in NO_OPS),
+               default=None)
+    if jump is None or instructions[jump].opcode is not Op.JUMP:
+        return None
+    fade = instructions[at_branch + 1:jump]
+    if not any(ins.opcode is Op.GETPROPERTY and abc.name_of(ins.args[0]) == FADE_END for ins in fade):
+        return None
+    return start, jump
 
 
 FIX = Fix(name="book-fade-fix",

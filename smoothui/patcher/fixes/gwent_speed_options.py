@@ -30,7 +30,6 @@ placeholder string (see _fx_script_frames).
 
 from __future__ import annotations
 
-import struct
 from pathlib import Path
 
 from ..swf_patcher.abc_bytecode import (
@@ -39,7 +38,10 @@ from ..swf_patcher.abc_bytecode import (
     Op,
     assemble,
     disassemble,
+    encode,
     encode_getlocal,
+    find_pattern,
+    matches,
     read_local,
 )
 from ..swf_patcher.abc_file import (
@@ -52,8 +54,7 @@ from ..swf_patcher.abc_file import (
 )
 from ..swf_patcher.code_analysis import MovieAnalysis
 from ..swf_patcher.movie import SwfMovie
-from ..swf_patcher.swf_tags import Tag, TagCode
-from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
+from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit, read_abc
 
 ABC_PATH = Path(__file__).with_name("gwent_speed.abc")
 PACKAGE, CLASS = "smoothui.gwent", "GwentSpeed"
@@ -72,8 +73,6 @@ SCRIPT_FRAMES_PLACEHOLDER = "@SMOOTHUI_FX_SCRIPT_FRAMES@"
 FX_PREFIX = "CardFX"
 FX_MANAGER_PREFIX = "CardFXManager"     # CardFXManager and its 1-frame containers
 FX_ONGOING_SUFFIX = "_Ongoing"          # weather on the rows, which CardFXManager shows and hides itself
-# DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
-DO_ABC_LAZY = 1
 
 
 
@@ -85,10 +84,8 @@ def apply(swf: SwfEdit) -> FixResult:
             raise CantApply(f"{class_name} is in another DoABC tag than {MENU_CLASS}")
     abc = unit.abc
     script_frames, not_sped_up = _fx_script_frames(swf)
-    our_abc = _with_string(_abc_bytes(), SCRIPT_FRAMES_PLACEHOLDER, script_frames)
-    ours = parse_abc(our_abc)
-    if clash := swf.class_names() & {ours.full_name_of(instance.name) for instance in ours.instances}:
-        raise CantApply(f"the file already defines {', '.join(sorted(clash))}")
+    our_abc = _with_string(read_abc(ABC_PATH), SCRIPT_FRAMES_PLACEHOLDER, script_frames)
+    swf.check_new_classes(our_abc)
     banners = swf.sprites_of_class(BANNER_CLASS)
     if len(banners) != 1:
         raise CantApply(f"expected 1 sprite linked to {BANNER_CLASS}, found {len(banners)}")
@@ -104,47 +101,41 @@ def apply(swf: SwfEdit) -> FixResult:
     on_card_at_target = additions.qname(public, "onCardAtTarget")
     on_card_fx = additions.qname(public, "onCardFX")
 
-    config_ui = _method(abc, MENU_CLASS, "configUI")
-    tween_duration = _method(abc, TWEEN_CLASS, "calcTweenDuration")
-    tween_to = _method(abc, TWEEN_CLASS, "tweenTo")
-    ai_delay = _method(abc, AI_CLASS, "state_begin_DelayAction")
-    ai_sending = _method(abc, AI_CLASS, "state_begin_SendingCard")
+    config_ui = unit.method(MENU_CLASS, "configUI")
+    tween_duration = unit.method(TWEEN_CLASS, "calcTweenDuration")
+    tween_to = unit.method(TWEEN_CLASS, "tweenTo")
+    ai_delay = unit.method(AI_CLASS, "state_begin_DelayAction")
+    ai_sending = unit.method(AI_CLASS, "state_begin_SendingCard")
     bodies = {
         # GwentSpeed.install(this)
-        config_ui: _insert_before_config_call(abc, config_ui, bytes([Op.GETLEX]) + encode_u30(speed_class)
-                                              + bytes([Op.GETLOCAL0, Op.CALLPROPVOID]) + encode_u30(install)
-                                              + encode_u30(1)),
+        config_ui: _insert_before_config_call(abc, config_ui, encode(Op.GETLEX, speed_class) + encode(Op.GETLOCAL0)
+                                              + encode(Op.CALLPROPVOID, install, 1)),
         # ... / GwentSpeed.cardSpeed
-        tween_duration: _replace_speed(abc, tween_duration, bytes([Op.GETLEX]) + encode_u30(speed_class)
-                                       + bytes([Op.GETPROPERTY]) + encode_u30(card_speed)),
+        tween_duration: _replace_speed(abc, tween_duration, encode(Op.GETLEX, speed_class)
+                                       + encode(Op.GETPROPERTY, card_speed)),
         # ...; GwentSpeed.onCardTween(curTween); return curTween
         # and if the card is there already: GwentSpeed.onCardAtTarget(card, finishCallback); return null
         tween_to: _hook_tween_to(abc, tween_to,
-                                 lambda local: bytes([Op.GETLEX]) + encode_u30(speed_class)
-                                 + encode_getlocal(local) + bytes([Op.CALLPROPVOID])
-                                 + encode_u30(on_card_tween) + encode_u30(1),
-                                 bytes([Op.GETLEX]) + encode_u30(speed_class)
-                                 + encode_getlocal(TWEEN_TO_CARD) + encode_getlocal(TWEEN_TO_CALLBACK) + bytes([Op.CALLPROPVOID])
-                                 + encode_u30(on_card_at_target) + encode_u30(2)),
+                                 lambda local: encode(Op.GETLEX, speed_class) + encode_getlocal(local)
+                                 + encode(Op.CALLPROPVOID, on_card_tween, 1),
+                                 encode(Op.GETLEX, speed_class) + encode_getlocal(TWEEN_TO_CARD)
+                                 + encode_getlocal(TWEEN_TO_CALLBACK) + encode(Op.CALLPROPVOID, on_card_at_target, 2)),
         # new Timer(GwentSpeed.opponentCardDelay, 1)
-        ai_delay: _replace_ai_delay(abc, ai_delay, bytes([Op.GETLEX]) + encode_u30(speed_class)
-                                    + bytes([Op.GETPROPERTY]) + encode_u30(opponent_card_delay)),
+        ai_delay: _replace_ai_delay(abc, ai_delay, encode(Op.GETLEX, speed_class)
+                                    + encode(Op.GETPROPERTY, opponent_card_delay)),
         # ...; GwentSpeed.onOpponentCardSent(this)
         ai_sending: _insert_before_return(abc, ai_sending, f"{AI_CLASS}.state_begin_SendingCard", _this,
-                                          lambda this: bytes([Op.GETLEX]) + encode_u30(speed_class)
-                                          + encode_getlocal(this) + bytes([Op.CALLPROPVOID])
-                                          + encode_u30(on_card_sent) + encode_u30(1)),
+                                          lambda this: encode(Op.GETLEX, speed_class) + encode_getlocal(this)
+                                          + encode(Op.CALLPROPVOID, on_card_sent, 1)),
     }
     for spawner in FX_SPAWNERS:
-        method = _method(abc, FX_CLASS, spawner)
+        method = unit.method(FX_CLASS, spawner)
         # ...; GwentSpeed.onCardFX(newCardFX); return ...
         bodies[method] = _insert_before_return(abc, method, f"{FX_CLASS}.{spawner}", _card_fx_local,
-                                               lambda local: bytes([Op.GETLEX]) + encode_u30(speed_class)
-                                               + encode_getlocal(local) + bytes([Op.CALLPROPVOID])
-                                               + encode_u30(on_card_fx) + encode_u30(1))
+                                               lambda local: encode(Op.GETLEX, speed_class) + encode_getlocal(local)
+                                               + encode(Op.CALLPROPVOID, on_card_fx, 1))
     unit.replace_methods(bodies, additions)
-    swf.insert_abc(Tag(TagCode.DO_ABC, struct.pack("<I", DO_ABC_LAZY) + PACKAGE.encode() + b"\0" + our_abc,
-                       long_header=True))
+    swf.insert_abc(PACKAGE, our_abc)
     return FixResult(banners, f"added {PACKAGE}.{CLASS}; GwintGameMenu.configUI installs it, "
                               "CardTweenManager.calcTweenDuration uses its card speed, "
                               "CardTweenManager.tweenTo tells it about card moves, "
@@ -153,13 +144,6 @@ def apply(swf: SwfEdit) -> FixResult:
                               "AIPlayerController.state_begin_SendingCard tells it about the card"
                               + (f"; can't speed up {', '.join(not_sped_up)} (frame scripts it would skip)"
                                  if not_sped_up else ""))
-
-
-def _abc_bytes() -> bytes:
-    try:
-        return ABC_PATH.read_bytes()
-    except FileNotFoundError:
-        raise CantApply(f"{ABC_PATH.name} is missing; build it with dev-tools/build-as3.py") from None
 
 
 def _fx_script_frames(swf: SwfEdit) -> tuple[str, list[str]]:
@@ -223,27 +207,14 @@ def _with_string(abc_bytes: bytes, old: str, new: str) -> bytes:
     return result
 
 
-def _method(abc: AbcFile, class_name: str, method_name: str) -> int:
-    instance = next((i for i in abc.instances if abc.full_name_of(i.name) == class_name), None)
-    if instance is None:
-        raise CantApply(f"found no class {class_name}")
-    method = next((t.method for t in instance.traits
-                   if t.method is not None and abc.name_of(t.name) == method_name), None)
-    if method is None or method not in abc.bodies:
-        raise CantApply(f"{class_name} has no method {method_name}")
-    return method
-
-
 def _insert_before_config_call(abc: AbcFile, method: int, code: bytes) -> tuple[bytes, list]:
     """The method with code inserted before its statement dispatchEvent(new GameEvent(GameEvent.CALL,
     "OnConfigUI"))"""
     body = abc.bodies[method]
     instructions = disassemble(body.code)
-    pattern = [(Op.FINDPROPSTRICT, "dispatchEvent"), (Op.FINDPROPSTRICT, "GameEvent"), (Op.GETLEX, "GameEvent"),
-               (Op.GETPROPERTY, "CALL"), (Op.PUSHSTRING, "OnConfigUI")]
-    starts = [start for start in range(len(instructions) - len(pattern) + 1)
-              if all(_matches(abc, ins, op, value) for ins, (op, value)
-                     in zip(instructions[start:start + len(pattern)], pattern))]
+    starts = [run[0] for run in find_pattern(abc, instructions, [
+        (Op.FINDPROPSTRICT, "dispatchEvent"), (Op.FINDPROPSTRICT, "GameEvent"), (Op.GETLEX, "GameEvent"),
+        (Op.GETPROPERTY, "CALL"), (Op.PUSHSTRING, "OnConfigUI")], skip_no_ops=False)]
     if len(starts) != 1:
         raise CantApply(f"{MENU_CLASS}.configUI: expected 1 OnConfigUI call, found {len(starts)}")
     return _insert(body, instructions, {starts[0]: code})
@@ -254,7 +225,7 @@ def _replace_speed(abc: AbcFile, method: int, code: bytes) -> tuple[bytes, list]
     body = abc.bodies[method]
     instructions = disassemble(body.code)
     found = [i for i, ins in enumerate(instructions[:-1])
-             if _matches(abc, ins, Op.GETLEX, "MOVE_TWEEN_SPEED") and instructions[i + 1].opcode is Op.DIVIDE]
+             if matches(abc, ins, Op.GETLEX, "MOVE_TWEEN_SPEED") and instructions[i + 1].opcode is Op.DIVIDE]
     if len(found) != 1:
         raise CantApply(f"{TWEEN_CLASS}.calcTweenDuration: expected 1 division by MOVE_TWEEN_SPEED, found {len(found)}")
     return assemble(body.code, instructions, {found[0]: code}, body.exceptions)
@@ -282,7 +253,7 @@ def _hook_tween_to(abc: AbcFile, method: int, on_tween, on_at_target: bytes) -> 
     body = abc.bodies[method]
     instructions = disassemble(body.code)
     final = _final_return(instructions, description, only_return=False)
-    stops = [i for i, ins in enumerate(instructions) if _matches(abc, ins, Op.CALLPROPVOID, "tryStopCardTween")]
+    stops = [i for i, ins in enumerate(instructions) if matches(abc, ins, Op.CALLPROPVOID, "tryStopCardTween")]
     if len(stops) != 1:
         raise CantApply(f"{description}: expected 1 tryStopCardTween call, found {len(stops)}")
     real = [i for i, ins in enumerate(instructions) if ins.opcode not in NO_OPS]
@@ -331,7 +302,7 @@ def _returned_local(abc: AbcFile, instructions: list[Instruction], description: 
 def _card_fx_local(abc: AbcFile, instructions: list[Instruction], description: str) -> int:
     """The local variable a method stores the card effect it makes in (its only `new ...` coerced to CardFX)"""
     made = [instructions[i + 2] for i in range(len(instructions) - 2)
-            if instructions[i].opcode is Op.CONSTRUCT and _matches(abc, instructions[i + 1], Op.COERCE, "CardFX")
+            if instructions[i].opcode is Op.CONSTRUCT and matches(abc, instructions[i + 1], Op.COERCE, "CardFX")
             and instructions[i + 2].opcode is Op.SETLOCAL]
     if len(made) != 1:
         raise CantApply(f"{description}: expected 1 new card effect stored in a variable, found {len(made)}")
@@ -343,21 +314,13 @@ def _replace_ai_delay(abc: AbcFile, method: int, code: bytes) -> tuple[bytes, li
     body = abc.bodies[method]
     instructions = disassemble(body.code)
     found = [i for i in range(1, len(instructions) - 2)
-             if _matches(abc, instructions[i - 1], Op.FINDPROPSTRICT, "Timer")
+             if matches(abc, instructions[i - 1], Op.FINDPROPSTRICT, "Timer")
              and instructions[i].opcode is Op.PUSHSHORT and instructions[i].args == [AI_DELAY]
              and instructions[i + 1].opcode is Op.PUSHBYTE and instructions[i + 1].args == [1]
-             and _matches(abc, instructions[i + 2], Op.CONSTRUCTPROP, "Timer") and instructions[i + 2].args[1] == 2]
+             and matches(abc, instructions[i + 2], Op.CONSTRUCTPROP, "Timer") and instructions[i + 2].args[1] == 2]
     if len(found) != 1:
         raise CantApply(f"{AI_CLASS}.state_begin_DelayAction: expected 1 new Timer({AI_DELAY}, 1), found {len(found)}")
     return assemble(body.code, instructions, {found[0]: code}, body.exceptions)
-
-
-def _matches(abc: AbcFile, ins: Instruction, op: Op, value: str) -> bool:
-    if ins.opcode is not op:
-        return False
-    if op is Op.PUSHSTRING:
-        return abc.strings[ins.args[0]] == value
-    return abc.name_of(ins.args[0]) == value
 
 
 FIX = Fix(name="gwent-speed-options",

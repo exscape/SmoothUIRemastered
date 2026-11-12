@@ -351,10 +351,19 @@ def _encode_push(value) -> bytes:
     if isinstance(value, bytes):
         return value
     if isinstance(value, PushDouble):
-        return bytes([Op.PUSHDOUBLE]) + encode_u30(value.pool_index)
+        return encode(Op.PUSHDOUBLE, value.pool_index)
     if -128 <= value <= 127:
         return bytes([Op.PUSHBYTE, value & 0xFF])
-    return bytes([Op.PUSHSHORT]) + encode_u30(value)
+    return encode(Op.PUSHSHORT, value)
+
+
+def encode(op: Op, *operands: int) -> bytes:
+    """An instruction whose operands are u30s (formats "", "u", "m", "uu" and "mu"), e.g.
+    encode(Op.CALLPROPVOID, name, 1)"""
+    operand_format = OPERANDS[op]
+    if operand_format not in ("", "u", "m", "uu", "mu") or len(operands) != len(operand_format):
+        raise ValueError(f"can't encode {op.name.lower()} with the operands {operands}")
+    return bytes([op]) + b"".join(map(encode_u30, operands))
 
 
 def branch_targets(instructions: list[Instruction]) -> set[int]:
@@ -383,7 +392,31 @@ def read_local(ins: Instruction) -> int | None:
 
 def encode_getlocal(local: int) -> bytes:
     """A getlocal instruction for this register (getlocalN where there is one)"""
-    return bytes([Op.GETLOCAL0 + local]) if local <= 3 else bytes([Op.GETLOCAL]) + encode_u30(local)
+    return bytes([Op.GETLOCAL0 + local]) if local <= 3 else encode(Op.GETLOCAL, local)
+
+
+# A pattern item (see find_pattern) that matches any getlocal: getlocal N or getlocal0-3
+ANY_GETLOCAL = (None, None)
+
+
+def matches(abc: AbcFile, ins: Instruction, op: Op | None, operand: str | None) -> bool:
+    """Whether ins is op with this operand: for pushstring its string, else its multiname's name (None: any).
+    op None: any getlocal (see ANY_GETLOCAL)."""
+    if op is None:
+        return ins.opcode in GETLOCALS
+    if ins.opcode is not op:
+        return False
+    return operand is None or (abc.strings[ins.args[0]] if op is Op.PUSHSTRING else abc.name_of(ins.args[0])) == operand
+
+
+def find_pattern(abc: AbcFile, instructions: list[Instruction], pattern: list[tuple[Op | None, str | None]], *,
+                 skip_no_ops: bool) -> list[list[int]]:
+    """The instruction indices of each run of instructions that matches pattern, [(op, operand)] (see matches), in
+    order. skip_no_ops: no-op instructions (NO_OPS) may come between the ones that match."""
+    indices = [i for i, ins in enumerate(instructions) if not skip_no_ops or ins.opcode not in NO_OPS]
+    runs = (indices[k:k + len(pattern)] for k in range(len(indices) - len(pattern) + 1))
+    return [run for run in runs
+            if all(matches(abc, instructions[i], op, operand) for i, (op, operand) in zip(run, pattern))]
 
 
 # --- Minimal stack model, used to find the operand expressions of a call ---

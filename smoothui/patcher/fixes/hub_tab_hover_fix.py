@@ -18,11 +18,12 @@ from ..swf_patcher.abc_bytecode import (
     Instruction,
     Op,
     assemble,
-    branch_targets,
     disassemble,
+    encode,
+    find_pattern,
 )
-from ..swf_patcher.abc_file import AbcFile, encode_u30
-from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit
+from ..swf_patcher.abc_file import AbcFile
+from .swf_edit import CantApply, Fix, FixKind, FixResult, SwfEdit, replace_run
 
 CLASS = "red.game.witcher3.menus.common_menu.TopBarNew"
 METHOD = "onTabItemMouseOut"
@@ -32,10 +33,8 @@ METHOD = "onTabItemMouseOut"
 def apply(swf: SwfEdit) -> FixResult:
     unit = swf.unit_of_class(CLASS)
     abc = unit.abc
-    instance = next(i for i in abc.instances if abc.full_name_of(i.name) == CLASS)
-    method = next((t.method for t in instance.traits if t.method is not None and abc.name_of(t.name) == METHOD), None)
-    if method is None or method not in abc.bodies:
-        raise CantApply(f"{CLASS} has no method {METHOD}")
+    _, instance = unit.instance(CLASS)
+    method = unit.method(CLASS, METHOD)
     body = abc.bodies[method]
     instructions = disassemble(body.code)
 
@@ -52,13 +51,9 @@ def apply(swf: SwfEdit) -> FixResult:
         raise CantApply(f"{CLASS} doesn't use mcTabList.getSelectedRenderer() anywhere")
 
     # ... _lastMouseOveredItem == this.mcTabList.getSelectedRenderer()
-    replacement = (bytes([Op.GETLOCAL0]) + bytes([Op.GETPROPERTY]) + encode_u30(tab_list)
-                   + bytes([Op.CALLPROPERTY]) + encode_u30(get_selected) + encode_u30(0)
-                   + bytes([instructions[last].opcode]))
-    inner = {ins.offset for ins in instructions[first + 1:last + 1]}
-    if inner & branch_targets(instructions):
-        raise CantApply(f"{METHOD} has a branch into the id comparison")
-    edits = {first: replacement, **{i: b"" for i in range(first + 1, last + 1)}}
+    replacement = (encode(Op.GETLOCAL0) + encode(Op.GETPROPERTY, tab_list) + encode(Op.CALLPROPERTY, get_selected, 0)
+                   + encode(instructions[last].opcode))
+    edits = replace_run(instructions, first, last, replacement, METHOD, "the id comparison")
     code, exceptions = assemble(body.code, instructions, edits, body.exceptions)
     unit.replace_method_code(method, code, exceptions)
     return FixResult(swf.sprites_of_class_or_subclasses(abc, instance.name),
@@ -69,14 +64,10 @@ def apply(swf: SwfEdit) -> FixResult:
 def _find_id_comparison(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int] | None:
     """(first, last) instruction indices of `<tab>.data.id == this.cachedSelectedId`, from the
     getproperty data on to the equals; None if the method doesn't contain it"""
-    pattern = [(Op.GETPROPERTY, "data"), (Op.GETPROPERTY, "id"), (Op.GETLOCAL0, None),
-               (Op.GETPROPERTY, "cachedSelectedId"), (Op.EQUALS, None)]
-    for start in range(len(instructions) - len(pattern) + 1):
-        window = instructions[start:start + len(pattern)]
-        if all(ins.opcode is op and (prop is None or abc.name_of(ins.args[0]) == prop)
-               for ins, (op, prop) in zip(window, pattern)):
-            return start, start + len(pattern) - 1
-    return None
+    found = find_pattern(abc, instructions, [(Op.GETPROPERTY, "data"), (Op.GETPROPERTY, "id"), (Op.GETLOCAL0, None),
+                                             (Op.GETPROPERTY, "cachedSelectedId"), (Op.EQUALS, None)],
+                         skip_no_ops=False)
+    return (found[0][0], found[0][-1]) if found else None
 
 
 def _selected_comparison_exists(abc: AbcFile, instructions: list[Instruction]) -> bool:

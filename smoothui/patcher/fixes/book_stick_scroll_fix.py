@@ -16,16 +16,25 @@ step a line. The keyboard, the mouse wheel and the scroll bar work as before.
 from __future__ import annotations
 
 from ..swf_patcher.abc_bytecode import (
-    NO_OPS,
     Instruction,
     Op,
     assemble,
-    branch_targets,
     disassemble,
+    encode,
+    find_pattern,
 )
-from ..swf_patcher.abc_file import PACKAGE_NAMESPACE, AbcFile, PoolAdditions, encode_u30
-from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
-from .text_stick_scroll_fix import CLASS, PACKAGE, abc_bytes, insert_class
+from ..swf_patcher.abc_file import PACKAGE_NAMESPACE, AbcFile, PoolAdditions
+from .swf_edit import (
+    CantApply,
+    Fix,
+    FixKind,
+    FixResult,
+    Phase,
+    SwfEdit,
+    read_abc,
+    replace_run,
+)
+from .text_stick_scroll_fix import ABC_PATH, CLASS, PACKAGE
 
 METHOD = "textAreaNavigation"
 TEXT_CLASS = "scaleform.clik.controls.TextArea"
@@ -36,11 +45,8 @@ HANDLER = "handleInput"
 def apply(swf: SwfEdit) -> FixResult:
     unit = swf.unit_of_class(TEXT_CLASS)
     abc = unit.abc
-    instance = next(i for i in abc.instances if abc.full_name_of(i.name) == TEXT_CLASS)
-    method = next((t.method for t in instance.traits if t.method is not None and abc.name_of(t.name) == HANDLER),
-                  None)
-    if method is None or method not in abc.bodies:
-        raise CantApply(f"{TEXT_CLASS} has no method {HANDLER}")
+    _, instance = unit.instance(TEXT_CLASS)
+    method = unit.method(TEXT_CLASS, HANDLER)
     body = abc.bodies[method]
     instructions = disassemble(body.code)
 
@@ -49,26 +55,23 @@ def apply(swf: SwfEdit) -> FixResult:
         if any(ins.opcode is Op.CALLPROPERTY and abc.name_of(ins.args[0]) == METHOD for ins in instructions):
             return FixResult([], f"{TEXT_CLASS}.{HANDLER} already calls {CLASS}.{METHOD}")
         raise CantApply(f"{TEXT_CLASS}.{HANDLER} doesn't read event.details.navEquivalent once")
-    first, last = found
-    inner = {ins.offset for ins in instructions[first + 1:last + 1]}
-    if inner & branch_targets(instructions):
-        raise CantApply(f"{HANDLER} has a branch into event.details.navEquivalent")
-
-    ours = abc_bytes(swf)
-    sprites = swf.sprites_of_class_or_subclasses(abc, instance.name)
-    if not sprites:
-        raise CantApply(f"no sprite is linked to {TEXT_CLASS} or a class that extends it")
-
     additions = PoolAdditions(abc)
     scroll_class = additions.qname(additions.namespace(PACKAGE_NAMESPACE, PACKAGE), CLASS)
     navigation = additions.qname(additions.namespace(PACKAGE_NAMESPACE, ""), METHOD)
     # StickScroll.textAreaNavigation(this, event) in place of event.details.navEquivalent: 3 values on the stack
     # at most, as in the method's `elapsed > AXIS_INPUT_DELAY * 2` after it
-    call = (bytes([Op.GETLEX]) + encode_u30(scroll_class) + bytes([Op.GETLOCAL0, Op.GETLOCAL1, Op.CALLPROPERTY])
-            + encode_u30(navigation) + encode_u30(2))
-    edits = {first: call, **{i: b"" for i in range(first + 1, last + 1)}}
+    call = (encode(Op.GETLEX, scroll_class) + encode(Op.GETLOCAL0) + encode(Op.GETLOCAL1)
+            + encode(Op.CALLPROPERTY, navigation, 2))
+    edits = replace_run(instructions, *found, call, HANDLER, "event.details.navEquivalent")
+
+    ours = read_abc(ABC_PATH)
+    swf.check_new_classes(ours)
+    sprites = swf.sprites_of_class_or_subclasses(abc, instance.name)
+    if not sprites:
+        raise CantApply(f"no sprite is linked to {TEXT_CLASS} or a class that extends it")
+
     unit.replace_methods({method: assemble(body.code, instructions, edits, body.exceptions)}, additions)
-    insert_class(swf, ours)
+    swf.insert_abc(PACKAGE, ours)
     return FixResult(sprites, f"added {PACKAGE}.{CLASS}; {HANDLER} scrolls with the left stick with it, at a speed "
                               "in pixels per second rather than a line per key repeat")
 
@@ -76,15 +79,9 @@ def apply(swf: SwfEdit) -> FixResult:
 def _find_navigation(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int] | None:
     """(first, last instruction index) of `event.details.navEquivalent` (event: the method's argument), the only
     one; None if there is none. Debug instructions in between are allowed."""
-    real = [i for i, ins in enumerate(instructions) if ins.opcode not in NO_OPS]
-    pattern = [(Op.GETLOCAL1, None), (Op.GETPROPERTY, "details"), (Op.GETPROPERTY, "navEquivalent")]
-    matches = []
-    for k in range(len(real) - len(pattern) + 1):
-        window = [instructions[i] for i in real[k:k + len(pattern)]]
-        if all(ins.opcode is op and (prop is None or abc.name_of(ins.args[0]) == prop)
-               for ins, (op, prop) in zip(window, pattern)):
-            matches.append((real[k], real[k + 2]))
-    return matches[0] if len(matches) == 1 else None
+    found = find_pattern(abc, instructions, [(Op.GETLOCAL1, None), (Op.GETPROPERTY, "details"),
+                                             (Op.GETPROPERTY, "navEquivalent")], skip_no_ops=True)
+    return (found[0][0], found[0][-1]) if len(found) == 1 else None
 
 
 FIX = Fix(name="book-stick-scroll-fix",

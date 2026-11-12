@@ -14,46 +14,42 @@ mouse wheel and the scroll bar work as before.
 
 from __future__ import annotations
 
-import struct
 from pathlib import Path
 
 from ..swf_patcher.abc_bytecode import (
-    NO_OPS,
+    ANY_GETLOCAL,
     Instruction,
     Op,
     assemble,
-    branch_targets,
     disassemble,
+    encode,
     encode_getlocal,
-    read_local,
+    find_pattern,
+    local_register,
 )
-from ..swf_patcher.abc_file import (
-    PACKAGE_NAMESPACE,
-    AbcFile,
-    PoolAdditions,
-    encode_u30,
-    parse_abc,
+from ..swf_patcher.abc_file import PACKAGE_NAMESPACE, AbcFile, PoolAdditions
+from .swf_edit import (
+    CantApply,
+    Fix,
+    FixKind,
+    FixResult,
+    Phase,
+    SwfEdit,
+    read_abc,
+    replace_run,
 )
-from ..swf_patcher.swf_tags import Tag, TagCode
-from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
 
 ABC_PATH = Path(__file__).with_name("text_stick_scroll.abc")
 PACKAGE, CLASS, METHOD = "smoothui.text", "StickScroll", "scroll"
 TEXT_CLASS = "red.game.witcher3.menus.common.TextAreaModuleCustomInput"
 HANDLER = "handleCustomInput"
-# DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
-DO_ABC_LAZY = 1
-
 
 
 def apply(swf: SwfEdit) -> FixResult:
     unit = swf.unit_of_class(TEXT_CLASS)
     abc = unit.abc
-    instance = next(i for i in abc.instances if abc.full_name_of(i.name) == TEXT_CLASS)
-    method = next((t.method for t in instance.traits if t.method is not None and abc.name_of(t.name) == HANDLER),
-                  None)
-    if method is None or method not in abc.bodies:
-        raise CantApply(f"{TEXT_CLASS} has no method {HANDLER}")
+    _, instance = unit.instance(TEXT_CLASS)
+    method = unit.method(TEXT_CLASS, HANDLER)
     body = abc.bodies[method]
     instructions = disassemble(body.code)
 
@@ -63,63 +59,36 @@ def apply(swf: SwfEdit) -> FixResult:
             return FixResult([], f"{TEXT_CLASS}.{HANDLER} already calls {CLASS}.{METHOD}")
         raise CantApply(f"{TEXT_CLASS}.{HANDLER} doesn't do mcScrollbar.position -= <tilt>")
     first, last, tilt = found
-    inner = {ins.offset for ins in instructions[first + 1:last + 1]}
-    if inner & branch_targets(instructions):
-        raise CantApply(f"{HANDLER} has a branch into mcScrollbar.position -= <tilt>")
-
-    ours = abc_bytes(swf)
-    sprites = swf.sprites_of_class_or_subclasses(abc, instance.name)
-    if not sprites:
-        raise CantApply(f"no sprite is linked to {TEXT_CLASS} or a class that extends it")
-
     additions = PoolAdditions(abc)
     scroll_class = additions.qname(additions.namespace(PACKAGE_NAMESPACE, PACKAGE), CLASS)
     scroll = additions.qname(additions.namespace(PACKAGE_NAMESPACE, ""), METHOD)
     # StickScroll.scroll(this, tilt): at most 3 values on the stack, as the code it replaces
-    call = (bytes([Op.GETLEX]) + encode_u30(scroll_class) + bytes([Op.GETLOCAL0]) + encode_getlocal(tilt)
-            + bytes([Op.CALLPROPVOID]) + encode_u30(scroll) + encode_u30(2))
-    edits = {first: call, **{i: b"" for i in range(first + 1, last + 1)}}
+    call = (encode(Op.GETLEX, scroll_class) + encode(Op.GETLOCAL0) + encode_getlocal(tilt)
+            + encode(Op.CALLPROPVOID, scroll, 2))
+    edits = replace_run(instructions, first, last, call, HANDLER, "mcScrollbar.position -= <tilt>")
+
+    ours = read_abc(ABC_PATH)
+    swf.check_new_classes(ours)
+    sprites = swf.sprites_of_class_or_subclasses(abc, instance.name)
+    if not sprites:
+        raise CantApply(f"no sprite is linked to {TEXT_CLASS} or a class that extends it")
+
     unit.replace_methods({method: assemble(body.code, instructions, edits, body.exceptions)}, additions)
-    insert_class(swf, ours)
+    swf.insert_abc(PACKAGE, ours)
     return FixResult(sprites, f"added {PACKAGE}.{CLASS}; {HANDLER} scrolls with it, at a speed in pixels per "
                               "second rather than a tilt in lines per frame")
-
-
-def abc_bytes(swf: SwfEdit) -> bytes:
-    """Our compiled StickScroll class; CantApply if the file already defines a class of it"""
-    try:
-        ours = ABC_PATH.read_bytes()
-    except FileNotFoundError:
-        raise CantApply(f"{ABC_PATH.name} is missing; build it with dev-tools/build-as3.py") from None
-    if clash := swf.class_names() & {parse_abc(ours).full_name_of(i.name) for i in parse_abc(ours).instances}:
-        raise CantApply(f"the file already defines {', '.join(sorted(clash))}")
-    return ours
-
-
-def insert_class(swf: SwfEdit, ours: bytes):
-    """Add abc_bytes' class to the file, as a DoABC tag of its own"""
-    swf.insert_abc(Tag(TagCode.DO_ABC, struct.pack("<I", DO_ABC_LAZY) + PACKAGE.encode() + b"\0" + ours,
-                       long_header=True))
 
 
 def _find_scroll(abc: AbcFile, instructions: list[Instruction]) -> tuple[int, int, int] | None:
     """(first, last instruction index, the tilt's local variable) of `mcScrollbar.position -= <local>`, the
     only such statement; None if there is none. Debug instructions in between are allowed."""
-    real = [i for i, ins in enumerate(instructions) if ins.opcode not in NO_OPS]
-    pattern = [(Op.GETLEX, "mcScrollbar"), (Op.GETLEX, "mcScrollbar"), (Op.GETPROPERTY, "position"),
-               (Op.GETLOCAL, None), (Op.SUBTRACT, None), (Op.SETPROPERTY, "position")]
-    matches = []
-    for k in range(len(real) - len(pattern) + 1):
-        window = [instructions[i] for i in real[k:k + len(pattern)]]
-        if all(_matches(abc, ins, op, prop) for ins, (op, prop) in zip(window, pattern)):
-            matches.append((real[k], real[k + len(pattern) - 1], read_local(window[3])))
-    return matches[0] if len(matches) == 1 else None
-
-
-def _matches(abc: AbcFile, ins: Instruction, op: Op, prop: str | None) -> bool:
-    if op is Op.GETLOCAL:   # any getlocal
-        return read_local(ins) is not None
-    return ins.opcode is op and (prop is None or abc.name_of(ins.args[0]) == prop)
+    found = find_pattern(abc, instructions, [(Op.GETLEX, "mcScrollbar"), (Op.GETLEX, "mcScrollbar"),
+                                             (Op.GETPROPERTY, "position"), ANY_GETLOCAL, (Op.SUBTRACT, None),
+                                             (Op.SETPROPERTY, "position")], skip_no_ops=True)
+    if len(found) != 1:
+        return None
+    run = found[0]
+    return run[0], run[-1], local_register(instructions[run[3]])
 
 
 FIX = Fix(name="text-stick-scroll-fix",

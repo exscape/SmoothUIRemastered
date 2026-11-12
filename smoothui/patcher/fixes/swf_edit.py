@@ -7,9 +7,17 @@ import struct
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 from ..swf import MalformedSwfError, swf_get_header_offsets
-from ..swf_patcher.abc_file import AbcFile, PoolAdditions, parse_abc, serialize_abc
+from ..swf_patcher.abc_bytecode import Instruction, branch_targets
+from ..swf_patcher.abc_file import (
+    AbcFile,
+    InstanceInfo,
+    PoolAdditions,
+    parse_abc,
+    serialize_abc,
+)
 from ..swf_patcher.swf_tags import (
     Tag,
     TagCode,
@@ -27,6 +35,8 @@ from ..swf_patcher.swf_tags import (
 # sprites, morph shapes and videos, and Scaleform's DefineExternalImage, DefineSubImage and DefineExternalImage2
 DEFINE_CODES = frozenset({2, 6, 7, 10, 11, 13, 14, 20, 21, 22, 32, 33, 34, 35, 36, 37, 39, 46, 48, 60, 75, 83, 84,
                           90, 91, 1001, 1008, 1009})
+# DoABC flags: kDoAbcLazyInitializeFlag, as Flash sets it
+DO_ABC_LAZY = 1
 
 
 class Phase(Enum):
@@ -88,6 +98,25 @@ class AbcEdit:
     @property
     def abc(self) -> AbcFile:
         return self._swf._own_abc(self.tag_index)
+
+    def instance(self, class_name: str) -> tuple[int, InstanceInfo]:
+        """(index in abc.instances, instance info) of a class this ABC defines; CantApply if it has none"""
+        abc = self.abc
+        found = next(((index, instance) for index, instance in enumerate(abc.instances)
+                      if abc.full_name_of(instance.name) == class_name), None)
+        if found is None:
+            raise CantApply(f"found no class {class_name}")
+        return found
+
+    def method(self, class_name: str, method_name: str) -> int:
+        """The index of a method of a class this ABC defines, by name; CantApply if it has none with code"""
+        abc = self.abc
+        _, instance = self.instance(class_name)
+        method = next((t.method for t in instance.traits
+                       if t.method is not None and abc.name_of(t.name) == method_name), None)
+        if method is None or method not in abc.bodies:
+            raise CantApply(f"{class_name} has no method {method_name}")
+        return method
 
     def replace_method_code(self, method: int, code: bytes, exceptions: list):
         """Give a method (by its index in this ABC) new bytecode and exception table"""
@@ -230,11 +259,19 @@ class SwfEdit:
                     grew = True
         return sorted({sprite for name in names for sprite in self.sprites_of_class(abc.full_name_of(name))})
 
-    def insert_abc(self, tag: Tag):
-        """Add a DoABC tag (classes of our own) right after the file's own, so that its classes are
-        defined before anything runs. It is not one of the file's own tags (see unit_of_class)."""
-        if tag.code != TagCode.DO_ABC or not self._abc_indices:
+    def check_new_classes(self, abc: bytes):
+        """CantApply if the file already defines a class that abc (an ABC file of our own classes) defines"""
+        ours = parse_abc(abc)
+        if clash := self.class_names() & {ours.full_name_of(instance.name) for instance in ours.instances}:
+            raise CantApply(f"the file already defines {', '.join(sorted(clash))}")
+
+    def insert_abc(self, package: str, abc: bytes):
+        """Add a DoABC tag of our own classes (abc, an ABC file; the tag is named by their package, as Flash
+        names it) right after the file's own, so that its classes are defined before anything runs. It is not
+        one of the file's own tags (see unit_of_class)."""
+        if not self._abc_indices:
             raise CantApply("the file has no DoABC tag")
+        tag = Tag(TagCode.DO_ABC, struct.pack("<I", DO_ABC_LAZY) + package.encode() + b"\0" + abc, long_header=True)
         self.tags.insert(self._abc_indices[-1] + 1, tag)
         self._added_abc.append(tag)
         self._index_tags()
@@ -242,6 +279,24 @@ class SwfEdit:
 
     def body(self) -> bytes:
         return self.header + serialize_tags(self.tags)
+
+
+def read_abc(path: Path) -> bytes:
+    """An ABC file of our own classes (see dev-tools/build-as3.py); CantApply if it is missing"""
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        raise CantApply(f"{path.name} is missing; build it with dev-tools/build-as3.py") from None
+
+
+def replace_run(instructions: list[Instruction], first: int, last: int, code: bytes, where: str,
+                what: str) -> dict[int, bytes]:
+    """The edits (see abc_bytecode.assemble) that replace instructions[first:last + 1] with code; CantApply
+    ("<where> has a branch into <what>") if a branch jumps into them past the first"""
+    inner = {ins.offset for ins in instructions[first + 1:last + 1]}
+    if inner & branch_targets(instructions):
+        raise CantApply(f"{where} has a branch into {what}")
+    return {first: code, **{i: b"" for i in range(first + 1, last + 1)}}
 
 
 def label_frames(tags: list[Tag]) -> dict[str, int]:
