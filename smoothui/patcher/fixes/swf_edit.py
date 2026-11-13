@@ -31,8 +31,8 @@ from ..swf_patcher.swf_tags import (
     split_do_abc,
 )
 
-# The tags that define a character (its id comes first): SWF's DefineShape 2, DefineBits 6, DefineButton 7,
-# DefineFont 10, DefineText 11, DefineFontInfo 13, DefineSound 14, DefineBitsLossless 20, DefineBitsJPEG2 21,
+# The tags that define a character, or (DefineFontInfo 13) add to a font's definition; its id comes first: SWF's
+# DefineShape 2, DefineBits 6, DefineButton 7, DefineFont 10, DefineText 11, DefineFontInfo 13, DefineSound 14, DefineBitsLossless 20, DefineBitsJPEG2 21,
 # DefineShape2 22, DefineShape3 32, DefineText2 33, DefineButton2 34, DefineBitsJPEG3 35, DefineBitsLossless2 36,
 # DefineEditText 37, DefineSprite 39, DefineMorphShape 46, DefineFont2 48, DefineVideoStream 60, DefineFont3 75,
 # DefineShape4 83, DefineMorphShape2 84, DefineBitsJPEG4 90 and DefineFont4 91, and Scaleform's

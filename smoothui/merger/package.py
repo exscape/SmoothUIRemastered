@@ -52,10 +52,10 @@ RECORDS = "packages"
 class CopyRecord:
     """The copy a manifest record is about: what a build decided on, to tell whether it changed without
     reading it"""
-    mod: str | None             # its mod's folder, or GAME_FILES
-    bundle: str | None          # the bundle's file name
-    source_size: int | None
-    source_crc32: int | None
+    mod: str | None = None              # its mod's folder, or GAME_FILES
+    bundle: str | None = None           # the bundle's file name
+    source_size: int | None = None
+    source_crc32: int | None = None
 
     def same_copy(self, source) -> bool:
         """Whether this is about a copy (a SourceFile): the same mod, bundle, size and CRC32"""
@@ -73,7 +73,8 @@ class HeldRecord(CopyRecord):
     """A file the package holds, patched"""
     output_size: int | None = None      # the patched copy, to tell whether the package is intact
     output_crc32: int | None = None
-    forced: bool = False                # patched anyway, as the user chose: then also the three below
+    forced: bool = False                # patched anyway, as the user chose: then also forced_since, reasons
+                                        # and reason
     fixes_not_applied: tuple[str, ...] = ()
     speed: float | None = None          # see policy.PackageFile.speed
     forced_since: str | None = None     # the date it was first forced
@@ -108,8 +109,8 @@ class NotHeldRecord(CopyRecord):
     fps: float | None = None            # UNCHANGED: the frame rate its copy runs at
     speed: float | None = None          # UNCHANGED: see policy.PackageFile.speed
     known_broken: tuple[str, ...] = ()  # KNOWN_BROKEN: the reviews that say so (see policy.PackageFile.known_broken)
-    as_is: bool = False                 # the package holds the mod's copy unpatched: then also the output's size
-    output_size: int | None = None     # and CRC32
+    as_is: bool = False                 # the package holds the mod's copy unpatched: then also these two
+    output_size: int | None = None
     output_crc32: int | None = None
     cant_hold: bool = False             # it should, but the copy can't be read
 
@@ -357,10 +358,10 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: P
     assert installed.manifest is not None   # usable
     for file in files:
         assert file.source.toc_entry is not None    # a copy in a bundle
-        # (CopyRecord's fields)
-        source = (file.mod, file.source.file.name, file.source.size, file.source.toc_entry.crc)
+        source: dict[str, Any] = {"mod": file.mod, "bundle": file.source.file.name, "source_size": file.source.size,
+                                  "source_crc32": file.source.toc_entry.crc}    # (CopyRecord's fields)
         if file.status.included:
-            held[file.path] = HeldRecord(*source, output_size=file.entry.size, output_crc32=file.entry.crc,
+            held[file.path] = HeldRecord(**source, output_size=file.entry.size, output_crc32=file.entry.crc,
                                          forced=file.forced, fixes_not_applied=tuple(file.fixes_not_applied),
                                          speed=file.speed)
             if file.forced:
@@ -372,18 +373,18 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: P
         elif file.status is FileStatus.KNOWN_BROKEN:
             # Its other issues don't matter: it is left out anyway
             not_held[file.path] = NotHeldRecord(
-                *source, status=file.status,
+                **source, status=file.status,
                 reasons=tuple(issue.message for issue in file.issues if issue.review in file.known_broken),
                 known_broken=tuple(file.known_broken))
         else:
             unchanged = file.status is FileStatus.UNCHANGED
             not_held[file.path] = NotHeldRecord(
-                *source, status=file.status,
+                **source, status=file.status,
                 reasons=(file.error,) if file.error else tuple(issue.message for issue in file.issues),
                 reason=file.reason if file.status is FileStatus.LEFT_OUT else None,
                 fps=file.fps if unchanged else None, speed=file.speed if unchanged else None)
     for copy in as_is:     # (It keeps its status: only where the game gets it from differs)
-        record = not_held.get(copy.path) or NotHeldRecord(copy.source.origin, None, None, None, status=copy.status)
+        record = not_held.get(copy.path) or NotHeldRecord(mod=copy.source.origin, status=copy.status)
         record = replace(record, bundle=copy.source.file.name, source_size=copy.source.size,
                          source_crc32=copy.source.toc_entry.crc)
         if copy.entry is None:

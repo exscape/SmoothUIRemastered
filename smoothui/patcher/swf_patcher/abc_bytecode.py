@@ -439,6 +439,8 @@ BINARY = frozenset({
     Op.SUBTRACT_I, Op.MULTIPLY_I, Op.INSTANCEOF, Op.IN, Op.ASTYPELATE, Op.ISTYPELATE, Op.NEXTNAME, Op.NEXTVALUE,
     Op.HASNEXT,
 })
+
+
 def stack_effect(abc: AbcFile, ins: Instruction) -> tuple[int, int] | None:
     """(values popped, values pushed), or None for control flow and unmodelled instructions"""
     op, args = ins.opcode, ins.args

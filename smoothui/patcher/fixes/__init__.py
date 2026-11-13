@@ -2,9 +2,8 @@
 Smooth UI adds to them.
 
 A profile enables them per file, with "fix: NAME" (see config/profile_default.txt), or the user does in the
-merger's settings (see requires.OPTIONAL_FIXES). Each fix is a
-module here that defines FIX, a Fix (see swf_edit.py), and is listed in FIXES below. Its apply(swf: SwfEdit)
--> FixResult raises CantApply if the file isn't as the fix expects, and returns no sprites if there is nothing
+merger's settings (see requires.OPTIONAL_FIXES). Each fix is a module here that defines FIX, a Fix (see
+swf_edit.py), and is listed in FIXES below. Its apply(swf: SwfEdit) -> FixResult raises CantApply if the file isn't as the fix expects, and returns no sprites if there is nothing
 to fix (the bug is fixed in this version of the file). Its phase says when it runs (most run before the
 rescale). Its kind (a FixKind) and consequence tell users what not having the fix means, so that they can
 choose whether to use a file the fix can't apply to (see merger/policy.py). A message shows the kind's

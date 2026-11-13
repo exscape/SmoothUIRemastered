@@ -573,7 +573,7 @@ def _copy_of(origin):
 
 
 # For a file the manifest has no record of in not_held
-_NO_RECORD = NotHeldRecord(None, None, None, None)
+_NO_RECORD = NotHeldRecord()
 _CHANGES_DONT_SHOW = "{mod}'s changes don't show."
 _NOT_MERGED = "so it isn't merged."
 

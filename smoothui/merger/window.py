@@ -1048,7 +1048,7 @@ class MergerWindow:
             (getattr(self, function) if isinstance(function, str) else function)(*args)
 
     def show_log(self, record):
-        text = ("\n" if getattr(record, "heading", None) else "") + LogFormatter().format(record)
+        text = ("\n" if getattr(record, "heading", 0) else "") + LogFormatter().format(record)
         tone = Tone.ERROR if record.levelno >= logging.ERROR else Tone.WARNING if record.levelno >= logging.WARNING else None
         style = QTextCharFormat()
         if tone:

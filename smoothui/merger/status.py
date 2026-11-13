@@ -58,8 +58,8 @@ class Reason(StrEnum):
 
 
 class Cause(StrEnum):
-    """Why the launch check finds a file as it does, in a word, for the window to group files by: state.FileState's
-    cause, where a FileStatus also can be (see there). No value is also a FileStatus's."""
+    """Why the launch check finds a file as it does, in a word, for the window to group files by: state.FileState.cause,
+    which can also be a FileStatus (see there). No value is also a FileStatus's."""
     SMOOTHUI = "smoothui"           # Smooth UI was updated since the build
     MERGER = "merger"               # the merger was updated since the build
     FPS = "fps"                     # the file's frame rate changed since the build
