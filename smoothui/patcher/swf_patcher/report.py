@@ -1,4 +1,5 @@
-"""The rescale report: a JSON-compatible dict, and its human-readable text form.
+"""The rescale report: a JSON-compatible dict, and its human-readable text form. Code reads it through
+manifests.Report.
 
 The dict only holds plain values (str, int, float, bool, None, lists and dicts), so it survives a
 round trip through JSON unchanged. Everything that varies per sprite is in the "sprites" list, one
@@ -45,6 +46,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 
+from ...manifests import FixRecord, Report
 from .movie import SwfMovie
 from .options import RescaleOptions, format_speed, parse_speed, speed_rule_text
 from .planner import RescalePlan
@@ -104,13 +106,13 @@ def _pattern_records(tokens, matches) -> list[dict]:
     return [{"pattern": str(token), "matched": matched} for token, matched in zip(tokens, matches)]
 
 
-def report_settings(report: dict) -> list[tuple[str, list[int]]]:
+def report_settings(report: Report) -> list[tuple[str, list[int]]]:
     """(setting as written in a profile, ids of the sprites it matched) for each speed rule, include,
     exclude and fix in a report. A fix matched the sprites it changed."""
-    return ([(speed_rule_text(parse_speed(rule["speed"]), rule["pattern"]), rule["matched"]) for rule in report["rules"]]
-            + [(f"include: {record['pattern']}", record["matched"]) for record in report["include"]]
-            + [(f"exclude: {record['pattern']}", record["matched"]) for record in report["exclude"]]
-            + [(f"fix: {fix['name']}", fix["matched"]) for fix in report.get("fixes", [])])
+    return ([(speed_rule_text(parse_speed(rule["speed"]), rule["pattern"]), rule["matched"]) for rule in report.rules]
+            + [(f"include: {record['pattern']}", record["matched"]) for record in report.include]
+            + [(f"exclude: {record['pattern']}", record["matched"]) for record in report.exclude]
+            + [(f"fix: {fix.name}", fix.matched) for fix in report.fixes])
 
 
 def _sprite_record(movie: SwfMovie, plan: RescalePlan, sprite) -> dict:
@@ -137,13 +139,13 @@ def format_unmet_rule(unmet: dict) -> str:
     return f"{unmet['rule']}: sprite {unmet['id']} {unmet['class'] or '(no class)'}: {unmet['problem']}"
 
 
-def format_fix(fix: dict) -> str:
-    return f"fix: {fix['name']}: {fix['result']}: {fix['detail']}"
+def format_fix(fix: FixRecord) -> str:
+    return f"fix: {fix.name}: {fix.outcome}: {fix.detail}"
 
 
 def report_to_text(report: dict) -> str:
     """Human-readable version of a report dict (as returned by build_report, or loaded from JSON)"""
-    fixes = [format_fix(fix) for fix in report.get("fixes", [])]
+    fixes = [format_fix(fix) for fix in Report(report).fixes]
     if report["new_fps"] is None:
         summary = (f"source {report['old_fps']:.3f} fps; not rescaled (retime: false)" if report.get("retime") is False
                    else f"source {report['old_fps']:.3f} fps is already at or above the target "

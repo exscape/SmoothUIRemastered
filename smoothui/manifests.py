@@ -1,14 +1,23 @@
 """Smooth UI's build versions (e.g. v0.3.2-120fps) and its release manifests (manifests/<version>.json),
 as the build tools write them and the merger reads them. Light: the merger's launch check imports it.
+
+A manifest is read through ReleaseManifest, FileRecord and Report: views of the JSON as loaded, which
+convert nothing on loading and never rewrite it, with properties for what the code reads and the defaults
+for older manifests. Their data is the dict as written, for anything else (e.g. the per-sprite records).
 """
+
+from __future__ import annotations
 
 import json
 import re
 import subprocess
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 from .common import normalize_version
 from .paths import FROZEN, MANIFEST_DIR, MANIFEST_DIRS, REPO_ROOT
+from .requires import fix_requirement
 
 # A build's version: the base version (created_mod_version in config.toml), then the frame rate
 BUILD_VERSION = re.compile(r"(v.+?)-(\d+)fps")
@@ -62,7 +71,8 @@ def release_manifest_paths():
     """{version: path} of every release manifest (<version>.json) in MANIFEST_DIRS. A version found in
     several of them (a downloaded copy of one the tool also ships) uses the copy built last."""
     def created_at(path):
-        return (load_manifest(path) or {}).get("created_at") or ""
+        manifest = load_manifest(path)
+        return (manifest.created_at if manifest else None) or ""
     found = {}
     for directory in MANIFEST_DIRS:
         for path in directory.glob("*.json"):
@@ -84,41 +94,237 @@ def manifest_path(version):
     """Where build-main.py writes a mod release's manifest: manifests/<version>.json"""
     return MANIFEST_DIR / f"{normalize_version(version)}.json"
 
-def load_manifest(version_or_path):
-    """A manifest, given a release's version (see release_manifest_paths) or a path to it; None if it
-    doesn't exist"""
+def load_manifest(version_or_path) -> ReleaseManifest | None:
+    """A release manifest, given a release's version (see release_manifest_paths) or a path to it; None if
+    it doesn't exist"""
     if str(version_or_path).endswith(".json"):
         path = Path(version_or_path)
     else:
         path = release_manifest_paths().get(normalize_version(version_or_path))
     if path is None or not path.is_file():
         return None
-    return read_manifest(path)
+    return ReleaseManifest(read_manifest(path))
 
 def read_manifest(path):
-    """The manifest at path, which must exist"""
+    """The JSON of the manifest at path, which must exist (for a release manifest: ReleaseManifest.read)"""
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
-# What a release does with the game's own copy of a file (a record's "game_copy"; see the "game copy:" setting
-# in build/profile.py). Mods' copies are patched whatever it is.
-SHIPPED, MERGER_ONLY, UNUSED = "shipped", "merger-only", "unused"
-GAME_COPIES = (SHIPPED, MERGER_ONLY, UNUSED)
 
-def game_copy(record) -> str:
-    """A file record's game copy (see GAME_COPIES). Format 1 manifests have no "game_copy", and none of them
-    has unused files: "shipped": false there means merger-only."""
-    return record.get("game_copy") or (SHIPPED if record.get("shipped", True) else MERGER_ONLY)
+class GameCopy(StrEnum):
+    """What a release does with the game's own copy of a file (a record's "game_copy"; see the "game copy:"
+    setting in build/profile.py). Mods' copies are patched whatever it is."""
+    SHIPPED = "shipped"
+    MERGER_ONLY = "merger-only"     # only the merger builds it (a group such as the HUD)
+    UNUSED = "unused"               # the release doesn't ship it: only mods' copies are patched
 
-def shipped_files(manifest) -> dict:
-    """The records of the files a release ships, by path as recorded. Its manifest also records files it
-    doesn't ship (see game_copy): those only the merger builds, and those only mods use."""
-    return {path: record for path, record in manifest["files"].items() if game_copy(record) == SHIPPED}
 
-def compat_files(manifest) -> dict:
-    """The records of the files that compat patches patch mods' copies of: all but the merger-only ones (a
-    group such as the HUD, which only the merger builds, as it must be patched whole)"""
-    return {path: record for path, record in manifest["files"].items() if game_copy(record) != MERGER_ONLY}
+class FixOutcome(StrEnum):
+    """A fix's "result" in its report record"""
+    APPLIED = "applied"
+    NOT_NEEDED = "not needed"       # the file has no bug to fix (fixed in this version of it)
+    CANT_APPLY = "can't apply"      # the file isn't as the fix expects
+
+
+@dataclass(frozen=True, slots=True)
+class FixRecord:
+    """What one fix did to a file (see patcher/fixes/); to_json gives its record in the file's rescale report"""
+    name: str
+    outcome: FixOutcome
+    matched: list[int]      # ids of the sprites it changed
+    detail: str             # what it did, or why not
+
+    @classmethod
+    def from_json(cls, data: dict) -> FixRecord:
+        return cls(data["name"], FixOutcome(data["result"]), data["matched"], data["detail"])
+
+    def to_json(self) -> dict:
+        return {"name": self.name, "result": self.outcome, "matched": self.matched, "detail": self.detail}
+
+
+@dataclass(frozen=True, slots=True)
+class Report:
+    """A file's rescale report (its layout: patcher/swf_patcher/report.py), as a patch result or a release
+    manifest holds it"""
+    data: dict
+
+    @property
+    def old_fps(self) -> float:
+        return self.data["old_fps"]
+
+    @property
+    def new_fps(self) -> float | None:
+        """None if the frame rate was left unchanged"""
+        return self.data["new_fps"]
+
+    @property
+    def target_fps(self) -> float:
+        return self.data["target_fps"]
+
+    @property
+    def animated(self) -> bool:
+        """For a file left unchanged: whether it has clips a rescale would stretch (False in reports from
+        before it was recorded)"""
+        return self.data.get("animated", False)
+
+    @property
+    def retime(self) -> bool:
+        """False if its settings said not to retime it (see PatchSettings.retime)"""
+        return self.data.get("retime", True)
+
+    @property
+    def source_fps(self) -> float | None:
+        """The frame rate it was rescaled from, if its settings gave one (see PatchSettings.source_fps)"""
+        return self.data.get("source_fps")
+
+    @property
+    def rules(self) -> list[dict]:
+        return self.data["rules"]
+
+    @property
+    def include(self) -> list[dict]:
+        return self.data["include"]
+
+    @property
+    def exclude(self) -> list[dict]:
+        return self.data["exclude"]
+
+    @property
+    def unmet_rules(self) -> list[dict]:
+        return self.data["unmet_rules"]
+
+    @property
+    def warnings(self) -> list[dict]:
+        return self.data["warnings"]
+
+    @property
+    def sprites(self) -> list[dict]:
+        return self.data.get("sprites", [])
+
+    @property
+    def fixes(self) -> list[FixRecord]:
+        """Empty in reports from before fixes were recorded"""
+        return [FixRecord.from_json(fix) for fix in self.data.get("fixes", ())]
+
+    @property
+    def fix_names(self) -> list[str]:
+        """The names of its fixes (see fixes), reading nothing else of their records"""
+        return [fix["name"] for fix in self.data.get("fixes", ())]
+
+
+@dataclass(frozen=True, slots=True)
+class FileRecord:
+    """A release manifest's record of one file (see build/shared.py's write_manifest)"""
+    data: dict
+
+    @property
+    def fps(self) -> float:
+        """The frame rate it was patched to"""
+        return self.data["fps"]
+
+    @property
+    def group(self) -> str | None:
+        """The group of files it is in (see build/profile.py's Group), if any"""
+        return self.data.get("group")
+
+    @property
+    def game_copy(self) -> GameCopy:
+        """Format 1 manifests have no "game_copy", and none of them has unused files: "shipped": false there
+        means merger-only."""
+        if value := self.data.get("game_copy"):
+            return GameCopy(value)
+        return GameCopy.SHIPPED if self.data.get("shipped", True) else GameCopy.MERGER_ONLY
+
+    @property
+    def report(self) -> Report:
+        """Its rescale report (empty in manifests from before the 60 and 120 fps builds that lack one)"""
+        return Report(self.data.get("report", {}))
+
+    @property
+    def source_size(self) -> int | None:
+        return self.data.get("source_size")
+
+    @property
+    def source_crc32(self) -> int | None:
+        """None in manifests from before it was recorded"""
+        return self.data.get("source_crc32")
+
+    @property
+    def source_sha256(self) -> str:
+        return self.data["source_sha256"]
+
+    @property
+    def output_size(self) -> int:
+        return self.data["output_size"]
+
+    @property
+    def output_crc32(self) -> int | None:
+        """None in manifests from before it was recorded"""
+        return self.data.get("output_crc32")
+
+    @property
+    def output_swf_sha256(self) -> str:
+        return self.data["output_swf_sha256"]
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseManifest:
+    """A release manifest (see build/shared.py's write_manifest)"""
+    data: dict
+
+    @classmethod
+    def read(cls, path) -> ReleaseManifest:
+        """The manifest at path, which must exist"""
+        return cls(read_manifest(path))
+
+    @property
+    def version(self) -> str:
+        """The build's version, e.g. v0.3.2-120fps"""
+        return self.data["created_mod_version"]
+
+    @property
+    def fps(self) -> int | None:
+        """The build's frame rate; None for manifests from before the 60 and 120 fps builds"""
+        return self.data.get("fps")
+
+    @property
+    def format(self) -> int:
+        """Its manifest_format (see MANIFEST_FORMAT)"""
+        return self.data.get("manifest_format", 1)
+
+    @property
+    def created_at(self) -> str | None:
+        return self.data.get("created_at")
+
+    @property
+    def requires(self) -> set[str]:
+        """What the release requires of the merger (see requires.py). Manifests from before "requires" only
+        need the fixes their reports name."""
+        if "requires" in self.data:
+            return set(self.data["requires"])
+        return {fix_requirement(name) for record in self.files.values() for name in record.report.fix_names}
+
+    @property
+    def groups(self) -> dict[str, dict]:
+        """{group: the settings of its files} (see build/release.py's group_record)"""
+        return self.data.get("groups", {})
+
+    @property
+    def files(self) -> dict[str, FileRecord]:
+        """{path as recorded: its record}"""
+        return {path: FileRecord(record) for path, record in self.data["files"].items()}
+
+    @property
+    def shipped_files(self) -> dict[str, FileRecord]:
+        """The records of the files the release ships. Its manifest also records files it doesn't ship (see
+        FileRecord.game_copy): those only the merger builds, and those only mods use."""
+        return {path: record for path, record in self.files.items() if record.game_copy is GameCopy.SHIPPED}
+
+    @property
+    def compat_files(self) -> dict[str, FileRecord]:
+        """The records of the files that compat patches patch mods' copies of: all but the merger-only ones
+        (a group such as the HUD, which only the merger builds, as it must be patched whole)"""
+        return {path: record for path, record in self.files.items() if record.game_copy is not GameCopy.MERGER_ONLY}
 
 # The format of the release manifests this code writes and can read (their "manifest_format"; one without
 # it is format 1). A merger that gets a manifest of a newer format (shipped with a newer Smooth UI, or
@@ -130,9 +336,6 @@ def compat_files(manifest) -> dict:
 # files), and the patcher finds fewer warnings in the game's code, so older mergers would show the ones
 # the manifest no longer records.
 MANIFEST_FORMAT = 2
-
-def manifest_format(manifest: dict) -> int:
-    return manifest.get("manifest_format", 1)
 
 # Which build a Smooth UI mod folder holds (its version and frame rate), next to content\ (the game only
 # reads content\). The merger identifies the installed build by it, checked against that build's manifest.

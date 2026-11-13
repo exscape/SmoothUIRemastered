@@ -19,9 +19,7 @@ requirement to RETIRED there, so the merger tells users to update Smooth UI.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import StrEnum
-
+from ...manifests import FixOutcome, FixRecord
 from ...requires import FIX_NAMES
 from . import (
     book_fade_fix,
@@ -54,25 +52,6 @@ FIXES = {module.FIX.name: module.FIX for module in (
     health_bar_glow_fix, hub_tab_hover_fix, menu_slide_fix, text_stick_scroll_fix)}
 if set(FIXES) != FIX_NAMES:
     raise RuntimeError(f"requires.py's FIX_NAMES must list exactly the fixes: {', '.join(sorted(FIXES))}")
-
-
-class FixOutcome(StrEnum):
-    """A fix's "result" in its report record"""
-    APPLIED = "applied"
-    NOT_NEEDED = "not needed"       # the file has no bug to fix (fixed in this version of it)
-    CANT_APPLY = "can't apply"      # the file isn't as the fix expects
-
-
-@dataclass(frozen=True, slots=True)
-class FixRecord:
-    """What one fix did to a file; to_json gives its record in the file's rescale report"""
-    name: str
-    outcome: FixOutcome
-    matched: list[int]      # ids of the sprites it changed
-    detail: str             # what it did, or why not
-
-    def to_json(self) -> dict:
-        return {"name": self.name, "result": self.outcome, "matched": self.matched, "detail": self.detail}
 
 
 def check_fix_name(name: str):

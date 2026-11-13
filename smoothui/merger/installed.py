@@ -19,15 +19,15 @@ from ..common import SmoothUIError, profile_key
 from ..manifests import (
     BUILD_RECORD,
     MANIFEST_FORMAT,
+    GameCopy,
+    ReleaseManifest,
     is_dev_version,
     known_version_key,
     load_manifest,
-    manifest_format,
     release_manifest_paths,
-    shipped_files,
     version_key,
 )
-from ..requires import KNOWN, RETIRED, manifest_requires
+from ..requires import KNOWN, RETIRED
 from ..witcher3.mod_bundles import read_bundle_tocs
 from .load_order import Mod, is_mod_folder
 
@@ -54,7 +54,7 @@ class Installed:
     folder: str | None = None       # the mod's folder in Mods\
     version: str | None = None      # the build's version, e.g. v0.3.2-120fps
     fps: int | None = None
-    manifest: dict | None = None
+    manifest: ReleaseManifest | None = None
     sizes_only: bool = False        # matched by sizes only: the manifest has no CRC32s
     newer_release: str | None = None    # a newer Smooth UI release the merger has a manifest for
 
@@ -88,7 +88,7 @@ def smoothui_mod(folders, mods: list[Mod]) -> Mod | Installed:
 
 
 def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | None,
-             manifests: dict[str, dict]) -> Installed:
+             manifests: dict[str, ReleaseManifest]) -> Installed:
     """Which build a Smooth UI mod folder holds.
 
     files: {profile key: (size, crc32)} of every file in its bundles; record_text: its BUILD_RECORD, or None;
@@ -131,18 +131,25 @@ def identify(folder: str, files: dict[str, tuple[int, int]], record_text: str | 
     return _known(folder, version, manifests[version], matches[version], manifests)
 
 
-def needs_newer_merger(manifest) -> bool:
+def needs_newer_merger(manifest: ReleaseManifest) -> bool:
     """Whether a release was built with code this merger lacks, so it can't patch as the release did: its
     manifest is of a newer format (see MANIFEST_FORMAT), isn't laid out as the merger expects (a release
-    that should have raised its format), or requires something the merger doesn't know (see requires.py)"""
-    if manifest_format(manifest) > MANIFEST_FORMAT:
+    that should have raised its format, e.g. a game copy it doesn't know), or requires something the merger doesn't
+    know (see requires.py)"""
+    if manifest.format > MANIFEST_FORMAT:
         return True
-    files, requires = manifest.get("files"), manifest.get("requires", [])
+    files, requires = manifest.data.get("files"), manifest.data.get("requires", [])
     if (not isinstance(files, dict) or not all(isinstance(record, dict) and isinstance(record.get("output_size"), int)
-                                               and isinstance(record.get("report", {}), dict) for record in files.values())
+                                               and isinstance(record.get("report", {}), dict)
+                                               and _known_game_copy(record.get("game_copy")) for record in files.values())
             or not isinstance(requires, list) or not all(isinstance(name, str) for name in requires)):
         return True
-    return bool(manifest_requires(manifest) - KNOWN - RETIRED)
+    return bool(manifest.requires - KNOWN - RETIRED)
+
+
+def _known_game_copy(value) -> bool:
+    """Whether a record's "game_copy" is one FileRecord.game_copy can read: a GameCopy, or none (format 1)"""
+    return not value or (isinstance(value, str) and value in {copy.value for copy in GameCopy})
 
 
 def _record_version(record_text):
@@ -158,25 +165,25 @@ def _record_version(record_text):
     return version if isinstance(version, str) else None
 
 
-def _matches(files, manifest):
+def _matches(files, manifest: ReleaseManifest):
     """None unless files are exactly the manifest's output files (those it ships); else whether only their
     sizes could be compared (a manifest from before output_crc32 was recorded)"""
-    records = {profile_key(key): record for key, record in shipped_files(manifest).items()}
+    records = {profile_key(key): record for key, record in manifest.shipped_files.items()}
     if set(records) != set(files):
         return None
-    sizes_only = not all("output_crc32" in record for record in records.values())
+    sizes_only = not all(record.output_crc32 is not None for record in records.values())
     for key, record in records.items():
         size, crc = files[key]
-        if size != record["output_size"] or (not sizes_only and crc != record["output_crc32"]):
+        if size != record.output_size or (not sizes_only and crc != record.output_crc32):
             return None
     return sizes_only
 
 
-def _known(folder, version, manifest, sizes_only, manifests):
-    if "fps" not in manifest:
+def _known(folder, version, manifest: ReleaseManifest, sizes_only, manifests):
+    if manifest.fps is None:
         return Installed(Status.TOO_OLD, f"Smooth UI Remastered {version} is installed, which is too old for the merger "
                          "(from before the 60 and 120 fps builds): update Smooth UI", folder=folder, version=version)
-    if retired := manifest_requires(manifest) & RETIRED:
+    if retired := manifest.requires & RETIRED:
         return Installed(Status.TOO_OLD, f"Smooth UI Remastered {version} is installed, which is too old for this version "
                          f"of Smooth UI Tools (it uses {', '.join(sorted(retired))}, which they no longer have): update "
                          "Smooth UI", folder=folder, version=version)
@@ -188,11 +195,12 @@ def _known(folder, version, manifest, sizes_only, manifests):
         message += " (identified by file sizes only: its manifest has no CRC32s)"
     if newer:
         message += f"; a newer one is available ({newer})"
-    return Installed(Status.INSTALLED, message, folder=folder, version=version, fps=manifest["fps"], manifest=manifest,
+    return Installed(Status.INSTALLED, message, folder=folder, version=version, fps=manifest.fps, manifest=manifest,
                      sizes_only=sizes_only, newer_release=newer)
 
 
-def installed_build(mods_dir: Path | None, folders, mods: list[Mod], manifests: dict[str, dict] | None = None) -> Installed:
+def installed_build(mods_dir: Path | None, folders, mods: list[Mod],
+                    manifests: dict[str, ReleaseManifest] | None = None) -> Installed:
     """The Smooth UI build in mods_dir (the game's Mods\\ folder; see smoothui_mod for folders and mods).
     manifests are as for identify (default: the release manifests the merger has)."""
     mod = smoothui_mod(folders, mods)

@@ -396,7 +396,7 @@ def package_manifest(installed: Installed, files: list[PackageFile], previous: P
         created_at=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
         smoothui=BuiltFor(folder=installed.folder, version=installed.version, fps=installed.fps,
                           target_fps=rates[0] or installed.fps, hud_fps=rates[1] or installed.fps,
-                          release_created_at=installed.manifest.get("created_at")),
+                          release_created_at=installed.manifest.created_at),
         mod_reviews_sha256=reviews_sha256, optional_fixes=tuple(sorted(optional_fixes)), files=held, not_held=not_held,
         groups_off=tuple(sorted(groups_off)), screens_off=tuple(sorted(screens_off)),
         screens_off_by_rule={key: choice.reason for key, choice in sorted(dict(screens_off).items()) if choice.reason})

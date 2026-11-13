@@ -25,7 +25,7 @@ import rarfile
 
 from ..common import fail, normalize_version, profile_key
 from ..log import HEADING, set_verbose
-from ..manifests import compat_files
+from ..manifests import ReleaseManifest
 from ..patcher import dev_mode
 from ..witcher3 import mod_bundles
 from ..witcher3.mod_bundles import list_bundles
@@ -223,11 +223,11 @@ def check_not_outdated(smooth_version, force):
              "manifest. Use --force to build for it anyway")
     log.warning(f"building for {smooth_version}, which is older than {newest}, the most recent release (--force)")
 
-def find_shared_files(theirs, manifest, smooth_version):
+def find_shared_files(theirs, manifest: ReleaseManifest, smooth_version):
     """The .redswf files (their_swf_paths, in their spelling) that the other mod ships AND that the
     Smooth UI Remastered release named by manifest patches mods' copies of in compat patches (see
-    manifests.compat_files: the merger alone builds the others)"""
-    our_keys = {profile_key(rel) for rel in compat_files(manifest)}
+    ReleaseManifest.compat_files: the merger alone builds the others)"""
+    our_keys = {profile_key(rel) for rel in manifest.compat_files}
     shared = [p for p in theirs if profile_key(p) in our_keys]
 
     log.info(f"The other mod has {len(theirs)} .redswf files, {len(shared)} of which "
@@ -325,12 +325,12 @@ def main():
     for warning in unneeded:
         log.warning(warning)
 
-def make_patch(version, manifest, their_files, origin, patched_dir, args):
+def make_patch(version, manifest: ReleaseManifest, their_files, origin, patched_dir, args):
     """Patch the files the other mod (their_files: see read_bundle_tocs; origin: its folder) shares with
     one build of the release (version, e.g. v0.3-60fps), writing them to patched_dir too, and check the
     result. Returns (a function that prints the warnings and rule issues, patch_files' patched list)."""
     log.info(f"Finding files in common with Smooth UI Remastered {version}", extra=HEADING)
-    log.info(f"Files are patched to {manifest['fps']} fps, as in that build")
+    log.info(f"Files are patched to {manifest.fps} fps, as in that build")
     shared = find_shared_files(their_swf_paths(their_files), manifest, version)
     inputs = [SourceFile.in_bundle(profile_key(p), origin, *their_files[profile_key(p)]) for p in shared]
     shared_keys = {source.path for source in inputs}
@@ -368,7 +368,7 @@ def make_patch(version, manifest, their_files, origin, patched_dir, args):
         print_rule_issues(rule_issues)
     return print_issues, patched
 
-def write_patch_manifest(version, manifest, args, mod_version, zip_out, their_files, patched):
+def write_patch_manifest(version, manifest: ReleaseManifest, args, mod_version, zip_out, their_files, patched):
     """Write manifests/compat/<version>_<mod>_<mod version>.json for a patch built for one build of the
     release (version, e.g. v0.3-60fps; manifest is its manifest), replacing any earlier one: what the
     patch holds, and the release's own output for each of those files. A later release that patches a
@@ -377,13 +377,13 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, their_fi
     their_files and patched are as make_patch got and returned them. Returns a warning if the patch is
     identical to the mod's newest earlier one, so not needed."""
     log.info(f"Writing compat patch manifest ({version})", extra=HEADING)
-    release_files = {profile_key(key): record for key, record in manifest["files"].items()}
+    release_files = {profile_key(key): record for key, record in manifest.files.items()}
     files = {}
     for entry in sorted(patched, key=lambda e: e.path):
         files[entry.path] = {
             "source_swf_sha256": entry.hashes.source_swf_sha256,
             "output_swf_sha256": entry.hashes.output_swf_sha256,
-            "release_output_swf_sha256": release_files[entry.path]["output_swf_sha256"],
+            "release_output_swf_sha256": release_files[entry.path].output_swf_sha256,
         }
     commit, uncommitted = patcher_commit()
     path = compat_manifest_path(version, args.mod_name, mod_version)
@@ -399,9 +399,9 @@ def write_patch_manifest(version, manifest, args, mod_version, zip_out, their_fi
         "mod_name": args.mod_name,
         "mod_version": mod_version,
         "smooth_version": version,
-        "fps": manifest["fps"],
+        "fps": manifest.fps,
         # The release's manifest is rewritten when it is rebuilt; this tells which build the patch is from
-        "release_created_at": manifest.get("created_at"),
+        "release_created_at": manifest.created_at,
         "overrides": str(args.overrides) if args.overrides else None,
         "patcher_commit": commit,
         "patcher_uncommitted_changes": uncommitted,

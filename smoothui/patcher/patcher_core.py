@@ -14,12 +14,13 @@ from typing import NamedTuple
 
 from ..common import SmoothUIError, fail, profile_key
 from ..log import DETAIL, SUBHEADING
+from ..manifests import FixOutcome, Report
 from ..parallel import make_pool, replay_records, run_logged, worker_count
 from ..witcher3.bundle import BundleEntry, BundleError, make_entry
 from ..witcher3.redswf import CR2W_VERSION, RedSwf, RedSwfError, replace_swf, swf_sha256
 from . import dev_mode
 from .dev_mode import dev_make_body_hook, resolve_dev_target
-from .fixes import FixOutcome, Phase, apply_fixes
+from .fixes import Phase, apply_fixes
 from .game_timing import game_fps, not_game_timed
 from .swf import (
     FPS_FIXED_POINT_SCALE,
@@ -89,7 +90,7 @@ class PatchedFile:
     entry: BundleEntry      # the patched file, compressed, for write_bundle
     hashes: FileHashes
     fps: float              # its frame rate now
-    report: dict            # the rescale report (see swf_patcher/report.py), with the fixes' records
+    report: Report          # the rescale report, with the fixes' records
 
 @dataclass(frozen=True, slots=True)
 class KeptFile:
@@ -97,7 +98,7 @@ class KeptFile:
     no fix that changed it"""
     path: str
     origin: str
-    report: dict
+    report: Report
 
 @dataclass(frozen=True, slots=True)
 class FailedFile:
@@ -187,11 +188,12 @@ def _patch_file(source, settings, body_hook=None) -> PatchResult:
         if redswf.version != CR2W_VERSION:
             log.info(f"The .redswf is CR2W version {redswf.version}: it is written as version {CR2W_VERSION}")
         shares_classes = source.path.startswith(SHARED_CLASSES_FOLDER)
-        rescale_report, new_swf_bytes = process(redswf.swf, settings, body_hook, shares_classes=shares_classes,
-                                                game_rate=game_fps(source.path))
+        report_data, new_swf_bytes = process(redswf.swf, settings, body_hook, shares_classes=shares_classes,
+                                             game_rate=game_fps(source.path))
+        report = Report(report_data)
         del redswf
         if new_swf_bytes is None:
-            return KeptFile(source.path, source.origin, rescale_report)
+            return KeptFile(source.path, source.origin, report)
         out = replace_swf(data, new_swf_bytes)
         source_sha256, source_swf_sha256, source_size, source_crc32 = (
             hashlib.sha256(data).hexdigest(), swf_sha256(data), len(data), zlib.crc32(data))
@@ -206,8 +208,8 @@ def _patch_file(source, settings, body_hook=None) -> PatchResult:
     finally:
         clear_parse_cache()
 
-    fps = rescale_report["new_fps"] or rescale_report["old_fps"]    # not rescaled: only fixed
-    return PatchedFile(source.path, source.origin, entry, hashes, fps, rescale_report)
+    fps = report.new_fps or report.old_fps    # not rescaled: only fixed
+    return PatchedFile(source.path, source.origin, entry, hashes, fps, report)
 
 def _failure_message(e: Exception) -> str:
     if isinstance(e, EXPECTED_ERRORS):
@@ -230,7 +232,8 @@ class RuleIssues(NamedTuple):
     warnings: list[RuleIssue]   # inherited settings that matched in the release but no longer match
                                 # anything: the output is as configured, but may need a look
 
-def find_rule_issues(patched: list[PatchedFile], kept: list[KeptFile], shared=(), recorded=None) -> RuleIssues:
+def find_rule_issues(patched: list[PatchedFile], kept: list[KeptFile], shared=(),
+                     recorded: dict[str, Report] | None = None) -> RuleIssues:
     """Check explicit settings against the reports in patch_files' patched and kept lists.
 
     Errors: a setting that couldn't be followed (an unmet rule), or that matches no sprite in its
@@ -247,16 +250,16 @@ def find_rule_issues(patched: list[PatchedFile], kept: list[KeptFile], shared=()
     matched_anywhere = set()
     for entry in [*patched, *kept]:
         path, report = entry.path, entry.report
-        errors += [RuleIssue(path, format_unmet_rule(unmet)) for unmet in report["unmet_rules"]]
-        unmet = {unmet["rule"] for unmet in report["unmet_rules"]}   # already reported
-        not_rescaled = "new_fps" in report and report["new_fps"] is None
+        errors += [RuleIssue(path, format_unmet_rule(unmet)) for unmet in report.unmet_rules]
+        unmet = {unmet["rule"] for unmet in report.unmet_rules}   # already reported
+        not_rescaled = report.new_fps is None
         release = (recorded or {}).get(profile_key(path))
-        inherited = dict(report_settings(release)) if release else {}
+        inherited = dict(report_settings(release)) if release is not None else {}
         # Why a fix changed nothing, in place of "matched no sprite"
-        fixes = {f"fix: {fix['name']}": fix for fix in report.get("fixes", [])}
-        fix_details = {setting: f"{fix['result']}: {fix['detail']}" for setting, fix in fixes.items()}
+        fixes = {f"fix: {fix.name}": fix for fix in report.fixes}
+        fix_details = {setting: f"{fix.outcome}: {fix.detail}" for setting, fix in fixes.items()}
         for setting, matched in report_settings(report):
-            fix = fixes[setting]["name"] if setting in fixes else None
+            fix = fixes[setting].name if setting in fixes else None
             if matched:
                 matched_anywhere.add(setting)
             elif setting in unmet:
@@ -264,7 +267,7 @@ def find_rule_issues(patched: list[PatchedFile], kept: list[KeptFile], shared=()
             elif setting in inherited:
                 if inherited[setting] and (fix or not not_rescaled):
                     detail = f" ({fix_details[setting]})" if setting in fix_details else ""
-                    cant_apply = fix and FixOutcome(fixes[setting]["result"]) is FixOutcome.CANT_APPLY
+                    cant_apply = fix and fixes[setting].outcome is FixOutcome.CANT_APPLY
                     (errors if cant_apply else warnings).append(
                         RuleIssue(path, f"{setting}: matched sprite(s) {inherited[setting]} in the Smooth UI release, "
                                         f"but nothing in this mod's version of the file{detail}", fix))

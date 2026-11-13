@@ -15,7 +15,7 @@ from collections import Counter, defaultdict
 
 from ..common import fail, normalize_version
 from ..log import HEADING
-from ..manifests import SHIPPED, game_copy
+from ..manifests import FileRecord, FixRecord, GameCopy, ReleaseManifest, Report
 from ..patcher.swf_patcher import format_unmet_rule, report_settings
 from .shared import (
     OLD_MANIFEST_FPS,
@@ -49,15 +49,15 @@ def print_manifest_diff(old, new):
         if manifest is None:
             fail(f"manifest not found: {version_or_path}")
         manifests.append(manifest)
-    log.info(f"Changes from {manifests[0]['created_mod_version']} to {manifests[1]['created_mod_version']}", extra=HEADING)
+    log.info(f"Changes from {manifests[0].version} to {manifests[1].version}", extra=HEADING)
     log.info("\n".join(diff_manifests(*manifests)))
 
 
-def diff_manifests(old: dict, new: dict) -> list[str]:
+def diff_manifests(old: ReleaseManifest, new: ReleaseManifest) -> list[str]:
     """What changed from manifest old to new, as lines of text"""
     changed, same = [], []
-    for name, values in (("frame rate", [f"{manifest.get('fps', OLD_MANIFEST_FPS)} fps" for manifest in (old, new)]),
-                         ("game version", [manifest.get("targeted_game_version") for manifest in (old, new)]),
+    for name, values in (("frame rate", [f"{manifest.fps or OLD_MANIFEST_FPS} fps" for manifest in (old, new)]),
+                         ("game version", [manifest.data.get("targeted_game_version") for manifest in (old, new)]),
                          ("patcher commit", [describe_commit(manifest) for manifest in (old, new)])):
         if values[0] != values[1]:
             changed.append(f"{name.capitalize()}: {values[0]} -> {values[1]}")
@@ -66,11 +66,11 @@ def diff_manifests(old: dict, new: dict) -> list[str]:
     lines = changed + (["Same in both: " + ", ".join(same)] if same else [])
 
     # Reports from before the 60 and 120 fps builds (no top-level "fps") are in an older format
-    compare_reports = "fps" in old and "fps" in new
+    compare_reports = old.fps is not None and new.fps is not None
     if not compare_reports:
         lines.append("A manifest is from before the 60 and 120 fps builds, so only the files' output is compared")
 
-    old_files, new_files = old["files"], new["files"]
+    old_files, new_files = old.files, new.files
     removed, added = sorted(old_files.keys() - new_files.keys()), sorted(new_files.keys() - old_files.keys())
     if removed:
         lines += ["", f"Files removed ({len(removed)}):", *(f"  {path}" for path in removed)]
@@ -80,7 +80,7 @@ def diff_manifests(old: dict, new: dict) -> list[str]:
     unchanged = []
     for path in sorted(old_files.keys() & new_files.keys()):
         changes = file_changes(old_files[path], new_files[path], compare_reports)
-        if (copies := [game_copy(files[path]) for files in (old_files, new_files)])[0] != copies[1]:
+        if (copies := [files[path].game_copy for files in (old_files, new_files)])[0] != copies[1]:
             changes.insert(0, f"Game copy: {copies[0]} -> {copies[1]}")
         if changes:
             lines += ["", path, *("  " + change for change in changes)]
@@ -88,8 +88,8 @@ def diff_manifests(old: dict, new: dict) -> list[str]:
             unchanged.append(path)
 
     in_both = len(old_files.keys() & new_files.keys())
-    stretched = [sum(sprite["stretched"] for record in manifest["files"].values()
-                     for sprite in record.get("report", {}).get("sprites", [])) for manifest in (old, new)]
+    stretched = [sum(sprite["stretched"] for record in manifest.files.values()
+                     for sprite in record.report.sprites) for manifest in (old, new)]
     lines += ["", (f"Files: {in_both - len(unchanged)} of the {in_both} in both changed, {len(added)} added, "
                    f"{len(removed)} removed")]
     if unchanged:
@@ -100,38 +100,38 @@ def diff_manifests(old: dict, new: dict) -> list[str]:
     return lines
 
 
-def describe_commit(manifest: dict) -> str:
+def describe_commit(manifest: ReleaseManifest) -> str:
     """The patcher commit a build was made from, for reports"""
-    commit = manifest.get("patcher_commit")
+    commit = manifest.data.get("patcher_commit")
     if commit is None:
         return "unknown"
-    return commit[:9] + (" with uncommitted changes" if manifest.get("patcher_uncommitted_changes") else "")
+    return commit[:9] + (" with uncommitted changes" if manifest.data.get("patcher_uncommitted_changes") else "")
 
 
-def file_changes(old: dict, new: dict, compare_reports: bool) -> list[str]:
+def file_changes(old: FileRecord, new: FileRecord, compare_reports: bool) -> list[str]:
     """What changed in a file's record, as lines of text: a section for each aspect that changed (see
     FILE_ASPECTS), then one line naming those that didn't; none if nothing changed"""
-    output_changed = _differs(old, new, "output_swf_sha256", "output_sha256")
+    output_changed = _differs(old.data, new.data, "output_swf_sha256", "output_sha256")
     sections: dict[str, list[str]] = {aspect: [] for aspect in FILE_ASPECTS}
-    if _differs(old, new, "source_swf_sha256", "source_sha256"):
+    if _differs(old.data, new.data, "source_swf_sha256", "source_sha256"):
         sections["source"].append("the game's version of the file changed")
     sections["frame rate"] += _frame_rate_changes(old, new, compare_reports)
     if not compare_reports:
         lines = _section("source", sections["source"]) + _section("frame rate", sections["frame rate"])
         return lines + (["Output changed (no details: the reports can't be compared)"] if output_changed else [])
 
-    old_report, new_report = old["report"], new["report"]
+    old_report, new_report = old.report, new.report
     sections["settings"] += _settings_changes(old_report, new_report)
-    sections["fixes"] += _fix_changes(old_report.get("fixes", []), new_report.get("fixes", []))
-    old_warnings, new_warnings = ({warning["key"]: warning.get("hash") for warning in report["warnings"]}
+    sections["fixes"] += _fix_changes(old_report.fixes, new_report.fixes)
+    old_warnings, new_warnings = ({warning["key"]: warning.get("hash") for warning in report.warnings}
                                   for report in (old_report, new_report))
     sections["warnings"] += _set_changes(set(old_warnings), set(new_warnings))
     sections["warnings"] += [f"{key}: its code changed" for key in sorted(old_warnings.keys() & new_warnings.keys())
                              if None not in (old_warnings[key], new_warnings[key]) and old_warnings[key] != new_warnings[key]]
-    sections["unmet rules"] += _set_changes({format_unmet_rule(unmet) for unmet in old_report["unmet_rules"]},
-                                            {format_unmet_rule(unmet) for unmet in new_report["unmet_rules"]})
-    sections["code edits"] += _code_edit_changes(old_report, new_report)
-    sections["clips"] += _sprite_changes(old_report.get("sprites", []), new_report.get("sprites", []))
+    sections["unmet rules"] += _set_changes({format_unmet_rule(unmet) for unmet in old_report.unmet_rules},
+                                            {format_unmet_rule(unmet) for unmet in new_report.unmet_rules})
+    sections["code edits"] += _code_edit_changes(old_report.data, new_report.data)
+    sections["clips"] += _sprite_changes(old_report.sprites, new_report.sprites)
 
     lines = [section_line for aspect, changes in sections.items() for section_line in _section(aspect, changes)]
     if not lines and not output_changed:
@@ -143,10 +143,10 @@ def file_changes(old: dict, new: dict, compare_reports: bool) -> list[str]:
     return lines + (["Same in both: " + ", ".join(same)] if same else [])
 
 
-def _added_line(path: str, record: dict) -> str:
-    """A file added, with its frame rate, and its game copy if not shipped (see manifests.game_copy)"""
-    copy = "" if (value := game_copy(record)) == SHIPPED else f", game copy: {value}"
-    return f"  {path} ({record['fps']:g} fps{copy})"
+def _added_line(path: str, record: FileRecord) -> str:
+    """A file added, with its frame rate, and its game copy if not shipped (see manifests.GameCopy)"""
+    copy = "" if (value := record.game_copy) is GameCopy.SHIPPED else f", game copy: {value}"
+    return f"  {path} ({record.fps:g} fps{copy})"
 
 
 def _section(aspect: str, changes: list[str]) -> list[str]:
@@ -164,16 +164,16 @@ def _differs(old: dict, new: dict, *keys) -> bool:
     return key is not None and old[key] != new[key]
 
 
-def _frame_rate_changes(old: dict, new: dict, compare_reports: bool) -> list[str]:
-    changes = [f"{old['fps']:g} -> {new['fps']:g} fps"] if old["fps"] != new["fps"] else []
+def _frame_rate_changes(old: FileRecord, new: FileRecord, compare_reports: bool) -> list[str]:
+    changes = [f"{old.fps:g} -> {new.fps:g} fps"] if old.fps != new.fps else []
     for key, name in (("ratio", "ratio"), ("holds", "holds per source frame")) if compare_reports else ():
-        before, after = old["report"].get(key), new["report"].get(key)
+        before, after = old.report.data.get(key), new.report.data.get(key)
         if before != after:
             changes.append(f"{name}: {before} -> {after}")
     return changes
 
 
-def _settings_changes(old: dict, new: dict) -> list[str]:
+def _settings_changes(old: Report, new: Report) -> list[str]:
     """Changes to the speed rules and include/exclude lists, and the clips each matched"""
     old_settings, new_settings = ({setting: matched for setting, matched in report_settings(report)
                                    if not setting.startswith("fix: ")} for report in (old, new))
@@ -185,20 +185,20 @@ def _settings_changes(old: dict, new: dict) -> list[str]:
                if setting in old_settings and matched != old_settings[setting]])
 
 
-def _fix_changes(old_fixes: list, new_fixes: list) -> list[str]:
-    old_by_name, new_by_name = ({fix["name"]: fix for fix in fixes} for fixes in (old_fixes, new_fixes))
+def _fix_changes(old_fixes: list[FixRecord], new_fixes: list[FixRecord]) -> list[str]:
+    old_by_name, new_by_name = ({fix.name: fix for fix in fixes} for fixes in (old_fixes, new_fixes))
     changes = [f"removed: {name}" for name in old_by_name if name not in new_by_name]
     for name, fix in new_by_name.items():
         before = old_by_name.get(name)
         if before is None:
-            changes.append(f"added: {name}: {fix['result']}: {fix['detail']} (matches {fix['matched'] or 'nothing'})")
+            changes.append(f"added: {name}: {fix.outcome}: {fix.detail} (matches {fix.matched or 'nothing'})")
             continue
-        if before["result"] != fix["result"]:
-            changes.append(f"{name}: {before['result']} -> {fix['result']}")
-        if before["detail"] != fix["detail"]:
-            changes += [f"{name}: was: {before['detail']}", f"{name}: now: {fix['detail']}"]
-        if before["matched"] != fix["matched"]:
-            changes.append(f"{name}: matches {fix['matched'] or 'nothing'} (was {before['matched'] or 'nothing'})")
+        if before.outcome is not fix.outcome:
+            changes.append(f"{name}: {before.outcome} -> {fix.outcome}")
+        if before.detail != fix.detail:
+            changes += [f"{name}: was: {before.detail}", f"{name}: now: {fix.detail}"]
+        if before.matched != fix.matched:
+            changes.append(f"{name}: matches {fix.matched or 'nothing'} (was {before.matched or 'nothing'})")
     return changes
 
 

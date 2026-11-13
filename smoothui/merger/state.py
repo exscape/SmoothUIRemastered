@@ -252,7 +252,7 @@ def package_state(result: Scan, data_dir: Path | None = DATA_DIR) -> list[FileSt
     built = manifest or PackageManifest()   # (none: nothing recorded)
     built_for = built.smoothui
     # Only the merger's version changed: nothing the game shows is wrong (severity LOW)
-    if built_for.version != installed.version or built_for.release_created_at != installed.manifest.get("created_at"):
+    if built_for.version != installed.version or built_for.release_created_at != installed.manifest.created_at:
         rebuilt, rebuilt_text = Cause.SMOOTHUI, "Smooth UI was updated"
     elif built.tools_version != tools_version():
         rebuilt, rebuilt_text = Cause.MERGER, "the merger was updated"

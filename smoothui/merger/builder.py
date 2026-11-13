@@ -44,6 +44,7 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
     installed = result.installed
     if not installed.usable:
         fail(installed.message)
+    assert installed.manifest is not None     # usable
     sources = [file.winner for file in result.files.values() if file.winner]
     if not sources:
         return ReleasePatch([], [], [], WarningSummary({}, 0, [], 0), RuleIssues([], []))
@@ -245,6 +246,6 @@ def merge_report(result: BuildResult, started: str) -> dict:
         "smoothui": result.scan.installed.version,
         "files": {file.path: {"mod": file.mod, "status": file.status,
                               "issues": [issue.message for issue in file.issues], "error": file.error,
-                              "report": file.result.report if file.result else None}
+                              "report": file.result.report.data if file.result else None}
                   for file in result.files},
     }

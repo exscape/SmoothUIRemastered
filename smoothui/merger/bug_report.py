@@ -113,14 +113,14 @@ def _summary(game, mods_settings, found: Check | None, unread) -> list[str]:
         installed = found.scan.installed
         lines.append(f"Smooth UI: {installed.status.value}, {installed.message}")
         if installed.manifest is not None:
-            lines.append(f"Its release manifest was created at {installed.manifest.get('created_at')}")
+            lines.append(f"Its release manifest was created at {installed.manifest.created_at}")
         if found.scan.target_fps is not None:
             lines.append(_rates(found))
     lines.append(_game_rates())
     lines += ["", "Release manifests the merger has:"]
     for release, path in sorted(release_manifest_paths().items()):
         try:
-            created = (load_manifest(path) or {}).get("created_at")
+            created = manifest.created_at if (manifest := load_manifest(path)) else None
         except (OSError, ValueError) as e:
             created = f"unreadable ({e})"
         lines.append(f"  {release}, created at {created} ({path})")

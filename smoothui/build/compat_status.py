@@ -18,7 +18,7 @@ import logging
 
 from ..common import fail, profile_key
 from ..log import HEADING
-from ..manifests import compat_files
+from ..manifests import ReleaseManifest
 from .manifest_diff import describe_commit, file_changes
 from .shared import (
     COMPAT_MANIFEST_DIR,
@@ -56,24 +56,24 @@ def newest_compat_patches(version: str, mod_name: str | None = None, exclude=Non
     return [(path, patch) for _, path, patch in sorted(newest.values(), key=lambda item: item[2]["mod_name"].lower())]
 
 
-def compat_patch_problems(patch: dict, release: dict) -> list[str]:
+def compat_patch_problems(patch: dict, release: ReleaseManifest) -> list[str]:
     """Why a compat patch (its manifest) needs a rebuild for a release (its manifest), as lines of text;
     none if it works with that release as it is"""
-    version = release["created_mod_version"]
-    ours = {profile_key(path): record for path, record in compat_files(release).items()}
+    version = release.version
+    ours = {profile_key(path): record for path, record in release.compat_files.items()}
     # The build the patch was made from, for the details; gone or rewritten if that release was rebuilt since
-    built_from = load_manifest(patch["smooth_version"]) or {"files": {}}
-    built_from_files = {profile_key(path): record for path, record in built_from["files"].items()}
+    built_from = load_manifest(patch["smooth_version"]) or ReleaseManifest({"files": {}})
+    built_from_files = {profile_key(path): record for path, record in built_from.files.items()}
 
     problems = []
     for path, record in sorted(patch["files"].items()):
         new = ours.get(profile_key(path))
         if new is None:
             problems.append(f"{path}: no longer patched by {version}, but the patch still ships it")
-        elif new["output_swf_sha256"] != record["release_output_swf_sha256"]:
+        elif new.output_swf_sha256 != record["release_output_swf_sha256"]:
             problems.append(f"{path}: {version} patches it differently than {patch['smooth_version']}")
             old = built_from_files.get(profile_key(path))
-            if old is not None and old["output_swf_sha256"] == record["release_output_swf_sha256"]:
+            if old is not None and old.output_swf_sha256 == record["release_output_swf_sha256"]:
                 problems += [f"  {change}" for change in file_changes(old, new, compare_reports=True)]
                 problems.append(f"  Patcher commit: {describe_commit(built_from)} -> {describe_commit(release)}")
             else:
@@ -91,7 +91,7 @@ def print_compat_status(version_or_path, patches: list[tuple] | None = None, mod
     release = load_manifest(version_or_path)
     if release is None:
         fail(f"manifest not found: {version_or_path}")
-    version = release["created_mod_version"]
+    version = release.version
     log.info(f"Compat patches for {version}", extra=HEADING)
     if patches is None:
         patches = newest_compat_patches(version, mod_name)

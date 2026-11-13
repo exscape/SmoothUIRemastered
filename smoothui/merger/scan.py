@@ -1,6 +1,6 @@
 """Scan the installed mods: for each file the installed Smooth UI build patches, which mod's copy the game
 loads (see load_order.py), and what keeps a mod or file from being patched. For the files only the merger
-builds (game copy "merger-only", see manifests.game_copy), the game's own copy is the one to patch where no
+builds (game copy "merger-only", see manifests.GameCopy), the game's own copy is the one to patch where no
 mod changes the file; a file a mod adds to a group's folder is the group's too (see Scan.group_of). Files that
 only mods use (game copy "unused") are left out where no mod has them. At a frame rate other than the
 installed build's (see Scan.target_fps), every file but those is built like the merger-only ones: Smooth UI's
@@ -27,7 +27,7 @@ from typing import NamedTuple
 
 from .. import mod_reviews
 from ..common import IN_WSL, SmoothUIError, fail, profile_key, to_native, to_windows
-from ..manifests import MERGER_ONLY, UNUSED, game_copy
+from ..manifests import FileRecord, GameCopy
 from ..mod_reviews import ModReviews
 from ..requires import OPTIONAL_FIXES
 from ..witcher3.bundle import read_toc
@@ -226,19 +226,19 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
                     reviews=reviews)
 
     assert mods_dir is not None and installed.manifest is not None     # usable: its folder in Mods\ is known
-    records = {profile_key(key): record for key, record in installed.manifest["files"].items()}
+    records = {profile_key(key): record for key, record in installed.manifest.files.items()}
     keys = set(records)
-    unused = {key for key, record in records.items() if game_copy(record) == UNUSED}
+    unused = {key for key, record in records.items() if record.game_copy is GameCopy.UNUSED}
     target_fps = target_fps or installed.fps
     hud_fps = hud_fps or installed.fps
     # The files built from the game's copy where no other mod ships them: {key: why} (see Scan.from_game)
-    merger_only = {key: FromGame.MERGER_ONLY for key, record in records.items() if game_copy(record) == MERGER_ONLY}
+    merger_only = {key: FromGame.MERGER_ONLY for key, record in records.items() if record.game_copy is GameCopy.MERGER_ONLY}
     if target_fps != installed.fps:
         merger_only = {key: FromGame.FPS for key in keys - unused} | merger_only
-    off = {key for key, record in records.items() if record.get("group") in groups_off}
+    off = {key for key, record in records.items() if record.group in groups_off}
     # The folders of the groups' files, but those turned off: {folder: group}
-    group_dirs = {posixpath.dirname(key): record["group"] for key, record in records.items()
-                  if "group" in record and key not in off}
+    group_dirs = {posixpath.dirname(key): record.group for key, record in records.items()
+                  if record.group is not None and key not in off}
     # The build's files, and any others in its groups' folders (files that mods add to a group)
     wanted = lambda key: key in keys or posixpath.dirname(key) in group_dirs
     problems = []
@@ -248,7 +248,7 @@ def scan(game_path: Path, mods_settings: Path, *, groups_off=frozenset(), screen
         # The package's own problems aren't the scan's: package_state tells them, and a build replaces it
         shipped[mod] = _mod_files(mods_dir / mod.folder, mod, wanted, [] if is_package_folder(mod.folder) else problems,
                                   mods_dir_length)
-    group_of = {key: record["group"] for key, record in records.items() if "group" in record}
+    group_of = {key: record.group for key, record in records.items() if record.group is not None}
     group_of |= {key: group_dirs[posixpath.dirname(key)] for mod, found in shipped.items() if not is_own_folder(mod.folder)
                  for key in found if key not in keys}
     # The game's copies of the shipped files too (only their TOC entries), to tell a game update
@@ -330,10 +330,10 @@ def _game_copies(game_path, keys, needed, problems) -> dict[str, SourceFile]:
     return found
 
 
-def _game_updated(record, copy) -> bool:
+def _game_updated(record: FileRecord, copy) -> bool:
     """Whether the game's copy (a SourceFile) of a file isn't the one its manifest record says the release was
     built from: a game update. A record without source_crc32 tells nothing."""
-    return "source_crc32" in record and (copy.size, copy.toc_entry.crc) != (record.get("source_size"), record["source_crc32"])
+    return record.source_crc32 is not None and (copy.size, copy.toc_entry.crc) != (record.source_size, record.source_crc32)
 
 
 def _conflicts(mods_dir, order) -> list[str]:

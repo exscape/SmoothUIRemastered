@@ -19,13 +19,13 @@ from ..manifests import (  # noqa: F401 (re-exported for the build tools)
     RELEASE_FPS,
     SUFFIXES,
     VERSION,
+    FixOutcome,
     build_fps,
     build_version,
     is_dev_version,
     known_version_key,
     latest_manifests,
     load_manifest,
-    manifest_format,
     manifest_path,
     patcher_commit,
     read_manifest,
@@ -34,7 +34,6 @@ from ..manifests import (  # noqa: F401 (re-exported for the build tools)
     split_build_version,
     version_key,
 )
-from ..patcher.fixes import FixOutcome
 from ..patcher.patcher_core import FailedFile, KeptFile, PatchedFile, PatchResult
 from ..patcher.swf_patcher import format_fix
 from ..paths import MANIFEST_DIR, REPO_ROOT
@@ -138,21 +137,21 @@ def print_file_result(result: PatchResult, *, is_reviewed=None):
         log.error(f"{rel}: {result.error}")
         return
     report = result.report
-    why_kept = ("not retimed (retime: false)" if report.get("retime") is False
-                else f"already at or above the target {report['target_fps']:g} fps")
+    why_kept = ("not retimed (retime: false)" if not report.retime
+                else f"already at or above the target {report.target_fps:g} fps")
     if isinstance(result, KeptFile):
-        log.info(f"KEEP {rel}: {report['old_fps']:g} fps, {why_kept}")
+        log.info(f"KEEP {rel}: {report.old_fps:g} fps, {why_kept}")
         _print_fixes(report)
         return
 
-    if report["new_fps"] is None:
-        log.info(f"{rel}: {report['old_fps']:g} fps, {why_kept}; fixed only")
+    if report.new_fps is None:
+        log.info(f"{rel}: {report.old_fps:g} fps, {why_kept}; fixed only")
     else:
-        log.info(f"{rel}: {report['old_fps']:g} -> {report['new_fps']:g} fps", extra=DETAIL)
+        log.info(f"{rel}: {report.old_fps:g} -> {report.new_fps:g} fps", extra=DETAIL)
     _print_fixes(report)
-    if report["unmet_rules"]:
-        log.error(f"  {len(report['unmet_rules'])} explicit rule(s) not followed (listed at the end)")
-    warnings = [warning for warning in report["warnings"]
+    if report.unmet_rules:
+        log.error(f"  {len(report.unmet_rules)} explicit rule(s) not followed (listed at the end)")
+    warnings = [warning for warning in report.warnings
                 if not (is_reviewed and is_reviewed(rel, warning))]
     if warnings:
         log.warning(f"  {len(warnings)} unreviewed warning(s):"
@@ -160,8 +159,8 @@ def print_file_result(result: PatchResult, *, is_reviewed=None):
 
 def _print_fixes(report):
     """The fixes' results; those that changed nothing are listed again at the end, as rule issues"""
-    for fix in report.get("fixes", []):
-        if FixOutcome(fix["result"]) is FixOutcome.APPLIED:
+    for fix in report.fixes:
+        if fix.outcome is FixOutcome.APPLIED:
             log.info(f"  {format_fix(fix)}", extra=DETAIL)
         else:
             log.error(f"  {format_fix(fix)}")

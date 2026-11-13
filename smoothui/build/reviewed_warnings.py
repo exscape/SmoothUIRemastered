@@ -79,7 +79,7 @@ class WarningReview:
         number of files that have no report (failed), whose warnings are unknown"""
         unreviewed, hidden, seen = defaultdict(list), 0, set()
         for entry in entries:
-            for warning in entry.report["warnings"]:
+            for warning in entry.report.warnings:
                 seen.add(review_of(warning))
                 if self.is_reviewed(entry.path, warning):
                     hidden += 1

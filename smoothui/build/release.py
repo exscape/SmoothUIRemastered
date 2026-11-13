@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, fields
 from functools import partial
 
 from ..common import fail, profile_key
+from ..manifests import ReleaseManifest, Report
 from ..mod_reviews import ModReviews
 from ..patcher import patcher_core
 from ..patcher.fixes import check_fix_name
@@ -35,7 +36,7 @@ from .shared import build_version, load_manifest, print_file_result
 log = logging.getLogger(__name__)
 
 
-def load_release_manifest(smooth_version, fps):
+def load_release_manifest(smooth_version, fps) -> ReleaseManifest:
     """The manifest of one build of a Smooth UI release (smooth_version without a frame rate); fails
     unless it is one compat patches can be built from"""
     version = build_version(smooth_version, fps)
@@ -44,21 +45,21 @@ def load_release_manifest(smooth_version, fps):
                "patcher can't reproduce. Compat patches can be built for v0.3 and later releases")
     if manifest is None:
         fail(too_old if load_manifest(smooth_version) else f"no manifest exists for Smooth UI Remastered {version}")
-    if "fps" not in manifest:
+    if manifest.fps is None:
         fail(too_old)
     return manifest
 
-def profile_from_manifest(manifest):
+def profile_from_manifest(manifest: ReleaseManifest):
     """The settings each file was patched with in a Smooth UI release, from its manifest (see
     load_release_manifest): a profile ({profile key: PatchSettings}), so compat patches match the release."""
     profile = {}
-    for key, record in manifest["files"].items():
-        report = record["report"]
-        profile[key] = PatchSettings(record["fps"],
+    for key, record in manifest.files.items():
+        report = record.report
+        profile[key] = PatchSettings(record.fps,
                                      tuple(SpeedRule(re.compile(rule["pattern"]), parse_speed(rule["speed"]))
-                                           for rule in report["rules"]),
-                                     _recorded_tokens(report, "include"), _recorded_tokens(report, "exclude"),
-                                     _recorded_fixes(key, report), report.get("source_fps"), report.get("retime", True))
+                                           for rule in report.rules),
+                                     _recorded_tokens(report, report.include), _recorded_tokens(report, report.exclude),
+                                     _recorded_fixes(key, report), report.source_fps, report.retime)
     return profile
 
 def group_record(settings: PatchSettings | None) -> dict:
@@ -70,27 +71,27 @@ def group_record(settings: PatchSettings | None) -> dict:
             "exclude": [{"pattern": str(token)} for token in settings.exclude],
             "source_fps": settings.source_fps}
 
-def with_unlisted_files(manifest, group_of) -> dict:
+def with_unlisted_files(manifest: ReleaseManifest, group_of) -> ReleaseManifest:
     """manifest, with a record for each file of a group that it doesn't list (group_of: {profile key: group};
     a file a mod adds to the group's folder), as if the release had patched it with the group's settings
     (see group_record). Each of them matched nothing, so none is an issue where it matches nothing (see
     patcher_core.find_rule_issues), and its warnings are those of the group's files, so the same code is as
     reviewed as there (see patch_as_release)."""
-    files = dict(manifest["files"])
+    files = dict(manifest.data["files"])
     listed = {profile_key(key) for key in files}
     for key, group in group_of.items():
         if key in listed:
             continue
-        if group not in manifest.get("groups", {}):
-            fail(f"the manifest of Smooth UI Remastered {manifest['created_mod_version']} has no settings for the "
+        if group not in manifest.groups:
+            fail(f"the manifest of Smooth UI Remastered {manifest.version} has no settings for the "
                  f"group {group}: it must be built again")
-        settings = manifest["groups"][group]
-        warnings = [warning for record in manifest["files"].values() if record.get("group") == group
-                    for warning in record["report"]["warnings"]]
-        files[key] = {"fps": manifest["fps"], "group": group, "report": {
+        settings = manifest.groups[group]
+        warnings = [warning for record in manifest.files.values() if record.group == group
+                    for warning in record.report.warnings]
+        files[key] = {"fps": manifest.fps, "group": group, "report": {
             **{kind: [{**setting, "matched": []} for setting in settings[kind]] for kind in ("rules", "include", "exclude")},
             "fixes": [], "sprites": [], "warnings": warnings, "source_fps": settings["source_fps"]}}
-    return {**manifest, "files": files}
+    return ReleaseManifest({**manifest.data, "files": files})
 
 def release_requires(settings) -> list[str]:
     """What the merger must support to patch as a release did (its manifest's "requires"; see
@@ -109,9 +110,9 @@ def release_requires(settings) -> list[str]:
         requires |= {fix_requirement(name) for name in file_settings.fixes}
     return sorted(requires)
 
-def _recorded_fixes(key, report):
+def _recorded_fixes(key, report: Report):
     """The names of the fixes a release applied to a file"""
-    names = tuple(fix["name"] for fix in report["fixes"])
+    names = tuple(report.fix_names)
     for name in names:
         try:
             check_fix_name(name)
@@ -119,11 +120,11 @@ def _recorded_fixes(key, report):
             fail(f"{key}: the release's manifest names {e}; this version of the patcher can't reproduce it")
     return names
 
-def _recorded_tokens(report, kind):
-    """A report's include or exclude patterns, with sprite ids expecting the class and frame count
+def _recorded_tokens(report: Report, settings: list[dict]):
+    """A report's include or exclude patterns (settings), with sprite ids expecting the class and frame count
     recorded for them (a file that wasn't rescaled records no sprites)"""
-    recorded_sprites = {sprite["id"]: (sprite["class"], sprite["frames"]) for sprite in report.get("sprites", ())}
-    parsed = (parse_sprite_pattern(setting["pattern"]) for setting in report[kind])
+    recorded_sprites = {sprite["id"]: (sprite["class"], sprite["frames"]) for sprite in report.sprites}
+    parsed = (parse_sprite_pattern(setting["pattern"]) for setting in settings)
     return tuple(SpriteRef(token.id, recorded_sprites.get(token.id)) if isinstance(token, SpriteRef)
                  else token for token in parsed)
 
@@ -141,7 +142,7 @@ class ReleasePatch:
     known_broken: dict[str, set[str]] = field(default_factory=dict)
 
 
-def patch_as_release(inputs, profile, manifest, *, reviewed=(), mod_reviews: ModReviews | None = None, shared_settings=(),
+def patch_as_release(inputs, profile, manifest: ReleaseManifest, *, reviewed=(), mod_reviews: ModReviews | None = None, shared_settings=(),
                      on_file=print_file_result, pool=None) -> ReleasePatch:
     """Patch other mods' files (SourceFiles) with their settings in profile (usually profile_from_manifest's,
     for those files), and review the result against the release's manifest.
@@ -155,8 +156,8 @@ def patch_as_release(inputs, profile, manifest, *, reviewed=(), mod_reviews: Mod
     patch_files, and also gets is_reviewed (see shared.print_file_result).
 
     Whether failures, rule issues or warnings are acceptable is up to the caller."""
-    recorded = {key: record["report"] for key, record in manifest["files"].items()}
-    per_file = {key: {review_of(warning) for warning in report["warnings"]} for key, report in recorded.items()}
+    recorded = {key: record.report for key, record in manifest.files.items()}
+    per_file = {key: {review_of(warning) for warning in report.warnings} for key, report in recorded.items()}
     if mod_reviews:
         for source in inputs:
             if found := mod_reviews.for_mod(source.origin):

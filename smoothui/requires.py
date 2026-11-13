@@ -1,6 +1,6 @@
 """What a Smooth UI release requires of the merger, so that it can patch other mods' files as the release
-patched the game's: its manifest's "requires" lists them, e.g. "fix:hub-tab-hover-fix" or "setting:speed".
-The build fills it in (see build/release.py's release_requires).
+patched the game's: its manifest's "requires" lists them (see manifests.ReleaseManifest.requires), e.g.
+"fix:hub-tab-hover-fix" or "setting:speed". The build fills it in (see build/release.py's release_requires).
 
 A merger refuses a release that requires something it doesn't know (from a release built with newer
 code: the merger must be updated), or something RETIRED (a fix since removed: Smooth UI must be updated).
@@ -69,11 +69,3 @@ def setting_requirement(name: str) -> str:
 
 KNOWN = frozenset({*map(fix_requirement, FIX_NAMES), *map(setting_requirement, SETTING_NAMES)})
 
-
-def manifest_requires(manifest: dict) -> set[str]:
-    """What a release requires (its manifest's "requires"). Manifests from before "requires" only need
-    the fixes their reports name."""
-    if "requires" in manifest:
-        return set(manifest["requires"])
-    return {fix_requirement(fix["name"]) for record in manifest["files"].values()
-            for fix in record.get("report", {}).get("fixes", ())}

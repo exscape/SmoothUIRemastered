@@ -32,7 +32,8 @@ from typing import NamedTuple
 
 from ..build.release import ReleasePatch
 from ..common import fail
-from ..patcher.fixes import FixOutcome, get_fix
+from ..manifests import FixOutcome
+from ..patcher.fixes import get_fix
 from ..patcher.patcher_core import FailedFile, KeptFile, PatchedFile
 from ..witcher3.source_file import GAME_FILES, SourceFile
 from .installed import is_smoothui_folder
@@ -110,7 +111,7 @@ class PackageFile:
             return None
         assert self.result is not None
         report = self.result.report
-        return report["old_fps"] if report["new_fps"] is None else None
+        return report.old_fps if report.new_fps is None else None
 
     @property
     def speed(self) -> float | None:
@@ -120,8 +121,8 @@ class PackageFile:
             return None
         assert self.result is not None
         report = self.result.report
-        speed = report["target_fps"] / report["old_fps"]
-        return speed if report.get("animated") and speed < SLOW_BELOW else None
+        speed = report.target_fps / report.old_fps
+        return speed if report.animated and speed < SLOW_BELOW else None
 
     @property
     def known_broken(self) -> list[str]:
@@ -179,7 +180,7 @@ class PackageFile:
             summary = f"{not_merged(status, copy, reason=reason)} {self._runs()}"
         lines = self._fix_lines() if status.included or status is FileStatus.UNCHANGED else []
         if self.speed is not None and self.result is not None:
-            lines.append(played_slowly(self.result.report["target_fps"], self.speed))
+            lines.append(played_slowly(self.result.report.target_fps, self.speed))
         if details := self._details():
             lines.append(f"Details: {details}")
         return "\n  ".join([f"{screen_label(self.path) if label is None else label}: {summary}", *lines])
@@ -302,9 +303,9 @@ def _issues(patch: ReleasePatch) -> dict[str, list[Issue]]:
             issues[occurrence.path].append(Issue(IssueKind.KNOWN_BROKEN if known_broken else IssueKind.WARNING,
                                                  f"{occurrence.message} [{review}]", review=review))
     for result in [*patch.patched, *patch.kept]:
-        for fix in result.report.get("fixes", []):
-            if FixOutcome(fix["result"]) is FixOutcome.CANT_APPLY:
-                issues[result.path].append(Issue(IssueKind.FIX, fix["detail"], fix["name"]))
+        for fix in result.report.fixes:
+            if fix.outcome is FixOutcome.CANT_APPLY:
+                issues[result.path].append(Issue(IssueKind.FIX, fix.detail, fix.name))
     return issues
 
 

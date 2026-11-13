@@ -18,6 +18,7 @@ from pathlib import Path
 
 from ..common import normalize_version
 from ..log import HEADING
+from ..manifests import ReleaseManifest
 from .compat_status import newest_compat_patches, print_compat_status
 from .game_files import game_file_report
 from .manifest_diff import print_manifest_diff
@@ -99,14 +100,14 @@ def main(argv=None):
 
     patch_arg, patch = args.check_compat_patch, None
     if patch_arg and patch_arg.endswith(".json"):
-        patch = load_manifest(patch_arg)
+        patch = read_manifest(patch_arg) if Path(patch_arg).is_file() else None
         if patch is None:
             ap.error(f"manifest not found: {patch_arg}")
         if "mod_name" not in patch:
             ap.error(f"{patch_arg} is not a compat patch's manifest (those are in {COMPAT_MANIFEST_DIR})")
         if patch["fps"] not in targets:
             ap.error(f"no {patch['fps']} fps build of {against} to check against")
-    elif patch_arg and not any(newest_compat_patches(read_manifest(target)["created_mod_version"], patch_arg)
+    elif patch_arg and not any(newest_compat_patches(ReleaseManifest.read(target).version, patch_arg)
                                for target in targets.values()):
         known = sorted({read_manifest(path)["mod_name"] for path in COMPAT_MANIFEST_DIR.glob("*.json")})
         if patch_arg.lower() in (name.lower() for name in known):
@@ -132,9 +133,9 @@ def release_builds(ap: argparse.ArgumentParser, version_or_path) -> dict[int, Pa
         manifest = load_manifest(path)
         if manifest is None:
             ap.error(f"manifest not found: {path}")
-        if "mod_name" in manifest:
+        if "mod_name" in manifest.data:
             ap.error(f"{path} is a compat patch's manifest; check it with --check-compat-patch")
-        return {manifest.get("fps", OLD_MANIFEST_FPS): path}
+        return {manifest.fps or OLD_MANIFEST_FPS: path}
     builds = {fps: manifest_path(build_version(version_or_path, fps)) for fps in RELEASE_FPS}
     builds = {fps: path for fps, path in builds.items() if path.is_file()}
     if not builds:
