@@ -95,14 +95,16 @@ def iter_tags(body: bytes | bytearray, start: int, end: int | None = None):
     offset = start
     while True:
         if offset >= end:
-            raise MalformedSwfError(f"tag list at offset {start} has no End tag")
+            log.warning(f"tag list at offset {start} has no End tag")
+            return
         tag_start = offset
         tag, offset = read_tag(body, offset, end)
         yield tag
         if tag.code == TagCode.END:
             if offset != end:
-                # I'm not sure if this is still possible after changing the parser to ignore data after
-                # the declared end, but let's keep it just in case
+                # This can still be triggered, but it doesn't seem safe to ignore.
+                # I tried changing this to a warning for a mod triggering this error, and
+                # other, more severe errors cropped up elsewhere.
                 raise MalformedSwfError(f"{end - offset} unexpected bytes after the End tag at offset {tag_start}")
             return
 
