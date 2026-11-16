@@ -123,3 +123,10 @@ modmapredraw|modMapModMerge|mod000SmoothMap_MapRemastered:
     unresolved-goto PinIcon_122.SelectFrame @94e7ecc6                # panel_worldmap: frame + mapRedrawBase
     unresolved-frame-property PinIcon_122.RefreshTree @bd6d7bd1      # panel_worldmap: currentFrame % mapRedrawBase
     unresolved-goto MapPin.ApplyRemastered @5cc77c49                 # hud_minimap2: gotoAndStop(remastered ? 2 : 1)
+
+# --- Vladimir UI's HUD
+# Fails: 98 unexpected bytes after the End tag at offset 41
+# If the parser is changed to ignore the error, it fails elsewhere:
+# tag 0 at offset 33 (1 bytes) extends past the end of its container
+mod0001VladimirUI:
+    dont-merge known-broken hud_minimap2
