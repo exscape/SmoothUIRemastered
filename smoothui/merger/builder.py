@@ -64,7 +64,9 @@ def patch_winners(result: Scan, *, pool=None, on_file=print_file_result) -> Rele
         if result.reviews and (extra := result.reviews.dont_stretch(source.origin, file_name(source.path),
                                                                      result.group_of.get(source.path))):
             settings[source.path] = replace(settings[source.path], exclude=settings[source.path].exclude + extra)
-    return patch_as_release(sources, settings, manifest, mod_reviews=result.reviews, on_file=on_file, pool=pool)
+    # A speed rule that isn't followed doesn't leave a file out: it is logged, as the file is patched
+    return patch_as_release(sources, settings, manifest, mod_reviews=result.reviews, on_file=on_file, pool=pool,
+                            speed_as_soft=True)
 
 
 def merges_now(result: Scan, keys, *, pool=None) -> list[str]:

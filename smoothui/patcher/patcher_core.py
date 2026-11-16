@@ -7,6 +7,7 @@ import logging
 import struct
 import traceback
 import zlib
+from collections.abc import Sequence
 from concurrent.futures import as_completed
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import asdict, dataclass
@@ -226,14 +227,58 @@ class RuleIssue(NamedTuple):
     def __str__(self):
         return f"{self.path}: {self.message}" if self.path is not None else f"* {self.message}"
 
+    @property
+    def is_speed(self) -> bool:
+        """Whether the setting is a speed rule (see report_settings and RuleIssue.message)"""
+        return self.message.startswith("speed ")
+
 class RuleIssues(NamedTuple):
     """Issues with explicit settings (speed, include, exclude, ...); see find_rule_issues"""
     errors: list[RuleIssue]     # settings that were not followed: the output is NOT as configured
     warnings: list[RuleIssue]   # inherited settings that matched in the release but no longer match
                                 # anything: the output is as configured, but may need a look
+    soft: Sequence[RuleIssue] = ()  # speed rules that would be in errors or warnings, if find_rule_issues is asked
+                                # to set them apart (speed_as_soft): the file is still fine to use, with
+                                # sprites at another speed than the rule asked for, or the rule unused
+
+def file_rule_issues(entry: PatchedFile | KeptFile, shared=(), recorded: dict[str, Report] | None = None, *,
+                     speed_as_soft=False) -> tuple[RuleIssues, set[str]]:
+    """find_rule_issues for one file: its RuleIssues, and the settings that matched (in that file)"""
+    errors, warnings, soft = [], [], []
+    matched_anywhere = set()
+    path, report = entry.path, entry.report
+
+    def add(issues: list[RuleIssue], issue: RuleIssue):
+        (soft if speed_as_soft and issue.is_speed else issues).append(issue)
+
+    for unmet in report.unmet_rules:
+        add(errors, RuleIssue(path, format_unmet_rule(unmet)))
+    unmet = {unmet["rule"] for unmet in report.unmet_rules}   # already reported
+    not_rescaled = report.new_fps is None
+    release = (recorded or {}).get(profile_key(path))
+    inherited = dict(report_settings(release)) if release is not None else {}
+    # Why a fix changed nothing, in place of "matched no sprite"
+    fixes = {f"fix: {fix.name}": fix for fix in report.fixes}
+    fix_details = {setting: f"{fix.outcome}: {fix.detail}" for setting, fix in fixes.items()}
+    for setting, matched in report_settings(report):
+        fix = fixes[setting].name if setting in fixes else None
+        if matched:
+            matched_anywhere.add(setting)
+        elif setting in unmet:
+            continue
+        elif setting in inherited:
+            if inherited[setting] and (fix or not not_rescaled):
+                detail = f" ({fix_details[setting]})" if setting in fix_details else ""
+                cant_apply = fix and fixes[setting].outcome is FixOutcome.CANT_APPLY
+                add(errors if cant_apply else warnings,
+                    RuleIssue(path, f"{setting}: matched sprite(s) {inherited[setting]} in the Smooth UI release, "
+                                    f"but nothing in this mod's version of the file{detail}", fix))
+        elif setting not in shared:
+            add(errors, RuleIssue(path, f"{setting}: {fix_details.get(setting, 'matched no sprite')}", fix))
+    return RuleIssues(errors, warnings, soft), matched_anywhere
 
 def find_rule_issues(patched: list[PatchedFile], kept: list[KeptFile], shared=(),
-                     recorded: dict[str, Report] | None = None) -> RuleIssues:
+                     recorded: dict[str, Report] | None = None, *, speed_as_soft=False) -> RuleIssues:
     """Check explicit settings against the reports in patch_files' patched and kept lists.
 
     Errors: a setting that couldn't be followed (an unmet rule), or that matches no sprite in its
@@ -245,37 +290,25 @@ def find_rule_issues(patched: list[PatchedFile], kept: list[KeptFile], shared=()
     warning, and only if it matched something in the release (otherwise it is not reported); for a fix
     that can't be applied to the other mod's version (not one that isn't needed there), an error. A file that
     wasn't rescaled (already at or above the target frame rate, so only fixed) has no use for the rescale's
-    settings (speed rules, include, exclude), so those are not reported for it: only its fixes are."""
-    errors, warnings = [], []
+    settings (speed rules, include, exclude), so those are not reported for it: only its fixes are.
+
+    speed_as_soft: the issues of speed rules (RuleIssue.is_speed) are in the result's soft list, not in
+    errors or warnings: the merger uses a file whose sprites play at another speed than a rule asked for
+    (or whose rule no longer matches anything), as that is no reason to leave the mod's changes out. Include,
+    exclude and fixes are as before."""
+    errors, warnings, soft = [], [], []
     matched_anywhere = set()
     for entry in [*patched, *kept]:
-        path, report = entry.path, entry.report
-        errors += [RuleIssue(path, format_unmet_rule(unmet)) for unmet in report.unmet_rules]
-        unmet = {unmet["rule"] for unmet in report.unmet_rules}   # already reported
-        not_rescaled = report.new_fps is None
-        release = (recorded or {}).get(profile_key(path))
-        inherited = dict(report_settings(release)) if release is not None else {}
-        # Why a fix changed nothing, in place of "matched no sprite"
-        fixes = {f"fix: {fix.name}": fix for fix in report.fixes}
-        fix_details = {setting: f"{fix.outcome}: {fix.detail}" for setting, fix in fixes.items()}
-        for setting, matched in report_settings(report):
-            fix = fixes[setting].name if setting in fixes else None
-            if matched:
-                matched_anywhere.add(setting)
-            elif setting in unmet:
-                continue
-            elif setting in inherited:
-                if inherited[setting] and (fix or not not_rescaled):
-                    detail = f" ({fix_details[setting]})" if setting in fix_details else ""
-                    cant_apply = fix and fixes[setting].outcome is FixOutcome.CANT_APPLY
-                    (errors if cant_apply else warnings).append(
-                        RuleIssue(path, f"{setting}: matched sprite(s) {inherited[setting]} in the Smooth UI release, "
-                                        f"but nothing in this mod's version of the file{detail}", fix))
-            elif setting not in shared:
-                errors.append(RuleIssue(path, f"{setting}: {fix_details.get(setting, 'matched no sprite')}", fix))
-    errors += [RuleIssue(None, f"{setting}: matched no sprite in any file") for setting in shared
-               if setting not in matched_anywhere]
-    return RuleIssues(errors, warnings)
+        issues, matched = file_rule_issues(entry, shared, recorded, speed_as_soft=speed_as_soft)
+        errors += issues.errors
+        warnings += issues.warnings
+        soft += issues.soft
+        matched_anywhere |= matched
+    for setting in shared:
+        if setting not in matched_anywhere:
+            issue = RuleIssue(None, f"{setting}: matched no sprite in any file")
+            (soft if speed_as_soft and issue.is_speed else errors).append(issue)
+    return RuleIssues(errors, warnings, soft)
 
 def process(data, settings, body_hook=None, *, shares_classes=True, game_rate=None):
     """Find the SWF payload in data, apply its fixes and rescale it. data is normally the SWF taken from

@@ -143,7 +143,7 @@ class ReleasePatch:
 
 
 def patch_as_release(inputs, profile, manifest: ReleaseManifest, *, reviewed=(), mod_reviews: ModReviews | None = None, shared_settings=(),
-                     on_file=print_file_result, pool=None) -> ReleasePatch:
+                     on_file=print_file_result, pool=None, speed_as_soft=False) -> ReleasePatch:
     """Patch other mods' files (SourceFiles) with their settings in profile (usually profile_from_manifest's,
     for those files), and review the result against the release's manifest.
 
@@ -155,6 +155,10 @@ def patch_as_release(inputs, profile, manifest: ReleaseManifest, *, reviewed=(),
     patcher_core.find_rule_issues; shared_settings are a profile's "*" block). on_file is as for
     patch_files, and also gets is_reviewed (see shared.print_file_result).
 
+    speed_as_soft: speed rules that weren't followed or no longer match are not errors or warnings, but
+    rule_issues.soft (see patcher_core.find_rule_issues), and each is logged as a warning as soon as its file
+    is done, after on_file.
+
     Whether failures, rule issues or warnings are acceptable is up to the caller."""
     recorded = {key: record.report for key, record in manifest.files.items()}
     per_file = {key: {review_of(warning) for warning in report.warnings} for key, report in recorded.items()}
@@ -164,13 +168,21 @@ def patch_as_release(inputs, profile, manifest: ReleaseManifest, *, reviewed=(),
                 key = profile_key(source.path)
                 per_file[key] = per_file.get(key, set()) | found
     review = WarningReview(reviewed, per_file)
+
+    def file_done(result, **kwargs):
+        on_file(result, **kwargs)
+        if speed_as_soft and isinstance(result, (PatchedFile, KeptFile)):
+            issues, _ = patcher_core.file_rule_issues(result, shared_settings, recorded, speed_as_soft=True)
+            for issue in issues.soft:
+                log.warning(f"  {issue.message}")
+
     try:
         patched, kept, failed = patcher_core.patch_files(
-            inputs, profile, on_file=partial(on_file, is_reviewed=review.is_reviewed), pool=pool)
+            inputs, profile, on_file=partial(file_done, is_reviewed=review.is_reviewed), pool=pool)
     except ValueError as e:
         fail(str(e))
     warnings = review.summarize([*patched, *kept], unchecked=len(failed))
-    rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings, recorded)
+    rule_issues = patcher_core.find_rule_issues(patched, kept, shared_settings, recorded, speed_as_soft=speed_as_soft)
     origins = {profile_key(source.path): source.origin for source in inputs}
     known_broken = {}
     if mod_reviews:

@@ -4,8 +4,10 @@
   files aren't affected: a mix of patched and unpatched copies of one mod's screens all have the mod's changes.
 - A fix that can't apply keeps nothing out: the file is used without the fix, and the user is told what
   that means (the fix's CONSEQUENCE).
-- Other problems with a rescale (a setting that wasn't followed or no longer matches, an unreviewed
-  warning) leave out that file only, unless the user forces it (force).
+- A speed rule that wasn't followed or no longer matches keeps nothing out either: the file is patched
+  anyway, and the problem is only logged (see patcher_core.find_rule_issues's speed_as_soft).
+- Other problems with a rescale (an include or exclude that wasn't followed or no longer matches, an
+  unreviewed warning) leave out that file only, unless the user forces it (force).
 - A warning that, for that mod, means its copy doesn't work with Smooth UI (mod_reviews.py's leave-out
   lines) leaves out the file the same way, but as known not to work: what Smooth UI intends, not a problem
   to report.
@@ -48,8 +50,8 @@ SLOW_BELOW = 0.85
 
 
 class IssueKind(Enum):
-    RULE = "rule"           # a setting that wasn't followed, or that matched in the release but matches nothing
-                            # in this mod's copy (the mod changed what it was for)
+    RULE = "rule"           # an include/exclude that wasn't followed, or that matched in the release but matches
+                            # nothing in this mod's copy (the mod changed what it was for); not a speed rule
     WARNING = "warning"     # a patcher warning that hasn't been reviewed
     KNOWN_BROKEN = "known broken"   # a warning that means the mod's copy is known not to work
     FIX = "fix"             # a fix that can't apply to this mod's copy
