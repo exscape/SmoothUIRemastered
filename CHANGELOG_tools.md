@@ -1,7 +1,8 @@
 # v0.9.9
 
 * Fixed: accept more Gwent mods by not failing on unknown flipbooks (animations it tries to make smoother). The mods still worked, but the animations that it *did* find were not made smoother. Also makes the lookup smarter and faster.
-* Fixed: accept more mods in general by ignoring files missing SWF End tags: files that failed with "tag list at offset X has no End tag" should now merge.
+* Fixed: accept more mods in general by ignoring files that are missing SWF End tags: files that failed with "tag list at offset X has no End tag" should now merge.
+* Fixed: accept more mods in general by not failing when crafting/alchemy screens lack the crafting progress bar (mostly relevant for huge UI reworks similar to Vladimir UI, Ink and Iron).
 
 # v0.9.8
 
