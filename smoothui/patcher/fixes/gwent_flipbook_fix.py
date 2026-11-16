@@ -62,6 +62,7 @@ from ..swf_patcher.swf_tags import (
     Tag,
     TagCode,
     build_sprite,
+    ids_placed_by_tags,
     parse_remove_object_depth,
 )
 from .swf_edit import CantApply, Fix, FixKind, FixResult, Phase, SwfEdit
@@ -143,8 +144,23 @@ class Known(NamedTuple):
     hard_cuts: int = 0          # how many of its first frames don't fade into the next
     motion: Callable[[list[Frame], int, int, float], Matrix] = _still
 
+# Parents or grandparents of every flipbook to patch.
+# Only search for flipbooks that are descendents of these classes: at most 2 levels deep.
+# Some flipbooks are shared, so the caller needs to filter out duplicates.
+ANCESTORS = {
+    "CardFXClearSky",
+    "CardFXDeploy",
+    "CardFXDummy",
+    "CardFXHero",
+    "CardFXMorph",
+    "CardFXRain_Ongoing",
+    "CardFXScorch",
+    "CardFXSummonClones",
+    "CardFXSummonClonesArrive",
+    "gwint_game_fla\\.GEM_\\d+",
+}
 
-# The game's flipbooks (5.01) by fingerprint (see _fingerprint); None: left as it is
+# The game's flipbooks (5.01c) by fingerprint (see _fingerprint); None: left as it is
 KNOWN = {
     "cba86a3b6526e8bd": Known("Deploy", hard_cuts=3),   # the hit at its start stays hard
     "0401387425ffaa74": Known("Clear Weather"),
@@ -163,24 +179,21 @@ KNOWN = {
 
 def apply(swf: SwfEdit) -> FixResult:
     shapes = {struct.unpack_from("<H", tag.payload)[0]: tag for tag in swf.tags if tag.code in SHAPE_CODES}
-    found, unknown = [], []
-    for sprite_id in swf.sprite_ids():
+    found = []
+    for sprite_id in _candidates(swf):
         tags = swf.sprite_tags(sprite_id)
-        assert tags is not None     # an id from sprite_ids()
-        if not _is_flipbook(tags, shapes):
+        if tags is None or not _is_flipbook(tags, shapes):
             continue
         snaps, keys, frames = _frames(tags, shapes)
         fingerprint = _fingerprint(frames, shapes)
         if fingerprint in KNOWN:
             found.append((sprite_id, tags, snaps, keys, frames, KNOWN[fingerprint]))
         else:
-            log.warning(f"{FIX.name}: sprite {sprite_id} is a flipbook that isn't one of the game's "
-                        f"({len(frames)} frames, fingerprint {fingerprint})")
-            unknown.append(sprite_id)
-    if unknown:
-        raise CantApply(f"{len(unknown)} unknown flipbook animation(s) ({', '.join(map(str, unknown))})")
+            log.warning(f"{FIX.name}: sprite {sprite_id} looks like a flipbook, but it isn't one of the game's "
+                        f"({len(frames)} frames, fingerprint {fingerprint}); ignoring")
     if not found:
         raise CantApply("found none of the game's flipbooks")
+
     done = []
     for sprite_id, tags, snaps, keys, frames, known in found:
         if known is None or all(b - a == 1 for a, b in pairwise(keys)):     # or not stretched
@@ -195,6 +208,17 @@ def apply(swf: SwfEdit) -> FixResult:
     return FixResult([sprite_id for sprite_id, _ in done],
                      "crossfaded " + ", ".join(f"{name} ({sprite_id})" for sprite_id, name in done))
 
+def _candidates(swf: SwfEdit) -> list[int]:
+    """Ids of the sprites that are, or are at most 2 levels below, a sprite linked to a class in ANCESTORS.
+    Patterns that match nothing are skipped."""
+    sprites = set(swf.sprite_ids())
+    level = {i for pattern in ANCESTORS for i in swf.sprites_of_classes_matching(pattern)}
+    candidates = set(level)
+    for _ in range(2):                                      # children, then grandchildren
+        level = {child for sprite_id in level
+                 for child in ids_placed_by_tags(swf.sprite_tags(sprite_id) or []) & sprites} - candidates
+        candidates |= level
+    return sorted(candidates)
 
 def _is_flipbook(tags: list[Tag], shapes: dict[int, Tag]) -> bool:
     """Whether a timeline only puts shapes at depth FLIP, as they are, one after the other"""

@@ -251,6 +251,12 @@ class SwfEdit:
         """Ids of the sprites linked to class_name (none if there are none)"""
         return [i for i in self._sprites_of_class.get(class_name, []) if i in self._sprite_index]
 
+    def sprites_of_classes_matching(self, class_pattern: str) -> list[int]:
+        """Ids of the sprites linked to a class whose whole name matches the regular expression class_pattern
+        (none if there are none)"""
+        return sorted({i for name, ids in self._sprites_of_class.items() if re.fullmatch(class_pattern, name)
+                       for i in ids if i in self._sprite_index})
+
     def sprites_of_class_or_subclasses(self, abc: AbcFile, class_name_index: int) -> list[int]:
         """Ids of the sprites linked to a class of abc (its multiname index) or to a class that extends it"""
         names = {class_name_index}

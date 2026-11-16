@@ -108,6 +108,26 @@ def iter_tags(body: bytes | bytearray, start: int, end: int | None = None):
                 raise MalformedSwfError(f"{end - offset} unexpected bytes after the End tag at offset {tag_start}")
             return
 
+# TODO: probably belongs elsewhere
+def ids_placed_by_tags(tags: list[Tag]) -> set[int]:
+    """The character ids that a timeline places"""
+    ids = set()
+    for tag in tags:
+        p = tag.payload
+        if tag.code == TagCode.PLACE_OBJECT2:
+            offset = 3 if p[0] & 0x02 else None             # flags, depth, [character id]
+        elif tag.code == TagCode.PLACE_OBJECT3:
+            if not p[0] & 0x02:
+                continue
+            offset = 4                                      # flags, flags2, depth
+            if p[1] & 0x08 or p[1] & 0x10:                  # has class name, or has image (with a character)
+                offset = p.index(b"\0", offset) + 1         # skip the class name
+        else:
+            continue
+        if offset is not None:
+            ids.add(struct.unpack_from("<H", p, offset)[0])
+    return ids
+
 def parse_tags(body: bytes | bytearray, start: int, end: int | None = None) -> list[Tag]:
     """All tags of the tag list in body[start:end], including the final End tag"""
     return list(iter_tags(body, start, end))
