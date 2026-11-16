@@ -1,3 +1,8 @@
+# v0.9.9
+
+* Fixed: accept more Gwent mods by not failing on unknown flipbooks (animations it tries to make smoother). The mods still worked, but the animations that it *did* find were not made smoother. Also makes the lookup smarter and faster.
+* Fixed: accept more mods in general by ignoring files missing SWF End tags: files that failed with "tag list at offset X has no End tag" should now merge.
+
 # v0.9.8
 
 * Fixed: the new Gwent animation changes failed to apply fully on some mods (e.g. Gwent Opponent Names). The new code should work on all mods that don't rework FX entirely.
