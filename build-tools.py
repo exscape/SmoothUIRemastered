@@ -480,7 +480,7 @@ def main():
     check_python()
     install = install_dir() if args.install else None     # before the build: it fails if there's none
     out_dir = (args.out or BUILD_DIR).resolve()
-    if not out_dir.is_relative_to(ROOT / "build"):
+    if not out_dir.is_relative_to(ROOT / "build") and not (ROOT / "build").is_symlink():
         raise SystemExit(f"ERROR: --out must be inside {ROOT / 'build'} (it is deleted first), not {out_dir}")
     version = read_tools_version(args.version)
     print(f"Tools version {version}")
