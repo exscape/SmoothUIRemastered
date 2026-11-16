@@ -4,6 +4,7 @@ __pycache__/
 *.w3strings
 
 /build/
+/build
 /data/
 /dev/
 /dist/
